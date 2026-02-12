@@ -32,7 +32,22 @@ class RedisService {
   private performanceMetrics: Map<string, number[]> = new Map();
 
   constructor() {
-    this.client = new Redis(REDIS_CONFIG);
+    if (process.env.REDIS_URL) {
+      this.client = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        retryDelayOnFailover: 50,
+        enableReadyCheck: false,
+        maxLoadingTimeout: 2000,
+        keepAlive: 60000,
+        connectTimeout: 2000,
+        commandTimeout: 1000,
+        enableOfflineQueue: true,
+        family: 4,
+      });
+    } else {
+      this.client = new Redis(REDIS_CONFIG);
+    }
     this.setupEventHandlers();
   }
 
