@@ -13,7 +13,7 @@ const REDIS_CONFIG = {
   enableReadyCheck: false, // Disable for speed
   maxLoadingTimeout: 2000, // Shorter timeout
   // Performance optimizations
-  lazyConnect: false, // Connect immediately
+  lazyConnect: true, // Connect only when needed to prevent build failures
   keepAlive: 60000, // Longer keep-alive
   connectTimeout: 2000, // Faster connection
   commandTimeout: 1000, // Faster commands
@@ -116,15 +116,15 @@ class RedisService {
     if (obj === null || obj === undefined) {
       return obj;
     }
-    
+
     if (typeof obj === 'bigint') {
       return obj.toString();
     }
-    
+
     if (Array.isArray(obj)) {
       return obj.map(item => this.sanitizeForSerialization(item));
     }
-    
+
     if (typeof obj === 'object') {
       const sanitized: any = {};
       for (const [key, value] of Object.entries(obj)) {
@@ -132,7 +132,7 @@ class RedisService {
       }
       return sanitized;
     }
-    
+
     return obj;
   }
 
@@ -141,7 +141,7 @@ class RedisService {
     try {
       const value = await this.client.get(key);
       this.trackPerformance('get', startTime);
-      
+
       if (value === null) return null;
       return JSON.parse(value) as T;
     } catch (error) {
@@ -156,7 +156,7 @@ class RedisService {
     try {
       const values = await this.client.mget(...keys);
       this.trackPerformance('mget', startTime);
-      
+
       return values.map(value => value ? JSON.parse(value) : null);
     } catch (error) {
       console.error('Redis mget error:', error);
@@ -168,12 +168,12 @@ class RedisService {
     const startTime = performance.now();
     try {
       const pipeline = this.client.pipeline();
-      
+
       for (const [key, value] of Object.entries(keyValuePairs)) {
         const serializedValue = JSON.stringify(value);
         pipeline.setex(key, ttlSeconds, serializedValue);
       }
-      
+
       await pipeline.exec();
       this.trackPerformance('mset', startTime);
     } catch (error) {
@@ -238,7 +238,7 @@ class RedisService {
     try {
       const value = await this.client.hget(key, field);
       this.trackPerformance('hget', startTime);
-      
+
       if (value === null) return null;
       return JSON.parse(value) as T;
     } catch (error) {
@@ -252,9 +252,9 @@ class RedisService {
     try {
       const values = await this.client.hgetall(key);
       this.trackPerformance('hgetall', startTime);
-      
+
       if (!values || Object.keys(values).length === 0) return null;
-      
+
       const result: Record<string, T> = {};
       for (const [field, value] of Object.entries(values)) {
         result[field] = JSON.parse(value);
@@ -285,7 +285,7 @@ class RedisService {
     try {
       const values = await this.client.lrange(key, start, stop);
       this.trackPerformance('lrange', startTime);
-      
+
       return values.map(value => JSON.parse(value));
     } catch (error) {
       console.error('Redis lrange error:', error);
@@ -311,7 +311,7 @@ class RedisService {
     try {
       const members = await this.client.smembers(key);
       this.trackPerformance('smembers', startTime);
-      
+
       return members.map(member => JSON.parse(member));
     } catch (error) {
       console.error('Redis smembers error:', error);
