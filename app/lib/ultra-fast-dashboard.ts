@@ -73,6 +73,7 @@ class UltraFastDashboard {
         commandTimeout: 1000,
         enableOfflineQueue: true,
         family: 4,
+        ...({ retryDelayOnFailover: 50 } as any)
       });
     } else {
       // Fallback for local development if REDIS_URL is not set
@@ -112,7 +113,8 @@ class UltraFastDashboard {
 
   getPerformanceStats() {
     const stats: Record<string, any> = {};
-    for (const [operation, times] of this.performanceMetrics) {
+    const stats: Record<string, any> = {};
+    for (const [operation, times] of Array.from(this.performanceMetrics.entries())) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);

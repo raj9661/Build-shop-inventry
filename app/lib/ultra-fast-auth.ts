@@ -92,7 +92,8 @@ class UltraFastAuth {
 
   getPerformanceStats() {
     const stats: Record<string, any> = {};
-    for (const [operation, times] of this.performanceMetrics) {
+    const stats: Record<string, any> = {};
+    for (const [operation, times] of Array.from(this.performanceMetrics.entries())) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
