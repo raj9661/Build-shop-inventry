@@ -61,7 +61,27 @@ class UltraFastDashboard {
       log: ['error'],
     });
 
-    this.redis = new Redis(DASHBOARD_REDIS_CONFIG);
+    if (process.env.REDIS_URL) {
+      this.redis = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        retryDelayOnFailover: 50,
+        enableReadyCheck: false,
+        maxLoadingTimeout: 2000,
+        keepAlive: 60000,
+        connectTimeout: 2000,
+        commandTimeout: 1000,
+        enableOfflineQueue: true,
+        family: 4,
+      });
+    } else {
+      // Fallback for local development if REDIS_URL is not set
+      this.redis = new Redis({
+        ...DASHBOARD_REDIS_CONFIG,
+        lazyConnect: true,
+        enableOfflineQueue: true
+      });
+    }
     this.setupRedisHandlers();
   }
 
