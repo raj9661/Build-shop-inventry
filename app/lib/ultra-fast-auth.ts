@@ -49,7 +49,26 @@ class UltraFastAuth {
       log: ['error'], // Only log errors
     });
 
-    this.redis = new Redis(ULTRA_REDIS_CONFIG);
+    if (process.env.REDIS_URL) {
+      this.redis = new Redis(process.env.REDIS_URL, {
+        lazyConnect: true,
+        maxRetriesPerRequest: 1,
+        enableReadyCheck: false,
+        maxLoadingTimeout: 2000,
+        keepAlive: 60000,
+        connectTimeout: 2000,
+        commandTimeout: 1000,
+        enableOfflineQueue: true,
+        family: 4,
+        ...({ retryDelayOnFailover: 50 } as any)
+      });
+    } else {
+      this.redis = new Redis({
+        ...ULTRA_REDIS_CONFIG,
+        lazyConnect: true,
+        enableOfflineQueue: true
+      });
+    }
     this.setupRedisHandlers();
   }
 
@@ -99,7 +118,7 @@ class UltraFastAuth {
   async getUserByEmail(email: string): Promise<any | null> {
     const startTime = performance.now();
     const normalizedEmail = email.toLowerCase();
-    
+
     try {
       // 1. Check in-memory cache first (fastest)
       const memoryCache = this.userCache.get(normalizedEmail);
@@ -166,7 +185,7 @@ class UltraFastAuth {
   async verifyPassword(email: string, password: string): Promise<boolean> {
     const startTime = performance.now();
     const normalizedEmail = email.toLowerCase();
-    
+
     try {
       // Check password cache first
       const passwordCache = this.passwordCache.get(normalizedEmail);
@@ -205,7 +224,7 @@ class UltraFastAuth {
   // Ultra-fast token generation
   async generateTokens(user: any): Promise<{ token: string; refreshToken: string }> {
     const startTime = performance.now();
-    
+
     try {
       const tokenPayload = {
         userId: user.id,
@@ -217,7 +236,7 @@ class UltraFastAuth {
       // Decode base64 JWT secrets if they're encoded
       let jwtSecret = process.env.JWT_SECRET as string;
       let jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET as string;
-      
+
       try {
         if (jwtSecret.match(/^[A-Za-z0-9+/]+=*$/)) {
           jwtSecret = Buffer.from(jwtSecret, 'base64').toString('utf-8');
@@ -267,7 +286,7 @@ class UltraFastAuth {
   // Ultra-fast login with all optimizations
   async login(email: string, password: string): Promise<any> {
     const startTime = performance.now();
-    
+
     try {
       // Parallel user lookup and password verification
       const [user, isValidPassword] = await Promise.all([
@@ -303,7 +322,7 @@ class UltraFastAuth {
       const tokens = await this.generateTokens(user);
 
       this.trackPerformance('login_total', startTime);
-      
+
       return {
         success: true,
         data: {
@@ -331,9 +350,9 @@ class UltraFastAuth {
 
   // Helper function to log login attempts
   async logLoginAttempt(
-    userId: bigint | string, 
-    email: string, 
-    success: boolean, 
+    userId: bigint | string,
+    email: string,
+    success: boolean,
     reason?: string,
     ipAddress?: string,
     userAgent?: string
@@ -357,7 +376,7 @@ class UltraFastAuth {
   // Clear caches for a user
   async clearUserCaches(email: string): Promise<void> {
     const normalizedEmail = email.toLowerCase();
-    
+
     await Promise.all([
       this.redis.del(`user:${normalizedEmail}`),
       this.userCache.delete(normalizedEmail),
