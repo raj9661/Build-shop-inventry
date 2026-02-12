@@ -91,13 +91,12 @@ class UltraFastAuth {
   }
 
   getPerformanceStats() {
-    const stats: Record<string, any> = {};
-    const stats: Record<string, any> = {};
+    const authStats: Record<string, any> = {};
     for (const [operation, times] of Array.from(this.performanceMetrics.entries())) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
-      stats[operation] = {
+      authStats[operation] = {
         count: times.length,
         average: avg.toFixed(2),
         min: min.toFixed(2),
@@ -106,7 +105,7 @@ class UltraFastAuth {
         p99: this.percentile(times, 99).toFixed(2),
       };
     }
-    return stats;
+    return authStats;
   }
 
   private percentile(arr: number[], p: number): number {
@@ -361,7 +360,7 @@ class UltraFastAuth {
     try {
       await this.prisma.loginLog.create({
         data: {
-          userId: BigInt(userId),
+          userId: Number(userId),
           ipAddress: ipAddress || 'Unknown',
           userAgent: userAgent || 'Unknown',
           success,

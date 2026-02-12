@@ -1,28 +1,47 @@
 # Deployment Status
 
-## ✅ Successfully Deployed
+## ✅ Vercel Deployment (Recommended)
 
-### Infrastructure & Application
-- **Namespace**: `inventory-platform` ✅
-- **Redis**: Running ✅
-- **Nginx**: Running ✅
+Your application is ready for Vercel, but **Docker and Redis do NOT run there.** Vercel only hosts the Next.js app.
 
-## ✅ Build Fixes Applied (2026-02-12)
+### 🛑 Action Required: Connect External Databases
+You must set these **Environment Variables** in Vercel:
 
-The following critical build fixes have been applied and pushed to the repository:
+1.  **Database (PostgreSQL)**:
+    -   Connect a provider like **Neon**, **Supabase**, or **Vercel Postgres**.
+    -   Variable: `DATABASE_URL`
 
-1.  **Lockfile Sync**: Removed conflicting `package-lock.json` and regenerated `pnpm-lock.yaml` to fix Vercel deployment error `ERR_PNPM_OUTDATED_LOCKFILE`.
-2.  **Suspense Boundaries**: Wrapped `useSearchParams` in `<Suspense>` for:
-    - `app/login/page.tsx`
-    - `app/dashboard/super-admin/page.tsx`
-    - `app/verify-email/page.tsx`
-3.  **Config**: Fixed `next.config.js`.
+2.  **Redis (Caching & Queues)**:
+    -   Connect a provider like **Upstash** or **Redis Cloud**.
+    -   Variable: `REDIS_URL` or `KV_URL`
 
-**Current Status:** Ready for Vercel Deployment.
+> **Note:** Without these variables, your deployed app will crash or fail to feature like login/signup.
 
-## ⚠️ Archived Status (Previous Attempt)
+---
 
-The application deployment requires a Docker image, but the build failed due to:
+## ⚠️ Kubernetes / Docker Deployment (Self-Hosted)
+
+If you prefer to run everything (App + Redis + DB) yourself using Docker, follow these steps locally or on a VPS (DigitalOcean, AWS EC2).
+
+### 1. Build Docker Image
+```powershell
+docker build -t inventory-platform-app:latest -f Dockerfile .
+```
+
+### 2. Run with Docker Compose
+```powershell
+docker-compose up -d
+```
+This *will* run Redis and Postgres automatically.
+
+---
+
+## ✅ Build Fixes Log
+
+1.  **Fixed Lockfile**: Regenerated `pnpm-lock.yaml`.
+2.  **Fixed Redis**: Enabled `lazyConnect` to prevent build crashes.
+3.  **Fixed Security**: Updated Next.js to v16.1.6.
+
 
 **Build Error:**
 ```

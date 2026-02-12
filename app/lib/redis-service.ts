@@ -36,7 +36,6 @@ class RedisService {
       this.client = new Redis(process.env.REDIS_URL, {
         lazyConnect: true,
         maxRetriesPerRequest: 1,
-        retryDelayOnFailover: 50,
         enableReadyCheck: false,
         maxLoadingTimeout: 2000,
         keepAlive: 60000,
@@ -44,6 +43,7 @@ class RedisService {
         commandTimeout: 1000,
         enableOfflineQueue: true,
         family: 4,
+        ...({ retryDelayOnFailover: 50 } as any)
       });
     } else {
       this.client = new Redis(REDIS_CONFIG);
@@ -87,12 +87,12 @@ class RedisService {
 
   // Get performance statistics
   getPerformanceStats() {
-    const stats: Record<string, any> = {};
+    const redisStats: Record<string, any> = {};
     for (const [operation, times] of this.performanceMetrics) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
-      stats[operation] = {
+      redisStats[operation] = {
         count: times.length,
         average: avg.toFixed(2),
         min: min.toFixed(2),
@@ -101,7 +101,7 @@ class RedisService {
         p99: this.percentile(times, 99).toFixed(2),
       };
     }
-    return stats;
+    return redisStats;
   }
 
   private percentile(arr: number[], p: number): number {

@@ -112,13 +112,12 @@ class UltraFastDashboard {
   }
 
   getPerformanceStats() {
-    const stats: Record<string, any> = {};
-    const stats: Record<string, any> = {};
+    const dashboardStats: Record<string, any> = {};
     for (const [operation, times] of Array.from(this.performanceMetrics.entries())) {
       const avg = times.reduce((a, b) => a + b, 0) / times.length;
       const min = Math.min(...times);
       const max = Math.max(...times);
-      stats[operation] = {
+      dashboardStats[operation] = {
         count: times.length,
         average: avg.toFixed(2),
         min: min.toFixed(2),
@@ -127,7 +126,7 @@ class UltraFastDashboard {
         p99: this.percentile(times, 99).toFixed(2),
       };
     }
-    return stats;
+    return dashboardStats;
   }
 
   private percentile(arr: number[], p: number): number {
@@ -198,17 +197,17 @@ class UltraFastDashboard {
       const results = await Promise.all([
         this.prisma.sale.count({
           where: {
-            shopId: BigInt(shopId),
+            shopId: shopId,
             paymentStatus: 'COMPLETED',
             updatedAt: { gte: startOfToday, lte: endOfToday }
           }
         }),
-        this.prisma.product.count({ where: { shopId: BigInt(shopId), isActive: true } }),
-        this.prisma.customer.count({ where: { shopId: BigInt(shopId), isActive: true } }),
-        this.prisma.employee.count({ where: { shopId: BigInt(shopId), isActive: true } }),
+        this.prisma.product.count({ where: { shopId: shopId, isActive: true } }),
+        this.prisma.customer.count({ where: { shopId: shopId, isActive: true } }),
+        this.prisma.employee.count({ where: { shopId: shopId, isActive: true } }),
         this.prisma.sale.aggregate({
           where: {
-            shopId: BigInt(shopId),
+            shopId: shopId,
             isActive: true,
             paymentStatus: 'COMPLETED',
             updatedAt: { gte: startOfToday, lte: endOfToday },
@@ -216,7 +215,7 @@ class UltraFastDashboard {
           _sum: { finalAmount: true }
         }),
         this.prisma.sale.findMany({
-          where: { shopId: BigInt(shopId), isActive: true },
+          where: { shopId: shopId, isActive: true },
           include: {
             customer: { select: { name: true, phone: true, address: true } },
             items: { include: { product: { select: { name: true } } } }
@@ -224,7 +223,7 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' }
         }),
         this.prisma.tmtSale.findMany({
-          where: { shopId: BigInt(shopId), isActive: true },
+          where: { shopId: shopId, isActive: true },
           include: {
             items: {
               include: {
@@ -242,7 +241,7 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' }
         }),
         this.prisma.product.findMany({
-          where: { shopId: BigInt(shopId), isActive: true, stockQuantity: { lte: 10 } },
+          where: { shopId: shopId, isActive: true, stockQuantity: { lte: 10 } },
           select: {
             id: true,
             name: true,
@@ -255,19 +254,19 @@ class UltraFastDashboard {
         }),
         this.prisma.saleItem.groupBy({
           by: ['productId'],
-          where: { sale: { shopId: BigInt(shopId) } },
+          where: { sale: { shopId: shopId } },
           _sum: { quantity: true },
           orderBy: { _sum: { quantity: 'desc' } },
           take: 10
         }),
         this.prisma.payment.groupBy({
           by: ['method'],
-          where: { shopId: BigInt(shopId), isActive: true },
+          where: { shopId: shopId, isActive: true },
           _sum: { amount: true }
         }),
         this.prisma.expense.findMany({
           where: {
-            shopId: BigInt(shopId),
+            shopId: shopId,
             isActive: true,
             date: { gte: startOfToday, lte: endOfToday }
           },
@@ -410,7 +409,7 @@ class UltraFastDashboard {
 
       // 4. Fetch Products and today's rates for stock display
       const products = await this.prisma.product.findMany({
-        where: { shopId: BigInt(shopId), isActive: true, stockQuantity: { gt: 0 } },
+        where: { shopId: shopId, isActive: true, stockQuantity: { gt: 0 } },
         select: { id: true, name: true, unit: true, price: true, stockQuantity: true }
       });
 
@@ -475,7 +474,7 @@ class UltraFastDashboard {
     const products = await this.prisma.product.findMany({
       where: {
         id: { in: productIds },
-        shopId: BigInt(shopId)
+        shopId: shopId
       },
       select: {
         id: true,
@@ -493,8 +492,7 @@ class UltraFastDashboard {
         name: product?.name || 'Unknown',
         totalSold: Number(tp._sum.quantity || 0),
         price: Number(product?.price || 0),
-        stockQuantity: product?.stockQuantity || 0,
-        category: product?.category?.name || 'Unknown'
+        stockQuantity: product?.stockQuantity || 0
       };
     });
   }
@@ -510,13 +508,13 @@ class UltraFastDashboard {
     const [todaySales, todayRevenue, monthlySales] = await Promise.all([
       this.prisma.sale.count({
         where: {
-          shopId: BigInt(shopId),
+          shopId: shopId,
           createdAt: { gte: startOfDay, lte: endOfDay }
         }
       }),
       this.prisma.sale.aggregate({
         where: {
-          shopId: BigInt(shopId),
+          shopId: shopId,
           createdAt: { gte: startOfDay, lte: endOfDay }
         },
         _sum: { finalAmount: true }
@@ -524,7 +522,7 @@ class UltraFastDashboard {
       this.prisma.sale.groupBy({
         by: ['createdAt'],
         where: {
-          shopId: BigInt(shopId),
+          shopId: shopId,
           createdAt: { gte: new Date(today.getFullYear(), today.getMonth(), 1) }
         },
         _sum: { finalAmount: true }
@@ -533,7 +531,7 @@ class UltraFastDashboard {
 
     return {
       todaySales,
-      todayRevenue: Number(todayRevenue._sum.finalAmount || 0),
+      todayRevenue: Number(todayRevenue?._sum?.finalAmount || 0),
       monthlySales: monthlySales.map((sale: any) => ({
         date: sale.createdAt,
         revenue: Number(sale._sum.finalAmount || 0)
@@ -558,7 +556,7 @@ class UltraFastDashboard {
       await this.redis.del(...keys);
     }
     // Clear from memory cache
-    for (const key of this.memoryCache.keys()) {
+    for (const key of Array.from(this.memoryCache.keys())) {
       if (key.startsWith(`dashboard:${shopId}:`)) {
         this.memoryCache.delete(key);
       }
