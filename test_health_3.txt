@@ -1,0 +1,48 @@
+﻿≡ƒÜÇ Checking Dashboard API Health...
+node : Γ¥î Dashboard 
+API Down: 500 
+Internal Server Error
+At line:1 char:1
++ node scripts/test_d
+ashboard_health.js 
+2>&1 | Out-File 
+-Encoding utf8  ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Γ¥î Das   
+ hboard A...al Se    
+rver Error:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+<!DOCTYPE html><html>
+<head><meta 
+charSet="utf-8" data-
+next-head=""/><meta 
+name="viewport" conte
+nt="width=device-widt
+h" data-next-head=""/
+><style data-next-hid
+e-fouc="true">body{di
+splay:none}</style><n
+oscript data-next-hid
+e-fouc="true"><style>
+body{display:block}</
+style></noscript><nos
+cript data-n-css=""><
+/noscript><script src
+="/_next/static/chunk
+s/%5Broot%20of%20the%
+20server%5D__3a40d6d2
+._.js" defer=""></scr
+ipt><script src="/_ne
+xt/static/chunks/node
+_modules_react-dom_82
+bb97c6._.js" 
+defer=""></scr

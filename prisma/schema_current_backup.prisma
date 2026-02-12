@@ -1,0 +1,1124 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+// ===== SAAS PLATFORM ENUMS =====
+enum PlatformRole { 
+  PLATFORM_OWNER    // Platform owner (you)
+  SUPER_DUPER_ADMIN // Customer who purchased subscription
+  SUPER_ADMIN       // Customer's top admin
+  ADMIN             // Customer's admin
+  USER              // Customer's user
+  STAFF             // Customer's staff
+  MODERATOR         // Platform moderator
+  CREATOR           // Platform content creator
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  PAYMENT_FAILED
+}
+
+enum SubscriptionPlan {
+  TRIAL_30_DAYS
+  BASIC_MONTHLY
+  BASIC_YEARLY
+  PROFESSIONAL_MONTHLY
+  PROFESSIONAL_YEARLY
+  ENTERPRISE_MONTHLY
+  ENTERPRISE_YEARLY
+}
+
+enum PaymentMethod { 
+  CASH 
+  CARD 
+  UPI 
+  BANK_TRANSFER 
+  CHEQUE 
+  OTHER 
+  STRIPE
+  RAZORPAY
+  PAYPAL
+}
+
+enum PaymentStatus { 
+  PENDING 
+  COMPLETED 
+  FAILED 
+  CANCELLED 
+  REFUNDED
+}
+
+enum CustomerType { 
+  REGULAR 
+  WHOLESALE 
+  RETAIL 
+  CONTRACTOR 
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum ExpenseCategory {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  SALARY
+  MAINTENANCE
+  MARKETING
+  TRANSPORTATION
+  OTHER
+}
+
+enum TmtUnitType {
+  KG
+  TON
+  PIECE
+  BUNDLE
+}
+
+enum ViolationType {
+  PAYMENT_FAILURE
+  TERMS_VIOLATION
+  SUSPICIOUS_ACTIVITY
+  DATA_MISUSE
+  COPYRIGHT_INFRINGEMENT
+  SPAM
+  OTHER
+}
+
+enum ViolationStatus {
+  REPORTED
+  UNDER_REVIEW
+  RESOLVED
+  ESCALATED
+  DISMISSED
+}
+
+enum NotificationType {
+  SUBSCRIPTION_EXPIRY
+  PAYMENT_DUE
+  TRIAL_ENDING
+  ACCOUNT_SUSPENDED
+  VIOLATION_REPORTED
+  SYSTEM_MAINTENANCE
+  FEATURE_UPDATE
+  GENERAL
+}
+
+enum WebsiteSettingType {
+  SEO_META_TAGS
+  ANALYTICS
+  SOCIAL_MEDIA
+  CONTACT_INFO
+  BRANDING
+  INTEGRATION
+  SECURITY
+  PERFORMANCE
+}
+
+// ===== PLATFORM MODELS =====
+
+model PlatformOwner {
+  id                    BigInt                  @id @default(sequence())
+  name                  String
+  email                 String                  @unique
+  phone                 String?
+  companyName          String?
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  // Platform management
+  subscriptions        Subscription[]
+  violations           Violation[]
+  assignedViolations   Violation[]             @relation("ViolationAssignee")
+  notifications        Notification[]
+  websiteSettings      WebsiteSetting[]
+  platformAnalytics   PlatformAnalytics[]
+
+  @@index([email])
+  @@index([isActive])
+}
+
+model Subscription {
+  id                    BigInt                  @id @default(sequence())
+  customerId            BigInt                  @unique // References User.id (SUPER_DUPER_ADMIN)
+  plan                  SubscriptionPlan
+  status                SubscriptionStatus      @default(TRIAL)
+  startDate             DateTime
+  endDate               DateTime
+  trialEndDate          DateTime?
+  autoRenew            Boolean                 @default(true)
+  price                 Decimal                 @db.Decimal(10, 2)
+  currency              String                  @default("USD")
+  paymentMethod         PaymentMethod?
+  lastPaymentDate       DateTime?
+  nextPaymentDate       DateTime?
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  createdBy             BigInt?                 // Platform owner who created
+
+  // Relations
+  customer              User                    @relation("CustomerSubscription", fields: [customerId], references: [id])
+  platformOwner         PlatformOwner?          @relation(fields: [createdBy], references: [id])
+  payments              SubscriptionPayment[]
+  usage                 SubscriptionUsage[]
+
+  @@index([customerId])
+  @@index([status])
+  @@index([plan])
+  @@index([endDate])
+  @@index([isActive])
+}
+
+model SubscriptionPayment {
+  id                    BigInt                  @id @default(sequence())
+  subscriptionId        BigInt
+  amount                Decimal                 @db.Decimal(10, 2)
+  currency              String                  @default("USD")
+  paymentMethod         PaymentMethod
+  paymentStatus         PaymentStatus           @default(PENDING)
+  transactionId         String?
+  gatewayResponse       String?                 // JSON response from payment gateway
+  paymentDate           DateTime?
+  failureReason         String?
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+
+  subscription          Subscription            @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@index([paymentStatus])
+  @@index([paymentDate])
+  @@index([isActive])
+}
+
+model SubscriptionUsage {
+  id                    BigInt                  @id @default(sequence())
+  subscriptionId        BigInt
+  metric                String                  // e.g., "users", "shops", "products", "api_calls"
+  usage                 Int
+  limit                 Int?
+  period                String                  // "monthly", "yearly"
+  recordedAt            DateTime                @default(now())
+  createdAt             DateTime                @default(now())
+
+  subscription          Subscription            @relation(fields: [subscriptionId], references: [id])
+
+  @@index([subscriptionId])
+  @@index([metric])
+  @@index([recordedAt])
+}
+
+model Violation {
+  id                    BigInt                  @id @default(sequence())
+  customerId            BigInt                  // References User.id
+  type                  ViolationType
+  status                ViolationStatus         @default(REPORTED)
+  title                 String
+  description           String
+  evidence              String?                 // JSON or file paths
+  reportedBy            BigInt?                 // Platform moderator/owner
+  assignedTo            BigInt?                 // Platform moderator assigned
+  resolution            String?
+  actionTaken           String?
+  severity              Int                     @default(1) // 1-5 scale
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  resolvedAt            DateTime?
+
+  // Relations
+  customer              User                    @relation("CustomerViolation", fields: [customerId], references: [id])
+  reporter              PlatformOwner?          @relation(fields: [reportedBy], references: [id])
+  assignee              PlatformOwner?          @relation("ViolationAssignee", fields: [assignedTo], references: [id])
+
+  @@index([customerId])
+  @@index([type])
+  @@index([status])
+  @@index([severity])
+  @@index([isActive])
+}
+
+model Notification {
+  id                    BigInt                  @id @default(sequence())
+  recipientId           BigInt?                 // User.id or PlatformOwner.id
+  recipientType         String                  // "user" or "platform_owner"
+  type                  NotificationType
+  title                 String
+  message               String
+  isRead                Boolean                 @default(false)
+  isActive              Boolean                 @default(true)
+  scheduledFor          DateTime?
+  sentAt                DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  createdBy             BigInt?                 // Platform owner who created
+
+  platformOwner         PlatformOwner?         @relation(fields: [createdBy], references: [id])
+
+  @@index([recipientId])
+  @@index([recipientType])
+  @@index([type])
+  @@index([isRead])
+  @@index([isActive])
+}
+
+model WebsiteSetting {
+  id                    BigInt                  @id @default(sequence())
+  customerId            BigInt?                 // If null, it's global platform setting
+  type                  WebsiteSettingType
+  key                   String
+  value                 String
+  description           String?
+  isActive              Boolean                 @default(true)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  createdBy             BigInt?                 // Platform owner who created
+
+  customer              User?                   @relation("CustomerWebsiteSettings", fields: [customerId], references: [id])
+  platformOwner         PlatformOwner?         @relation(fields: [createdBy], references: [id])
+
+  @@unique([customerId, type, key])
+  @@index([customerId])
+  @@index([type])
+  @@index([isActive])
+}
+
+model PlatformAnalytics {
+  id                    BigInt                  @id @default(sequence())
+  metric                String
+  value                 Decimal                 @db.Decimal(15, 2)
+  metadata              String?                 // JSON data
+  recordedAt            DateTime                @default(now())
+  createdAt             DateTime                @default(now())
+  createdBy             BigInt?                 // Platform owner
+
+  platformOwner         PlatformOwner?         @relation(fields: [createdBy], references: [id])
+
+  @@index([metric])
+  @@index([recordedAt])
+}
+
+// ===== USER MANAGEMENT (MULTI-TENANT) =====
+
+model User {
+  id                     BigInt                  @id @default(sequence())
+  name                   String
+  username               String                  @unique
+  email                  String                  @unique
+  password               String
+  role                   PlatformRole            @default(STAFF)
+  phone                  String?
+  isActive               Boolean                 @default(true)
+  lastLoginAt            DateTime?
+  emailVerified          Boolean                 @default(false)
+  emailVerificationToken String?
+  passwordResetToken     String?
+  passwordResetExpires   DateTime?
+  twoFactorEnabled       Boolean                 @default(false)
+  twoFactorSecret        String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  // Platform relations
+  customerSubscription   Subscription?           @relation("CustomerSubscription")
+  customerViolations     Violation[]             @relation("CustomerViolation")
+  customerWebsiteSettings WebsiteSetting[]       @relation("CustomerWebsiteSettings")
+
+  // Direct relations
+  trustedDevices         TrustedDevice[]
+  user2FASetting         User2FASetting?
+  shopAssignmentsCreated UserShopAssignment[]    @relation("ShopAssignmentCreatedBy")
+  shopAssignments        UserShopAssignment[]
+  loginLogs              LoginLog[]
+  activityLogs           ActivityLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([email])
+  @@index([emailVerified])
+}
+
+// ===== SHOP MANAGEMENT (MULTI-TENANT) =====
+
+model Shop {
+  id                    BigInt                    @id @default(sequence())
+  name                  String
+  location              String?
+  phone                 String?
+  email                 String?
+  address               String?
+  gstNo                 String?
+  isActive              Boolean                  @default(true)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  // Relations
+  userAssignments       UserShopAssignment[]
+  products              Product[]
+  sales                 Sale[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  employees             Employee[]
+  stockEntries          StockEntry[]
+  supplierPayments      SupplierPayment[]
+  supplierWeeklyReports SupplierWeeklyReport[]
+  employeePayments      EmployeePayment[]
+  employeeSalaryDues    EmployeeSalaryDue[]
+  payments              Payment[]
+  expenses              Expense[]
+  analyticsSummaries    AnalyticsSummary[]
+  productSalesAnalytics ProductSalesAnalytics[]
+  categories            ProductCategory[]
+  productTypes          ProductType[]
+  customerLedgerEntries CustomerLedgerEntry[]
+  tmtPurchases          TmtPurchase[]
+  tmtInventory          TmtInventory[]
+  tmtSales              TmtSale[]
+  tmtCompanies          TmtCompany[]
+  tmtSizes              TmtSize[]
+  tmtProducts           TmtProduct[]
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([name])
+  @@index([location])
+}
+
+// ===== PRODUCT MODELS =====
+
+model ProductCategory {
+  id          BigInt      @id @default(sequence())
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  shopId      BigInt?     // null = global
+  shop        Shop?       @relation(fields: [shopId], references: [id])
+
+  products    Product[]
+  types       ProductType[]
+
+  @@unique([name, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model ProductType {
+  id          BigInt            @id @default(sequence())
+  name        String
+  description String?
+  categoryId  BigInt
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  shopId      BigInt?           // null = global type
+  shop        Shop?             @relation(fields: [shopId], references: [id])
+  bundleSize  Int?
+
+  category    ProductCategory   @relation(fields: [categoryId], references: [id])
+  products    Product[]
+
+  @@unique([name, shopId])
+  @@index([categoryId])
+  @@index([shopId])
+  @@index([isActive])
+}
+
+model Product {
+  id              BigInt      @id @default(sequence())
+  name            String
+  description     String?
+  categoryId      BigInt
+  typeId          BigInt
+  shopId          BigInt
+  sku             String?
+  barcode         String?
+  unit            String
+  price           Decimal     @db.Decimal(10, 2)
+  costPrice       Decimal     @db.Decimal(10, 2)
+  stockQuantity   Decimal     @db.Decimal(12,3) @default(0)
+  minStockLevel   Decimal     @db.Decimal(12,3) @default(0)
+  maxStockLevel   Decimal?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  damagedQuantity Decimal     @db.Decimal(12,3) @default(0)
+
+  category        ProductCategory @relation(fields: [categoryId], references: [id])
+  type            ProductType     @relation(fields: [typeId], references: [id])
+  shop            Shop            @relation(fields: [shopId], references: [id])
+  saleItems       SaleItem[]
+  stockEntries    StockEntry[]
+  specialPrices   CustomerSpecialPrice[]
+  salesAnalytics  ProductSalesAnalytics[]
+  dailyPrices     DailyProductPrice[]
+
+  @@index([sku])
+  @@index([barcode])
+  @@index([shopId, createdAt])
+  @@index([categoryId])
+  @@index([typeId])
+  @@index([isActive])
+  @@index([name])
+}
+
+model DailyProductPrice {
+  id        BigInt   @id @default(sequence())
+  productId BigInt
+  date      DateTime
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, date])
+  @@index([date])
+  @@index([productId])
+}
+
+// ===== SUPPLIER MODELS =====
+
+model Supplier {
+  id              BigInt      @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  gstNo           String?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  shopId          BigInt
+
+  shop            Shop        @relation(fields: [shopId], references: [id])
+  stockEntries    StockEntry[]
+  payments        SupplierPayment[]
+  weeklyReports   SupplierWeeklyReport[]
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([phone])
+}
+
+model StockEntry {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  supplierId      BigInt
+  quantity        Int
+  unitPrice       Decimal        @db.Decimal(10, 2)
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  entryDate       DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+  paymentStatus   PaymentStatus  @default(PENDING)
+
+  product         Product        @relation(fields: [productId], references: [id])
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([productId])
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([entryDate])
+  @@index([isActive])
+  @@index([paymentStatus])
+}
+
+model SupplierPayment {
+  id              BigInt         @id @default(sequence())
+  supplierId      BigInt
+  amount          Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  paymentDate     DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([paymentDate])
+  @@index([isActive])
+}
+
+model SupplierWeeklyReport {
+  id              BigInt         @id @default(sequence())
+  supplierId      BigInt
+  weekStartDate   DateTime
+  weekEndDate     DateTime
+  totalSupplied   Decimal        @db.Decimal(12, 2)
+  totalPaid       Decimal        @db.Decimal(12, 2)
+  outstanding     Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([weekStartDate])
+  @@index([isActive])
+}
+
+// ===== EMPLOYEE MODELS =====
+
+model Employee {
+  id              BigInt      @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  position        String?
+  salary          Decimal?    @db.Decimal(10, 2)
+  joinDate        DateTime?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  shopId          BigInt
+
+  shop            Shop        @relation(fields: [shopId], references: [id])
+  payments        EmployeePayment[]
+  salaryDues      EmployeeSalaryDue[]
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([position])
+}
+
+model EmployeePayment {
+  id              BigInt         @id @default(sequence())
+  employeeId      BigInt
+  amount          Decimal        @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod
+  paymentDate     DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([employeeId])
+  @@index([shopId])
+  @@index([paymentDate])
+  @@index([isActive])
+}
+
+model EmployeeSalaryDue {
+  id              BigInt         @id @default(sequence())
+  employeeId      BigInt
+  amount          Decimal        @db.Decimal(10, 2)
+  dueDate         DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([employeeId])
+  @@index([shopId])
+  @@index([dueDate])
+  @@index([isActive])
+}
+
+// ===== CUSTOMER MODELS =====
+
+model Customer {
+  id              BigInt         @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  gstNo           String?
+  customerType    CustomerType   @default(REGULAR)
+  creditLimit     Decimal        @db.Decimal(12, 2) @default(0)
+  currentBalance  Decimal        @db.Decimal(12, 2) @default(0)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  sales           Sale[]
+  specialPrices   CustomerSpecialPrice[]
+  ledgerEntries   CustomerLedgerEntry[]
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([phone])
+  @@index([customerType])
+}
+
+model CustomerSpecialPrice {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt
+  productId       BigInt
+  specialPrice    Decimal        @db.Decimal(10, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  product         Product        @relation(fields: [productId], references: [id])
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+model CustomerLedgerEntry {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt
+  amount          Decimal        @db.Decimal(12, 2)
+  type            String         // 'sale_payment' or 'loan_clearing'
+  method          PaymentMethod
+  date            DateTime
+  description     String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([customerId])
+  @@index([shopId])
+  @@index([date])
+  @@index([type])
+  @@index([isActive])
+}
+
+// ===== SALE MODELS =====
+
+model Sale {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt?
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  discount        Decimal        @db.Decimal(10, 2) @default(0)
+  finalAmount     Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus  @default(PENDING)
+  saleDate        DateTime
+  notes           String?
+  status          SaleStatus     @default(PENDING)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           SaleItem[]
+
+  @@index([customerId])
+  @@index([shopId])
+  @@index([saleDate])
+  @@index([paymentStatus])
+  @@index([status])
+  @@index([isActive])
+}
+
+model SaleItem {
+  id              BigInt         @id @default(sequence())
+  saleId          BigInt
+  productId       BigInt
+  quantity        Int
+  unitPrice       Decimal        @db.Decimal(10, 2)
+  totalPrice      Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  sale            Sale           @relation(fields: [saleId], references: [id])
+  product         Product        @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+// ===== PAYMENT MODELS =====
+
+model Payment {
+  id              BigInt         @id @default(sequence())
+  amount          Decimal        @db.Decimal(12, 2)
+  method          PaymentMethod
+  purpose         String
+  description     String?
+  date            DateTime
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([date])
+  @@index([method])
+  @@index([isActive])
+}
+
+// ===== EXPENSE MODELS =====
+
+model Expense {
+  id              BigInt         @id @default(sequence())
+  amount          Decimal        @db.Decimal(10, 2)
+  category        ExpenseCategory
+  description     String?
+  date            DateTime
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])
+  @@index([date])
+  @@index([category])
+  @@index([isActive])
+}
+
+// ===== ANALYTICS MODELS =====
+
+model AnalyticsSummary {
+  id              BigInt         @id @default(sequence())
+  date            DateTime
+  totalSales      Decimal        @db.Decimal(12, 2)
+  totalExpenses   Decimal        @db.Decimal(12, 2)
+  netProfit       Decimal        @db.Decimal(12, 2)
+  totalCustomers  Int
+  totalProducts   Int
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@unique([date, shopId])
+  @@index([shopId])
+  @@index([date])
+  @@index([isActive])
+}
+
+model ProductSalesAnalytics {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  date            DateTime
+  quantitySold    Int
+  totalRevenue    Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  product         Product        @relation(fields: [productId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@unique([productId, date, shopId])
+  @@index([productId])
+  @@index([shopId])
+  @@index([date])
+  @@index([isActive])
+}
+
+// ===== TMT MODELS =====
+
+model TmtCompany {
+  id              BigInt         @id @default(sequence())
+  name            String
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  @@unique([name, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+}
+
+model TmtSize {
+  id              BigInt         @id @default(sequence())
+  sizeMm          Decimal        @db.Decimal(5, 1)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  @@unique([sizeMm, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([sizeMm])
+}
+
+model TmtProduct {
+  id                  BigInt         @id @default(sequence())
+  productName         String
+  companyId           BigInt
+  sizeId              BigInt
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  defaultUnit         TmtUnitType    @default(KG)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  shopId              BigInt?
+
+  company             TmtCompany     @relation(fields: [companyId], references: [id])
+  size                TmtSize        @relation(fields: [sizeId], references: [id])
+  shop                Shop?          @relation(fields: [shopId], references: [id])
+  inventory           TmtInventory[]
+  purchases           TmtPurchaseItem[]
+  sales               TmtSaleItem[]
+
+  @@unique([companyId, sizeId, shopId])
+  @@index([companyId])
+  @@index([sizeId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([productName])
+}
+
+model TmtPurchase {
+  id              BigInt         @id @default(sequence())
+  invoiceNumber   String
+  supplierName    String
+  totalWeightTon  Decimal        @db.Decimal(10, 2)
+  dateReceived    DateTime
+  remarks         String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           TmtPurchaseItem[]
+
+  @@index([shopId])
+  @@index([dateReceived])
+  @@index([invoiceNumber])
+  @@index([isActive])
+}
+
+model TmtPurchaseItem {
+  id                  BigInt         @id @default(sequence())
+  purchaseId          BigInt
+  productId           BigInt
+  quantity            Decimal        @db.Decimal(10, 2)
+  unitType            TmtUnitType
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  totalBundles         Decimal        @db.Decimal(10, 2)
+  totalPieces          Decimal        @db.Decimal(10, 2)
+  equivalentKg         Decimal        @db.Decimal(10, 2)
+  remarks             String?
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  purchase            TmtPurchase    @relation(fields: [purchaseId], references: [id])
+  product             TmtProduct     @relation(fields: [productId], references: [id])
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+model TmtInventory {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  availableQtyKg  Decimal        @db.Decimal(12, 3)
+  reservedQtyKg   Decimal        @db.Decimal(12, 3) @default(0)
+  lastUpdated     DateTime       @default(now())
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  product         TmtProduct     @relation(fields: [productId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@unique([productId, shopId])
+  @@index([productId])
+  @@index([shopId])
+  @@index([lastUpdated])
+  @@index([isActive])
+}
+
+model TmtSale {
+  id              BigInt         @id @default(sequence())
+  customerName    String?
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  saleDate        DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           TmtSaleItem[]
+
+  @@index([shopId])
+  @@index([saleDate])
+  @@index([paymentMethod])
+  @@index([isActive])
+}
+
+model TmtSaleItem {
+  id                  BigInt         @id @default(sequence())
+  saleId              BigInt
+  productId           BigInt
+  quantity            Decimal        @db.Decimal(10, 2)
+  unitType            TmtUnitType
+  unitPrice           Decimal        @db.Decimal(10, 2)
+  totalPrice          Decimal        @db.Decimal(12, 2)
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  sale                TmtSale        @relation(fields: [saleId], references: [id])
+  product             TmtProduct     @relation(fields: [productId], references: [id])
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+// ===== AUDIT MODELS =====
+
+model TrustedDevice {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt
+  deviceId   String
+  deviceName String
+  ipAddress  String?
+  userAgent  String?
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([deviceId])
+}
+
+model User2FASetting {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt   @unique
+  otp_method String
+  secret     String?
+  isEnabled  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model UserShopAssignment {
+  id           BigInt   @id @default(sequence())
+  userId       BigInt
+  shopId       BigInt
+  role         PlatformRole
+  assignedAt   DateTime @default(now())
+  active       Boolean  @default(true)
+  assignedById BigInt
+
+  assignedBy   User     @relation("ShopAssignmentCreatedBy", fields: [assignedById], references: [id])
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+  @@index([userId])
+  @@index([active])
+}
+
+model LoginLog {
+  id            BigInt   @id @default(sequence())
+  userId        BigInt
+  ipAddress     String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+  @@index([success])
+}
+
+model ActivityLog {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt
+  action     String
+  resource   String
+  resourceId BigInt?
+  details    String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+  @@index([action])
+  @@index([resource])
+}

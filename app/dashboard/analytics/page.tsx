@@ -1,0 +1,2510 @@
+"use client"
+
+import React, { useState, useEffect, useCallback } from 'react'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { 
+  Building2, 
+  Users, 
+  TrendingUp, 
+  DollarSign, 
+  Package, 
+  ShoppingCart,
+  BarChart3,
+  Activity,
+  Calendar,
+  Target,
+  PieChart as PieChartIcon,
+  LineChart as LineChartIcon,
+  Plus,
+  Trash2,
+  GripVertical,
+  Eye,
+  EyeOff,
+  Settings,
+  X,
+  TrendingDown,
+  Truck,
+  UserCheck
+} from "lucide-react"
+import {
+  Bar,
+  BarChart,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  Cell,
+  CartesianGrid,
+} from "recharts"
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart"
+import { useLanguage } from "@/hooks/use-language"
+import { useShop, ALL_SHOPS_ID } from "../../contexts/ShopContext"
+import { toast } from "sonner"
+
+interface AnalyticsData {
+  totalRevenue: number
+  totalSales: number
+  totalProducts: number
+  totalCustomers: number
+  totalEmployees: number
+  totalExpenses: number
+  totalEmployeePayments?: number
+  totalSupplierPayments?: number
+  totalAllExpenses?: number
+  netProfit?: number
+  roi?: number
+  ros?: number
+  grossMargin?: number
+  revenueByShop: Array<{
+    shopName: string
+    revenue: number
+    sales: number
+  }>
+  salesByMonth: Array<{
+    month: string
+    sales: number
+    revenue: number
+  }>
+  expensesByMonth?: Array<{
+    month: string
+    expenses: number
+  }>
+  expensesByCategory?: Array<{
+    category: string
+    amount: number
+  }>
+  topProducts: Array<{
+    name: string
+    sales: number
+    revenue: number
+  }>
+  topShops: Array<{
+    name: string
+    revenue: number
+    sales: number
+    customers: number
+  }>
+  paymentMethodBreakdown?: Array<{
+    method: string
+    amount: number
+    count?: number
+  }>
+  salesByPaymentMethod?: Array<{
+    method: string
+    amount: number
+    count: number
+  }>
+  businessMetrics?: Array<{
+    id: number
+    metricName: string
+    value: number
+    formula?: string
+    period: string
+    recordedAt: string | Date
+    shopId: number
+    shopName: string
+  }>
+  inventoryAnalytics?: Array<{
+    id: number
+    shopId: number
+    productId: number
+    shopName: string
+    productName: string
+    avgStock: number
+    cogs: number
+    turnoverRatio: number
+    daysInInventory: number
+    recordedAt: string | Date
+  }>
+  businessGoals?: Array<{
+    id: number
+    metricName: string
+    targetValue: number
+    period: string
+    achieved: boolean
+    achievedAt?: string | Date
+    shopId: number
+    shopName: string
+  }>
+}
+
+interface WidgetConfig {
+  id: string
+  title: string
+  visible: boolean
+  order: number
+  type?: 'metric' | 'chart'
+}
+
+const DEFAULT_WIDGETS: WidgetConfig[] = [
+  { id: 'totalRevenue', title: 'Total Revenue', visible: true, order: 0, type: 'metric' },
+  { id: 'totalExpenses', title: 'Total Expenses', visible: true, order: 1, type: 'metric' },
+  { id: 'totalSupplierPayments', title: 'Supplier Payments', visible: true, order: 2, type: 'metric' },
+  { id: 'totalEmployeePayments', title: 'Employee Payments', visible: true, order: 3, type: 'metric' },
+  { id: 'totalSales', title: 'Total Sales', visible: true, order: 4, type: 'metric' },
+  { id: 'totalProducts', title: 'Total Products', visible: true, order: 5, type: 'metric' },
+  { id: 'totalCustomers', title: 'Total Customers', visible: true, order: 6, type: 'metric' },
+  { id: 'netProfit', title: 'Net Profit', visible: true, order: 7, type: 'metric' },
+  { id: 'roi', title: 'ROI', visible: true, order: 8, type: 'metric' },
+  { id: 'ros', title: 'ROS', visible: true, order: 9, type: 'metric' },
+  { id: 'grossMargin', title: 'Gross Margin', visible: true, order: 10, type: 'metric' },
+]
+
+const DEFAULT_CHART_WIDGETS: WidgetConfig[] = [
+  { id: 'revenueByShop', title: 'Revenue by Shop', visible: true, order: 0, type: 'chart' },
+  { id: 'salesTrend', title: 'Sales Trend', visible: true, order: 1, type: 'chart' },
+  { id: 'topProducts', title: 'Top Products', visible: true, order: 2, type: 'chart' },
+  { id: 'salesByMonth', title: 'Sales by Month', visible: true, order: 3, type: 'chart' },
+  { id: 'revenueDistribution', title: 'Revenue Distribution', visible: true, order: 4, type: 'chart' },
+  { id: 'shopPerformance', title: 'Shop Performance', visible: true, order: 5, type: 'chart' },
+  { id: 'paymentMethods', title: 'Payment Methods', visible: true, order: 6, type: 'chart' },
+  { id: 'expenseTrend', title: 'Expense Trend', visible: true, order: 7, type: 'chart' },
+  { id: 'expensesByCategory', title: 'Expenses by Category', visible: true, order: 8, type: 'chart' },
+]
+
+export default function AnalyticsDashboard() {
+  const { t } = useLanguage()
+  const { userRole, shops, currentShopId, switchShop } = useShop()
+  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [timeRange, setTimeRange] = useState("30")
+  const [activeTab, setActiveTab] = useState("overview")
+  const [salesPage, setSalesPage] = useState(1)
+  const [salesPerPage] = useState(5)
+  const [isEditMode, setIsEditMode] = useState(false)
+  const [widgets, setWidgets] = useState<WidgetConfig[]>(DEFAULT_WIDGETS)
+  const [chartWidgets, setChartWidgets] = useState<WidgetConfig[]>(DEFAULT_CHART_WIDGETS)
+  const [draggedWidget, setDraggedWidget] = useState<string | null>(null)
+  const [dragOverWidget, setDragOverWidget] = useState<string | null>(null)
+
+  // Add error handling
+  const [error, setError] = useState<string | null>(null)
+
+  // Business Goals state
+  const [showGoalDialog, setShowGoalDialog] = useState(false)
+  const [editingGoal, setEditingGoal] = useState<any>(null)
+  const [goalFormData, setGoalFormData] = useState({
+    metricName: "",
+    targetValue: "",
+    period: "monthly",
+    shopId: ""
+  })
+
+  // Chart configuration with proper colors
+  const chartConfig = {
+    revenue: {
+      label: "Revenue",
+      color: "hsl(220, 100%, 50%)"
+    },
+    sales: {
+      label: "Sales",
+      color: "hsl(142, 100%, 40%)"
+    },
+    primary: {
+      label: "Primary",
+      color: "hsl(142, 100%, 40%)"
+    },
+    secondary: {
+      label: "Secondary",
+      color: "hsl(220, 100%, 50%)"
+    }
+  }
+
+  const loadAnalytics = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      console.log('📊 Loading analytics for shop:', currentShopId, 'timeRange:', timeRange)
+      const token = localStorage.getItem('accessToken')
+      if (!token) {
+        setError('Authentication required')
+        toast.error('Authentication required')
+        return
+      }
+
+      // Determine which analytics endpoint to use based on user role
+      let endpoint = '/api/analytics'
+      
+      // SUPER_DUPER_ADMIN uses system analytics, other users use their assigned shops
+      if (userRole === 'SUPER_DUPER_ADMIN') {
+        endpoint = '/api/analytics/system'
+        // SUPER_DUPER_ADMIN: show all shops by default, filter only when specific shop selected
+        // ALL_SHOPS_ID is the virtual ID for "All shops" view
+        const shopFilter = (currentShopId && currentShopId !== ALL_SHOPS_ID) ? `&shopId=${currentShopId}` : '';
+        endpoint += `?days=${timeRange}${shopFilter}`
+      } else {
+        // Other users: use user analytics endpoint for their assigned shops
+        endpoint = '/api/analytics/user'
+        endpoint += `?days=${timeRange}`
+      }
+      
+      const response = await fetch(endpoint, {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log('🔍 Analytics API Response:', data)
+        if (data.success) {
+          console.log('📊 Analytics Data:', data.data)
+          console.log('📊 Sales By Month:', data.data?.salesByMonth)
+          console.log('📊 Payment Method Breakdown:', data.data?.paymentMethodBreakdown)
+          setAnalyticsData(data.data)
+        } else {
+          toast.error(data.message || 'Failed to load analytics')
+        }
+      } else {
+        const errorText = await response.text()
+        console.error('❌ Analytics API Error:', response.status, errorText)
+        toast.error('Failed to load analytics data')
+      }
+    } catch (error) {
+      console.error('Error loading analytics:', error)
+      setError('Failed to load analytics data')
+      toast.error('Error loading analytics data')
+    } finally {
+      setLoading(false)
+    }
+  }, [currentShopId, timeRange, userRole])
+
+  useEffect(() => {
+    console.log('🔄 Analytics: Shop or time range changed', { currentShopId, timeRange, userRole })
+    setSalesPage(1) // Reset to first page when data changes
+    loadAnalytics()
+  }, [loadAnalytics])
+
+  // Load widget preferences from localStorage
+  useEffect(() => {
+    const savedWidgets = localStorage.getItem('analyticsWidgets')
+    const savedChartWidgets = localStorage.getItem('analyticsChartWidgets')
+    
+    if (savedWidgets) {
+      try {
+        const parsed = JSON.parse(savedWidgets)
+        // Merge with DEFAULT_WIDGETS to include any new widgets that were added
+        const mergedWidgets = DEFAULT_WIDGETS.map(defaultWidget => {
+          const savedWidget = parsed.find((w: WidgetConfig) => w.id === defaultWidget.id)
+          if (savedWidget) {
+            return savedWidget // Use saved preferences
+          }
+          return defaultWidget // Use default for new widgets
+        })
+        // Add any saved widgets that are not in DEFAULT_WIDGETS (for backward compatibility)
+        parsed.forEach((savedWidget: WidgetConfig) => {
+          if (!mergedWidgets.find((w: WidgetConfig) => w.id === savedWidget.id)) {
+            mergedWidgets.push(savedWidget)
+          }
+        })
+        setWidgets(mergedWidgets)
+        // Save merged widgets back to localStorage
+        localStorage.setItem('analyticsWidgets', JSON.stringify(mergedWidgets))
+      } catch (e) {
+        console.error('Failed to parse saved widgets:', e)
+        setWidgets(DEFAULT_WIDGETS)
+      }
+    } else {
+      setWidgets(DEFAULT_WIDGETS)
+    }
+    
+    if (savedChartWidgets) {
+      try {
+        const parsed = JSON.parse(savedChartWidgets)
+        // Merge with DEFAULT_CHART_WIDGETS to include any new widgets that were added
+        const mergedChartWidgets = DEFAULT_CHART_WIDGETS.map(defaultWidget => {
+          const savedWidget = parsed.find((w: WidgetConfig) => w.id === defaultWidget.id)
+          if (savedWidget) {
+            return savedWidget // Use saved preferences
+          }
+          return defaultWidget // Use default for new widgets
+        })
+        // Add any saved widgets that are not in DEFAULT_CHART_WIDGETS (for backward compatibility)
+        parsed.forEach((savedWidget: WidgetConfig) => {
+          if (!mergedChartWidgets.find((w: WidgetConfig) => w.id === savedWidget.id)) {
+            mergedChartWidgets.push(savedWidget)
+          }
+        })
+        setChartWidgets(mergedChartWidgets)
+        // Save merged chart widgets back to localStorage
+        localStorage.setItem('analyticsChartWidgets', JSON.stringify(mergedChartWidgets))
+      } catch (e) {
+        console.error('Failed to parse saved chart widgets:', e)
+        setChartWidgets(DEFAULT_CHART_WIDGETS)
+      }
+    } else {
+      setChartWidgets(DEFAULT_CHART_WIDGETS)
+    }
+  }, [])
+
+  // Save widget preferences to localStorage
+  const saveWidgetPreferences = (newWidgets: WidgetConfig[]) => {
+    localStorage.setItem('analyticsWidgets', JSON.stringify(newWidgets))
+    setWidgets(newWidgets)
+  }
+
+  // Save chart widget preferences to localStorage
+  const saveChartWidgetPreferences = (newChartWidgets: WidgetConfig[]) => {
+    localStorage.setItem('analyticsChartWidgets', JSON.stringify(newChartWidgets))
+    setChartWidgets(newChartWidgets)
+  }
+
+  // Toggle widget visibility
+  const toggleWidgetVisibility = (widgetId: string) => {
+    const updated = widgets.map(w => 
+      w.id === widgetId ? { ...w, visible: !w.visible } : w
+    )
+    saveWidgetPreferences(updated)
+  }
+
+  // Toggle chart widget visibility
+  const toggleChartWidgetVisibility = (widgetId: string) => {
+    const updated = chartWidgets.map(w => 
+      w.id === widgetId ? { ...w, visible: !w.visible } : w
+    )
+    saveChartWidgetPreferences(updated)
+  }
+
+  // Handle drag start
+  const handleDragStart = (e: React.DragEvent, widgetId: string) => {
+    setDraggedWidget(widgetId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/html', widgetId)
+  }
+
+  // Handle drag over
+  const handleDragOver = (e: React.DragEvent, targetWidgetId?: string) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = 'move'
+    if (targetWidgetId && draggedWidget && draggedWidget !== targetWidgetId) {
+      setDragOverWidget(targetWidgetId)
+    }
+  }
+
+  // Handle drag leave
+  const handleDragLeave = () => {
+    setDragOverWidget(null)
+  }
+
+  // Handle drop
+  const handleDrop = (e: React.DragEvent, targetWidgetId: string) => {
+    e.preventDefault()
+    setDragOverWidget(null)
+    
+    if (!draggedWidget || draggedWidget === targetWidgetId) {
+      setDraggedWidget(null)
+      return
+    }
+
+    // Check if dragging metric widget or chart widget
+    const isChartWidget = chartWidgets.some(w => w.id === draggedWidget)
+    const widgetList = isChartWidget ? chartWidgets : widgets
+    const saveFn = isChartWidget ? saveChartWidgetPreferences : saveWidgetPreferences
+
+    const draggedIndex = widgetList.findIndex(w => w.id === draggedWidget)
+    const targetIndex = widgetList.findIndex(w => w.id === targetWidgetId)
+
+    if (draggedIndex === -1 || targetIndex === -1) {
+      setDraggedWidget(null)
+      return
+    }
+
+    const newWidgets = [...widgetList]
+    const [removed] = newWidgets.splice(draggedIndex, 1)
+    newWidgets.splice(targetIndex, 0, removed)
+
+    // Update order numbers
+    const updated = newWidgets.map((w, index) => ({ ...w, order: index }))
+    saveFn(updated)
+    setDraggedWidget(null)
+  }
+
+  // Handle drag end
+  const handleDragEnd = () => {
+    setDraggedWidget(null)
+    setDragOverWidget(null)
+  }
+
+  // Get visible widgets sorted by order
+  const visibleWidgets = widgets
+    .filter(w => w.visible)
+    .sort((a, b) => a.order - b.order)
+
+  // Get visible chart widgets sorted by order
+  const visibleChartWidgets = chartWidgets
+    .filter(w => w.visible)
+    .sort((a, b) => a.order - b.order)
+
+  // Allow access to all authenticated users
+  // SUPER_DUPER_ADMIN can see all shops, other users see their assigned shops only
+
+  const formatCurrency = (amount: number) => {
+    if (amount === null || amount === undefined || isNaN(amount)) {
+      return '₹0'
+    }
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR'
+    }).format(amount)
+  }
+
+  const formatNumber = (num: number) => {
+    if (num === null || num === undefined || isNaN(num)) {
+      return '0'
+    }
+    return new Intl.NumberFormat('en-IN').format(num)
+  }
+
+  // Pagination functions for sales data
+  const getPaginatedSales = () => {
+    if (!analyticsData?.salesByMonth) return []
+    const startIndex = (salesPage - 1) * salesPerPage
+    const endIndex = startIndex + salesPerPage
+    return analyticsData.salesByMonth.slice(startIndex, endIndex)
+  }
+
+  const getTotalPages = () => {
+    if (!analyticsData?.salesByMonth) return 0
+    return Math.ceil(analyticsData.salesByMonth.length / salesPerPage)
+  }
+
+  const handleSalesPageChange = (newPage: number) => {
+    setSalesPage(newPage)
+  }
+
+  // Process payment method data for charts
+  const getPaymentMethodData = () => {
+    const paymentData = analyticsData?.paymentMethodBreakdown || analyticsData?.salesByPaymentMethod || []
+    console.log('🔍 Payment method data:', paymentData)
+    
+    // Filter out methods with zero amount and format for chart
+    const filteredData = paymentData
+      .filter(item => item.amount > 0)
+      .map(item => ({
+        name: item.method,
+        value: item.amount,
+        color: getPaymentMethodColor(item.method)
+      }))
+
+    console.log('🔍 Filtered payment data:', filteredData)
+    return filteredData
+  }
+
+  const getPaymentMethodColor = (method: string) => {
+    const colors: { [key: string]: string } = {
+      'CASH': '#10B981',
+      'CARD': '#3B82F6', 
+      'UPI': '#8B5CF6',
+      'BANK_TRANSFER': '#F59E0B',
+      'CHEQUE': '#EF4444',
+      'ONLINE': '#3B82F6',
+      'LOAN': '#F59E0B'
+    }
+    return colors[method.toUpperCase()] || '#6B7280'
+  }
+
+  const getRoleBadge = (role: string) => {
+    const roleColors = {
+      'SUPER_DUPER_ADMIN': 'bg-red-100 text-red-800',
+      'SUPER_ADMIN': 'bg-purple-100 text-purple-800',
+      'ADMIN': 'bg-blue-100 text-blue-800',
+      'USER': 'bg-gray-100 text-gray-800'
+    }
+    return (
+      <Badge className={roleColors[role as keyof typeof roleColors] || 'bg-gray-100 text-gray-800'}>
+        {role}
+      </Badge>
+    )
+  }
+
+  // Business Goals handlers
+  const handleCreateGoal = () => {
+    setEditingGoal(null)
+    setGoalFormData({
+      metricName: "",
+      targetValue: "",
+      period: "monthly",
+      shopId: currentShopId > 0 ? currentShopId.toString() : ""
+    })
+    setShowGoalDialog(true)
+  }
+
+  const handleEditGoal = (goal: any) => {
+    setEditingGoal(goal)
+    setGoalFormData({
+      metricName: goal.metricName,
+      targetValue: goal.targetValue.toString(),
+      period: goal.period,
+      shopId: goal.shopId.toString()
+    })
+    setShowGoalDialog(true)
+  }
+
+  const handleDeleteGoal = async (goalId: number) => {
+    if (!confirm('Are you sure you want to delete this business goal?')) return
+
+    try {
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch(`/api/business-goals?id=${goalId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success('Business goal deleted successfully')
+        loadAnalytics()
+      } else {
+        toast.error(data.message || 'Failed to delete goal')
+      }
+    } catch (error) {
+      console.error('Error deleting goal:', error)
+      toast.error('Error deleting business goal')
+    }
+  }
+
+  const handleSaveGoal = async () => {
+    if (!goalFormData.metricName || !goalFormData.targetValue || !goalFormData.shopId) {
+      toast.error('Please fill in all required fields')
+      return
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken')
+      const url = editingGoal ? '/api/business-goals' : '/api/business-goals'
+      const method = editingGoal ? 'PUT' : 'POST'
+      
+      const payload = editingGoal
+        ? {
+            id: editingGoal.id,
+            metricName: goalFormData.metricName,
+            targetValue: parseFloat(goalFormData.targetValue),
+            period: goalFormData.period
+          }
+        : {
+            metricName: goalFormData.metricName,
+            targetValue: parseFloat(goalFormData.targetValue),
+            period: goalFormData.period,
+            shopId: parseInt(goalFormData.shopId)
+          }
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        toast.success(editingGoal ? 'Goal updated successfully' : 'Goal created successfully')
+        setShowGoalDialog(false)
+        loadAnalytics()
+      } else {
+        toast.error(data.message || 'Failed to save goal')
+      }
+    } catch (error) {
+      console.error('Error saving goal:', error)
+      toast.error('Error saving business goal')
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading analytics...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">Error Loading Analytics</h1>
+          <p className="text-gray-600 mb-4">
+            {error}
+          </p>
+          <Button onClick={loadAnalytics} variant="outline">
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (!analyticsData) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-red-600 mb-4">No Data Available</h1>
+          <p className="text-gray-600 mb-4">
+            Unable to load analytics data. Please try again later.
+          </p>
+          <Button onClick={loadAnalytics} variant="outline">
+            Retry
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="container mx-auto p-6 space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Enhanced Analytics Dashboard</h1>
+          <p className="text-gray-600 mt-1">
+            Comprehensive analytics and insights for all shops with interactive charts
+          </p>
+        </div>
+        <div className="flex items-center gap-4">
+          {getRoleBadge(userRole || 'UNKNOWN')}
+          <Select value={timeRange} onValueChange={setTimeRange}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="7">Last 7 days</SelectItem>
+              <SelectItem value="30">Last 30 days</SelectItem>
+              <SelectItem value="90">Last 90 days</SelectItem>
+              <SelectItem value="365">Last year</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant={isEditMode ? "default" : "outline"}
+            onClick={() => setIsEditMode(!isEditMode)}
+            className="flex items-center gap-2"
+          >
+            <Settings className="h-4 w-4" />
+            {isEditMode ? "Done Editing" : "Edit Widgets"}
+          </Button>
+        </div>
+      </div>
+
+      {/* Widget Configuration Modal */}
+      {isEditMode && (
+        <Card className="mb-6 border-2 border-blue-200 bg-blue-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Settings className="h-5 w-5" />
+                Widget Settings
+              </span>
+              <Button variant="ghost" size="sm" onClick={() => setIsEditMode(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-6">
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Overview Widgets</h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Drag widgets to reorder or toggle visibility. Changes are saved automatically.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {widgets.map((widget, widgetIndex) => (
+                    <div
+                      key={widget.id}
+                      draggable={isEditMode}
+                      onDragStart={(e) => handleDragStart(e, widget.id)}
+                      onDragOver={(e) => handleDragOver(e, widget.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, widget.id)}
+                      onDragEnd={handleDragEnd}
+                      style={isEditMode && draggedWidget !== widget.id ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                      className={`
+                        flex items-center justify-between p-3 rounded-lg border-2 transition-all
+                        ${draggedWidget === widget.id ? 'opacity-50 border-blue-500 scale-95' : 'border-gray-200'}
+                        ${dragOverWidget === widget.id && draggedWidget !== widget.id ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''}
+                        ${isEditMode && draggedWidget !== widget.id ? 'cursor-move bg-white hover:border-blue-300 widget-edit-wobble' : isEditMode ? 'cursor-move bg-white hover:border-blue-300' : 'bg-gray-50'}
+                      `}
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        {isEditMode && (
+                          <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        )}
+                        <span className="text-sm font-medium">{widget.title}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleWidgetVisibility(widget.id)}
+                        className="h-8 w-8 p-0"
+                        title={widget.visible ? 'Hide widget' : 'Show widget'}
+                      >
+                        {widget.visible ? (
+                          <Eye className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h3 className="text-lg font-semibold mb-3">Chart Widgets</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {chartWidgets.map((widget, widgetIndex) => (
+                    <div
+                      key={widget.id}
+                      draggable={isEditMode}
+                      onDragStart={(e) => handleDragStart(e, widget.id)}
+                      onDragOver={(e) => handleDragOver(e, widget.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, widget.id)}
+                      onDragEnd={handleDragEnd}
+                      style={isEditMode && draggedWidget !== widget.id ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                      className={`
+                        flex items-center justify-between p-3 rounded-lg border-2 transition-all
+                        ${draggedWidget === widget.id ? 'opacity-50 border-blue-500 scale-95' : 'border-gray-200'}
+                        ${dragOverWidget === widget.id && draggedWidget !== widget.id ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''}
+                        ${isEditMode && draggedWidget !== widget.id ? 'cursor-move bg-white hover:border-blue-300 widget-edit-wobble' : isEditMode ? 'cursor-move bg-white hover:border-blue-300' : 'bg-gray-50'}
+                      `}
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        {isEditMode && (
+                          <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        )}
+                        <span className="text-sm font-medium">{widget.title}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-8 w-8 p-0"
+                        title={widget.visible ? 'Hide widget' : 'Show widget'}
+                      >
+                        {widget.visible ? (
+                          <Eye className="h-4 w-4 text-green-600" />
+                        ) : (
+                          <EyeOff className="h-4 w-4 text-gray-400" />
+                        )}
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Key Metrics - Widget Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {visibleWidgets.map((widget, widgetIndex) => {
+          const isDragging = draggedWidget === widget.id
+          const isDragOver = dragOverWidget === widget.id && !isDragging
+          
+          const renderWidget = () => {
+            switch (widget.id) {
+              case 'totalRevenue':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+                      <DollarSign className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalRevenue !== undefined ? formatCurrency(analyticsData.totalRevenue) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Last {timeRange} days
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalExpenses':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
+                      <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalExpenses !== undefined ? formatCurrency(analyticsData.totalExpenses) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Last {timeRange} days
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalSupplierPayments':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Supplier Payments</CardTitle>
+                      <Truck className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalSupplierPayments !== undefined ? formatCurrency(analyticsData.totalSupplierPayments) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Last {timeRange} days
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalEmployeePayments':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Employee Payments</CardTitle>
+                      <UserCheck className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalEmployeePayments !== undefined ? formatCurrency(analyticsData.totalEmployeePayments) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Last {timeRange} days
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalSales':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
+                      <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalSales !== undefined ? formatNumber(analyticsData.totalSales) : '0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Transactions
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalProducts':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Products</CardTitle>
+                      <Package className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalProducts !== undefined ? formatNumber(analyticsData.totalProducts) : '0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Active products
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'totalCustomers':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.totalCustomers !== undefined ? formatNumber(analyticsData.totalCustomers) : '0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Active customers
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'netProfit':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Net Profit</CardTitle>
+                      <Target className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.netProfit !== undefined ? formatCurrency(analyticsData.netProfit) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Revenue - Expenses
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'roi':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">ROI</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.roi !== undefined ? `${analyticsData.roi.toFixed(2)}%` : '0%'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Return on Investment
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'ros':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">ROS</CardTitle>
+                      <Activity className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.ros !== undefined ? `${analyticsData.ros.toFixed(2)}%` : '0%'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Return on Sales
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              case 'grossMargin':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Gross Margin</CardTitle>
+                      <BarChart3 className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold">
+                        {analyticsData?.grossMargin !== undefined ? `${analyticsData.grossMargin.toFixed(2)}%` : '0%'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Profitability ratio
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              
+              default:
+                return null
+            }
+          }
+
+          return <div key={widget.id}>{renderWidget()}</div>
+        })}
+      </div>
+
+      {/* Main Content Tabs */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-5">
+          <TabsTrigger value="overview" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="charts" className="flex items-center gap-2">
+            <PieChartIcon className="h-4 w-4" />
+            Charts
+          </TabsTrigger>
+          <TabsTrigger value="shops" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Shops
+          </TabsTrigger>
+          <TabsTrigger value="products" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Products
+          </TabsTrigger>
+          <TabsTrigger value="trends" className="flex items-center gap-2">
+            <TrendingUp className="h-4 w-4" />
+            Trends
+          </TabsTrigger>
+        </TabsList>
+
+        {/* Overview Tab */}
+        <TabsContent value="overview" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Revenue by Shop */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChartIcon className="h-5 w-5" />
+                  Revenue by Shop
+                </CardTitle>
+                <CardDescription>Revenue breakdown by shop</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analyticsData?.revenueByShop?.length > 0 ? (
+                    analyticsData.revenueByShop.map((shop, index) => (
+                      <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Badge variant="outline">{index + 1}</Badge>
+                          <div>
+                            <p className="font-medium">{shop.shopName}</p>
+                            <p className="text-sm text-gray-500">{formatNumber(shop.sales)} sales</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold">{formatCurrency(shop.revenue)}</p>
+                          <p className="text-sm text-gray-500">
+                            {analyticsData.totalRevenue > 0 
+                              ? ((shop.revenue / analyticsData.totalRevenue) * 100).toFixed(1)
+                              : '0'}%
+                          </p>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <PieChartIcon className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                      <p>No revenue data available</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Monthly Sales Trend */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <LineChartIcon className="h-5 w-5" />
+                  Monthly Sales Trend
+                </CardTitle>
+                <CardDescription>
+                  Sales performance over time
+                  {analyticsData?.salesByMonth && (
+                    <span className="ml-2 text-xs text-gray-500">
+                      ({analyticsData.salesByMonth.length} total months)
+                    </span>
+                  )}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {getPaginatedSales().map((month, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <Calendar className="h-4 w-4 text-gray-500" />
+                        <span className="font-medium">{month.month}</span>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold">{formatNumber(month.sales)} sales</p>
+                        <p className="text-sm text-gray-500">{formatCurrency(month.revenue)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                
+                {/* Pagination Controls */}
+                {getTotalPages() > 1 && (
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <div className="text-sm text-gray-500">
+                      Showing {((salesPage - 1) * salesPerPage) + 1} to {Math.min(salesPage * salesPerPage, analyticsData?.salesByMonth?.length || 0)} of {analyticsData?.salesByMonth?.length || 0} months
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSalesPageChange(salesPage - 1)}
+                        disabled={salesPage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-sm text-gray-500">
+                        Page {salesPage} of {getTotalPages()}
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleSalesPageChange(salesPage + 1)}
+                        disabled={salesPage === getTotalPages()}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+        {/* Charts Tab */}
+        <TabsContent value="charts" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+            {/* Revenue by Shop - Bar Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'revenueByShop');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Revenue by Shop</CardTitle>
+                <CardDescription>Revenue from all shops</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <BarChart data={analyticsData.revenueByShop} layout="vertical" margin={{ left: 80, right: 20, top: 10, bottom: 10 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis type="number" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <YAxis
+                          dataKey="shopName"
+                          type="category"
+                          tickLine={false}
+                          axisLine={false}
+                          tick={{ fontSize: 11 }}
+                          width={80}
+                        />
+                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                        <Bar dataKey="revenue" radius={[0, 8, 8, 0]} fill="var(--color-revenue)" />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <Building2 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No shop data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Sales Trend - Line Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'salesTrend');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Sales Trend</CardTitle>
+                <CardDescription>Sales over the last 6 months</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <LineChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                        <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No sales data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Top Products - Pie Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'topProducts');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Top Products</CardTitle>
+                <CardDescription>Best selling products</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.topProducts && analyticsData.topProducts.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Tooltip content={<ChartTooltipContent />} />
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                        <Pie 
+                          data={analyticsData.topProducts} 
+                          dataKey="revenue" 
+                          nameKey="name" 
+                          cx="50%" 
+                          cy="45%" 
+                          outerRadius={100}
+                          innerRadius={30}
+                        >
+                          {analyticsData.topProducts.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No product data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Sales by Month - Bar Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'salesByMonth');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Sales by Month</CardTitle>
+                <CardDescription>Monthly sales comparison</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <BarChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                        <Bar dataKey="sales" fill="var(--color-sales)" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No sales data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Revenue Distribution - Donut Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'revenueDistribution');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Revenue Distribution</CardTitle>
+                <CardDescription>Revenue share by shop</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Tooltip content={<ChartTooltipContent />} />
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                        <Pie 
+                          data={analyticsData.revenueByShop} 
+                          dataKey="revenue" 
+                          nameKey="shopName" 
+                          cx="50%" 
+                          cy="45%" 
+                          innerRadius={60}
+                          outerRadius={100}
+                        >
+                          {analyticsData.revenueByShop.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No revenue data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Shop Performance - Line Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'shopPerformance');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Shop Performance</CardTitle>
+                <CardDescription>Revenue trend by shop</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <LineChart data={analyticsData.revenueByShop} margin={{ top: 5, right: 20, left: 20, bottom: 80 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="shopName" angle={-45} textAnchor="end" height={80} stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 10 }} />
+                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                        <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
+                        <Line type="monotone" dataKey="sales" stroke="var(--color-sales)" strokeWidth={3} dot={{ fill: "var(--color-sales)", r: 4 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No shop data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Payment Methods - Pie Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'paymentMethods');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Payment Methods</CardTitle>
+                <CardDescription>Payment method distribution</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {getPaymentMethodData().length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Tooltip content={<ChartTooltipContent />} />
+                        <Legend 
+                          layout="horizontal" 
+                          verticalAlign="bottom" 
+                          align="center" 
+                          wrapperStyle={{ paddingTop: '20px' }} 
+                        />
+                        <Pie 
+                          data={getPaymentMethodData()} 
+                          dataKey="value" 
+                          nameKey="name" 
+                          cx="50%" 
+                          cy="45%" 
+                          outerRadius={100}
+                          innerRadius={30}
+                        >
+                          {getPaymentMethodData().map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.color} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No payment data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Expense Trend - Line Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'expenseTrend');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Expense Trend</CardTitle>
+                <CardDescription>Expenses over the last 6 months</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.expensesByMonth && analyticsData.expensesByMonth.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <LineChart data={analyticsData.expensesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#ef4444', strokeWidth: 1 }} />
+                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                        <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={3} dot={{ fill: "#ef4444", r: 4 }} activeDot={{ r: 6 }} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No expense data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+
+            {/* Expenses by Category - Pie Chart */}
+            {(() => {
+              const widget = visibleChartWidgets.find(w => w.id === 'expensesByCategory');
+              if (!widget) return null;
+              const isDragging = draggedWidget === widget.id;
+              const isDragOver = dragOverWidget === widget.id && !isDragging;
+              
+              return (
+            <Card 
+              draggable={isEditMode}
+              onDragStart={(e) => handleDragStart(e, widget.id)}
+              onDragOver={(e) => handleDragOver(e, widget.id)}
+              onDragLeave={handleDragLeave}
+              onDrop={(e) => handleDrop(e, widget.id)}
+              onDragEnd={handleDragEnd}
+              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+              className={`xl:col-span-1 relative transition-all ${
+                isDragging ? 'opacity-50 scale-95' : '' 
+              } ${
+                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+              } ${
+                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+              }`}
+            >
+              {isEditMode && (
+                <div className="absolute top-2 right-2 z-10 flex gap-1">
+                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => toggleChartWidgetVisibility(widget.id)}
+                    className="h-6 w-6 p-0"
+                  >
+                    <EyeOff className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <CardHeader>
+                <CardTitle>Expenses by Category</CardTitle>
+                <CardDescription>Distribution by expense category</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.expensesByCategory && analyticsData.expensesByCategory.length > 0 ? (
+                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                    <ResponsiveContainer>
+                      <PieChart>
+                        <Tooltip content={<ChartTooltipContent />} />
+                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                        <Pie 
+                          data={analyticsData.expensesByCategory} 
+                          dataKey="amount" 
+                          nameKey="category" 
+                          cx="50%" 
+                          cy="45%" 
+                          outerRadius={100}
+                          innerRadius={30}
+                        >
+                          {analyticsData.expensesByCategory.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                          ))}
+                        </Pie>
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </ChartContainer>
+                ) : (
+                  <div className="flex items-center justify-center h-[350px] text-gray-500">
+                    <div className="text-center">
+                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No expense data available</p>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+            );
+            })()}
+          </div>
+        </TabsContent>
+
+        {/* Shops Tab */}
+        <TabsContent value="shops" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Building2 className="h-5 w-5" />
+                Shop Performance
+              </CardTitle>
+              <CardDescription>Detailed performance metrics for each shop</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {analyticsData?.topShops?.map((shop, index) => (
+                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <div>
+                        <h3 className="font-semibold text-lg">{shop.name}</h3>
+                        <p className="text-sm text-gray-600">{formatNumber(shop.customers)} customers</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xl font-bold">{formatCurrency(shop.revenue)}</p>
+                      <p className="text-sm text-gray-600">{formatNumber(shop.sales)} sales</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Products Tab */}
+        <TabsContent value="products" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Target className="h-5 w-5" />
+                Top Performing Products
+              </CardTitle>
+              <CardDescription>Best selling products by revenue</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {analyticsData?.topProducts?.map((product, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary">{index + 1}</Badge>
+                      <span className="font-medium">{product.name}</span>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold">{formatNumber(product.sales)} sold</p>
+                      <p className="text-sm text-gray-500">{formatCurrency(product.revenue)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Inventory Analytics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Inventory Analytics
+              </CardTitle>
+              <CardDescription>Stock metrics, turnover ratios, and inventory performance</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analyticsData?.inventoryAnalytics && analyticsData.inventoryAnalytics.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Shop</th>
+                        <th className="text-left p-2">Product</th>
+                        <th className="text-right p-2">Avg Stock</th>
+                        <th className="text-right p-2">COGS</th>
+                        <th className="text-right p-2">Turnover</th>
+                        <th className="text-right p-2">Days in Inv.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analyticsData.inventoryAnalytics.slice(0, 30).map((analytics) => (
+                        <tr key={analytics.id} className="border-b">
+                          <td className="p-2">
+                            {new Date(analytics.recordedAt).toLocaleDateString()}
+                          </td>
+                          <td className="p-2">{analytics.shopName}</td>
+                          <td className="p-2 font-medium">{analytics.productName}</td>
+                          <td className="p-2 text-right">{formatNumber(analytics.avgStock)}</td>
+                          <td className="p-2 text-right">{formatCurrency(analytics.cogs)}</td>
+                          <td className="p-2 text-right">{analytics.turnoverRatio.toFixed(2)}</td>
+                          <td className="p-2 text-right">{analytics.daysInInventory.toFixed(1)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No inventory analytics data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Trends Tab */}
+        <TabsContent value="trends" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Sales Growth */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Sales Growth
+                </CardTitle>
+                <CardDescription>Month-over-month sales comparison</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analyticsData?.salesByMonth?.slice(-6).map((month, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium">{month.month}</span>
+                      <div className="text-right">
+                        <p className="font-bold">{formatNumber(month.sales)}</p>
+                        <p className="text-sm text-gray-500">{formatCurrency(month.revenue)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Revenue Distribution */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <PieChartIcon className="h-5 w-5" />
+                  Revenue Distribution
+                </CardTitle>
+                <CardDescription>Revenue share by shop</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {analyticsData?.revenueByShop?.map((shop, index) => (
+                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                      <span className="font-medium">{shop.shopName}</span>
+                      <div className="text-right">
+                        <p className="font-bold">{formatCurrency(shop.revenue)}</p>
+                        <p className="text-sm text-gray-500">
+                          {analyticsData.totalRevenue > 0 
+                            ? ((shop.revenue / analyticsData.totalRevenue) * 100).toFixed(1)
+                            : '0'}%
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Business Metrics History */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5" />
+                Business Metrics History
+              </CardTitle>
+              <CardDescription>Historical ROI, ROS, and Gross Margin records</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {analyticsData?.businessMetrics && analyticsData.businessMetrics.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left p-2">Date</th>
+                        <th className="text-left p-2">Shop</th>
+                        <th className="text-left p-2">Metric</th>
+                        <th className="text-right p-2">Value</th>
+                        <th className="text-left p-2">Period</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analyticsData.businessMetrics.slice(0, 20).map((metric) => (
+                        <tr key={metric.id} className="border-b">
+                          <td className="p-2">
+                            {new Date(metric.recordedAt).toLocaleDateString()}
+                          </td>
+                          <td className="p-2">{metric.shopName}</td>
+                          <td className="p-2">
+                            <Badge variant="outline">{metric.metricName}</Badge>
+                          </td>
+                          <td className="p-2 text-right font-semibold">
+                            {metric.metricName === 'ROI' || metric.metricName === 'ROS' || metric.metricName === 'Gross Margin'
+                              ? `${metric.value.toFixed(2)}%`
+                              : formatCurrency(metric.value)}
+                          </td>
+                          <td className="p-2">
+                            <Badge variant="secondary">{metric.period}</Badge>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No business metrics data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Business Goals */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-5 w-5" />
+                    Business Goals
+                  </CardTitle>
+                  <CardDescription>Target metrics and achievement status</CardDescription>
+                </div>
+                <Button onClick={handleCreateGoal} size="sm" className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  Create Goal
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {analyticsData?.businessGoals && analyticsData.businessGoals.length > 0 ? (
+                <div className="space-y-3">
+                  {analyticsData.businessGoals.map((goal) => (
+                    <div key={goal.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg group">
+                      <div className="flex items-center gap-3">
+                        <Badge variant={goal.achieved ? "default" : "outline"}>
+                          {goal.achieved ? "✓ Achieved" : "Pending"}
+                        </Badge>
+                        <div>
+                          <p className="font-semibold">{goal.metricName}</p>
+                          <p className="text-sm text-gray-500">{goal.shopName} • {goal.period}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="text-right">
+                          <p className="font-bold">{formatCurrency(goal.targetValue)}</p>
+                          {goal.achievedAt && (
+                            <p className="text-xs text-gray-500">
+                              Achieved: {new Date(goal.achievedAt).toLocaleDateString()}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleEditGoal(goal)}
+                            className="h-8 w-8 p-0"
+                          >
+                            Edit
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => handleDeleteGoal(goal.id)}
+                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Target className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No business goals set</p>
+                  <Button onClick={handleCreateGoal} variant="outline" className="mt-4">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Your First Goal
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Business Goal Dialog */}
+      <Dialog open={showGoalDialog} onOpenChange={setShowGoalDialog}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>{editingGoal ? 'Edit Business Goal' : 'Create Business Goal'}</DialogTitle>
+            <DialogDescription>
+              Set a target metric to track your business performance
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="metricName">Metric Name</Label>
+              <Input
+                id="metricName"
+                value={goalFormData.metricName}
+                onChange={(e) => setGoalFormData({ ...goalFormData, metricName: e.target.value })}
+                placeholder="e.g., Monthly Revenue, Daily Sales"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="targetValue">Target Value</Label>
+              <Input
+                id="targetValue"
+                type="number"
+                value={goalFormData.targetValue}
+                onChange={(e) => setGoalFormData({ ...goalFormData, targetValue: e.target.value })}
+                placeholder="e.g., 100000"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="period">Period</Label>
+              <Select value={goalFormData.period} onValueChange={(value) => setGoalFormData({ ...goalFormData, period: value })}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select period" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="yearly">Yearly</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {!editingGoal && (
+              <div className="grid gap-2">
+                <Label htmlFor="shopId">Shop</Label>
+                <Select value={goalFormData.shopId} onValueChange={(value) => setGoalFormData({ ...goalFormData, shopId: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select shop" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {shops.filter(shop => shop.id > 0).map((shop) => (
+                      <SelectItem key={shop.id} value={shop.id.toString()}>
+                        {shop.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowGoalDialog(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveGoal}>
+              {editingGoal ? 'Update Goal' : 'Create Goal'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  )
+} 

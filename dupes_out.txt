@@ -1,0 +1,138 @@
+Checking for customers with phone: 9999999999
+Found 1 customers.
+ID: 8, Name: Walk-in Customer (9999999999), Shop: 1, CreatedAt: Wed Feb 11 2026 08:16:01 GMT+0530 (India Standard Time)
+  Sales: 2, TMT Sales: 2, Ledger Entries: 10
+
+Checking Ledger Entries for first customer:
+[
+  {
+    "id": "105n",
+    "customerId": "8n",
+    "amount": "50",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T02:45:58.457Z",
+    "description": "Cash Sale #37",
+    "isActive": true,
+    "createdAt": "2026-02-11T02:46:01.688Z",
+    "updatedAt": "2026-02-11T02:46:01.688Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "106n",
+    "customerId": "8n",
+    "amount": "-50",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T02:45:58.457Z",
+    "description": "Payment for Cash Sale #37",
+    "isActive": true,
+    "createdAt": "2026-02-11T02:46:01.931Z",
+    "updatedAt": "2026-02-11T02:46:01.931Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "107n",
+    "customerId": "8n",
+    "amount": "320",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T02:45:58.457Z",
+    "description": "TMT Sale #42",
+    "isActive": true,
+    "createdAt": "2026-02-11T02:46:05.214Z",
+    "updatedAt": "2026-02-11T02:46:05.214Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "108n",
+    "customerId": "8n",
+    "amount": "-320",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T02:45:58.457Z",
+    "description": "Payment for TMT Sale #42",
+    "isActive": true,
+    "createdAt": "2026-02-11T02:46:05.504Z",
+    "updatedAt": "2026-02-11T02:46:05.504Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "109n",
+    "customerId": "8n",
+    "amount": "320",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T02:47:56.849Z",
+    "description": "[COMPLETED] TMT Sale #42",
+    "isActive": true,
+    "createdAt": "2026-02-11T02:47:56.854Z",
+    "updatedAt": "2026-02-11T02:47:56.854Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "110n",
+    "customerId": "8n",
+    "amount": "50",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T03:08:55.476Z",
+    "description": "Cash Sale #38",
+    "isActive": true,
+    "createdAt": "2026-02-11T03:08:57.841Z",
+    "updatedAt": "2026-02-11T03:08:57.841Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "111n",
+    "customerId": "8n",
+    "amount": "-50",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T03:08:55.476Z",
+    "description": "Payment for Cash Sale #38",
+    "isActive": true,
+    "createdAt": "2026-02-11T03:08:58.089Z",
+    "updatedAt": "2026-02-11T03:08:58.089Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "112n",
+    "customerId": "8n",
+    "amount": "720",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T03:08:55.476Z",
+    "description": "TMT Sale #43",
+    "isActive": true,
+    "createdAt": "2026-02-11T03:09:01.746Z",
+    "updatedAt": "2026-02-11T03:09:01.746Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "113n",
+    "customerId": "8n",
+    "amount": "-720",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T03:08:55.476Z",
+    "description": "Payment for TMT Sale #43",
+    "isActive": true,
+    "createdAt": "2026-02-11T03:09:02.280Z",
+    "updatedAt": "2026-02-11T03:09:02.280Z",
+    "shopId": "1n"
+  },
+  {
+    "id": "114n",
+    "customerId": "8n",
+    "amount": "720",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-11T03:09:32.658Z",
+    "description": "[COMPLETED] TMT Sale #43",
+    "isActive": true,
+    "createdAt": "2026-02-11T03:09:32.660Z",
+    "updatedAt": "2026-02-11T03:09:32.660Z",
+    "shopId": "1n"
+  }
+]

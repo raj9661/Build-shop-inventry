@@ -1,0 +1,21 @@
+{
+  "name": "Build Shop Inventory",
+  "short_name": "Inventory",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#2563eb",
+  "description": "A building material shop inventory system.",
+  "icons": [
+    {
+      "src": "/placeholder-logo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/placeholder-logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+=== TMT SALES DATABASE CHECK ===
+
+Total TMT Sales: 4
+
+
+=== COUNTS BY STATUS ===
+PAID: 2
+PARTIAL: 2
+UNPAID: 0
+PENDING: 0
+CANCELLED: 0
+
+=== NO CANCELLED SALES FOUND ===
+
+=== ACTIVE TMT SALES (4) ===
+ID: 4 | Status: PARTIAL | Customer: Sumit Kumar | Amount: 3840
+ID: 3 | Status: PARTIAL | Customer: Sumit Kumar | Amount: 3840
+ID: 2 | Status: PAID | Customer: CAROLYN A TURNER | Amount: 4200
+ID: 1 | Status: PAID | Customer: CAROLYN A TURNER | Amount: 4200

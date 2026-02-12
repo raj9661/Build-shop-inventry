@@ -1,0 +1,1058 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+// ===== ENUMS =====
+enum UserRole { 
+  SUPER_DUPER_ADMIN 
+  SUPER_ADMIN 
+  ADMIN 
+  USER 
+  STAFF 
+}
+
+enum PaymentMethod { 
+  CASH 
+  CARD 
+  UPI 
+  BANK_TRANSFER 
+  CHEQUE 
+  OTHER 
+}
+
+enum PaymentStatus { 
+  PENDING 
+  COMPLETED 
+  FAILED 
+  CANCELLED 
+}
+
+enum CustomerType { 
+  REGULAR 
+  WHOLESALE 
+  RETAIL 
+  CONTRACTOR 
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum ExpenseCategory {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  SALARY
+  MAINTENANCE
+  MARKETING
+  TRANSPORTATION
+  OTHER
+}
+
+enum TmtUnitType {
+  KG
+  TON
+  PIECE
+  BUNDLE
+}
+
+// ===== CORE MODELS =====
+
+model User {
+  id                     BigInt                  @id @default(sequence())
+  name                   String
+  username               String                  @unique
+  email                  String                  @unique
+  password               String
+  role                   UserRole                @default(STAFF)
+  phone                  String?
+  isActive               Boolean                 @default(true)
+  lastLoginAt            DateTime?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  // Audit relations
+  createdModels          AuditCreated[]          @relation("AuditCreated")
+  updatedModels          AuditUpdated[]          @relation("AuditUpdated")
+
+  // Direct relations
+  trustedDevices         TrustedDevice[]
+  user2FASetting         User2FASetting?
+  shopAssignmentsCreated UserShopAssignment[]    @relation("ShopAssignmentCreatedBy")
+  shopAssignments        UserShopAssignment[]
+  loginLogs              LoginLog[]
+  activityLogs           ActivityLog[]
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([email])
+}
+
+model Shop {
+  id                    BigInt                    @id @default(sequence())
+  name                  String
+  location              String?
+  phone                 String?
+  email                 String?
+  address               String?
+  gstNo                 String?
+  isActive              Boolean                  @default(true)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  createdBy             BigInt?
+  updatedBy             BigInt?
+
+  // Relations
+  userAssignments       UserShopAssignment[]
+  products              Product[]
+  sales                 Sale[]
+  customers             Customer[]
+  suppliers             Supplier[]
+  employees             Employee[]
+  stockEntries          StockEntry[]
+  supplierPayments      SupplierPayment[]
+  supplierWeeklyReports SupplierWeeklyReport[]
+  employeePayments      EmployeePayment[]
+  employeeSalaryDues    EmployeeSalaryDue[]
+  payments              Payment[]
+  expenses              Expense[]
+  analyticsSummaries    AnalyticsSummary[]
+  productSalesAnalytics ProductSalesAnalytics[]
+  categories            ProductCategory[]
+  productTypes          ProductType[]
+  customerLedgerEntries CustomerLedgerEntry[]
+  tmtPurchases          TmtPurchase[]
+  tmtInventory          TmtInventory[]
+  tmtSales              TmtSale[]
+  tmtCompanies          TmtCompany[]
+  tmtSizes              TmtSize[]
+  tmtProducts           TmtProduct[]
+
+  // Audit relations
+  createdByUser         User?                    @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser         User?                    @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([name])
+  @@index([location])
+}
+
+// ===== PRODUCT MODELS =====
+
+model ProductCategory {
+  id          BigInt      @id @default(sequence())
+  name        String
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  createdBy   BigInt?
+  updatedBy   BigInt?
+  shopId      BigInt?     // null = global
+  shop        Shop?       @relation(fields: [shopId], references: [id])
+
+  products    Product[]
+  types       ProductType[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([name, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([createdAt])
+}
+
+model ProductType {
+  id          BigInt            @id @default(sequence())
+  name        String
+  description String?
+  categoryId  BigInt
+  isActive    Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  createdBy   BigInt?
+  updatedBy   BigInt?
+  shopId      BigInt?           // null = global type
+  shop        Shop?             @relation(fields: [shopId], references: [id])
+  bundleSize  Int?
+
+  category    ProductCategory   @relation(fields: [categoryId], references: [id])
+  products    Product[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([name, shopId])
+  @@index([categoryId])
+  @@index([shopId])
+  @@index([isActive])
+}
+
+model Product {
+  id              BigInt      @id @default(sequence())
+  name            String
+  description     String?
+  categoryId      BigInt
+  typeId          BigInt
+  shopId          BigInt
+  sku             String?
+  barcode         String?
+  unit            String
+  price           Decimal     @db.Decimal(10, 2)
+  costPrice       Decimal     @db.Decimal(10, 2)
+  stockQuantity   Decimal     @db.Decimal(12,3) @default(0)
+  minStockLevel   Decimal     @db.Decimal(12,3) @default(0)
+  maxStockLevel   Decimal?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  damagedQuantity Decimal     @db.Decimal(12,3) @default(0)
+
+  category        ProductCategory @relation(fields: [categoryId], references: [id])
+  type            ProductType     @relation(fields: [typeId], references: [id])
+  shop            Shop            @relation(fields: [shopId], references: [id])
+  saleItems       SaleItem[]
+  stockEntries    StockEntry[]
+  specialPrices   CustomerSpecialPrice[]
+  salesAnalytics  ProductSalesAnalytics[]
+  dailyPrices     DailyProductPrice[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([sku])
+  @@index([barcode])
+  @@index([shopId, createdAt])
+  @@index([categoryId])
+  @@index([typeId])
+  @@index([isActive])
+  @@index([name])
+}
+
+model DailyProductPrice {
+  id        BigInt   @id @default(sequence())
+  productId BigInt
+  date      DateTime
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+
+  product   Product  @relation(fields: [productId], references: [id])
+
+  @@unique([productId, date])
+  @@index([date])
+  @@index([productId])
+}
+
+// ===== SUPPLIER MODELS =====
+
+model Supplier {
+  id              BigInt      @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  gstNo           String?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop        @relation(fields: [shopId], references: [id])
+  stockEntries    StockEntry[]
+  payments        SupplierPayment[]
+  weeklyReports   SupplierWeeklyReport[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([phone])
+}
+
+model StockEntry {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  supplierId      BigInt
+  quantity        Int
+  unitPrice       Decimal        @db.Decimal(10, 2)
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  entryDate       DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+  paymentStatus   PaymentStatus  @default(PENDING)
+
+  product         Product        @relation(fields: [productId], references: [id])
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([productId])
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([entryDate])
+  @@index([isActive])
+  @@index([paymentStatus])
+}
+
+model SupplierPayment {
+  id              BigInt         @id @default(sequence())
+  supplierId      BigInt
+  amount          Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  paymentDate     DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([paymentDate])
+  @@index([isActive])
+}
+
+model SupplierWeeklyReport {
+  id              BigInt         @id @default(sequence())
+  supplierId      BigInt
+  weekStartDate   DateTime
+  weekEndDate     DateTime
+  totalSupplied   Decimal        @db.Decimal(12, 2)
+  totalPaid       Decimal        @db.Decimal(12, 2)
+  outstanding     Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  supplier        Supplier       @relation(fields: [supplierId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([supplierId])
+  @@index([shopId])
+  @@index([weekStartDate])
+  @@index([isActive])
+}
+
+// ===== EMPLOYEE MODELS =====
+
+model Employee {
+  id              BigInt      @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  position        String?
+  salary          Decimal     @db.Decimal(10, 2)?
+  joinDate        DateTime?
+  isActive        Boolean     @default(true)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop        @relation(fields: [shopId], references: [id])
+  payments        EmployeePayment[]
+  salaryDues      EmployeeSalaryDue[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([position])
+}
+
+model EmployeePayment {
+  id              BigInt         @id @default(sequence())
+  employeeId      BigInt
+  amount          Decimal        @db.Decimal(10, 2)
+  paymentMethod   PaymentMethod
+  paymentDate     DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([shopId])
+  @@index([paymentDate])
+  @@index([isActive])
+}
+
+model EmployeeSalaryDue {
+  id              BigInt         @id @default(sequence())
+  employeeId      BigInt
+  amount          Decimal        @db.Decimal(10, 2)
+  dueDate         DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  employee        Employee       @relation(fields: [employeeId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([employeeId])
+  @@index([shopId])
+  @@index([dueDate])
+  @@index([isActive])
+}
+
+// ===== CUSTOMER MODELS =====
+
+model Customer {
+  id              BigInt         @id @default(sequence())
+  name            String
+  phone           String?
+  email           String?
+  address         String?
+  gstNo           String?
+  customerType    CustomerType   @default(REGULAR)
+  creditLimit     Decimal        @db.Decimal(12, 2) @default(0)
+  currentBalance  Decimal        @db.Decimal(12, 2) @default(0)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  sales           Sale[]
+  specialPrices   CustomerSpecialPrice[]
+  ledgerEntries   CustomerLedgerEntry[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+  @@index([phone])
+  @@index([customerType])
+}
+
+model CustomerSpecialPrice {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt
+  productId       BigInt
+  specialPrice    Decimal        @db.Decimal(10, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  product         Product        @relation(fields: [productId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+model CustomerLedgerEntry {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt
+  amount          Decimal        @db.Decimal(12, 2)
+  type            String         // 'sale_payment' or 'loan_clearing'
+  method          PaymentMethod
+  date            DateTime
+  description     String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([shopId])
+  @@index([date])
+  @@index([type])
+  @@index([isActive])
+}
+
+// ===== SALE MODELS =====
+
+model Sale {
+  id              BigInt         @id @default(sequence())
+  customerId      BigInt?
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  discount        Decimal        @db.Decimal(10, 2) @default(0)
+  finalAmount     Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus  @default(PENDING)
+  saleDate        DateTime
+  notes           String?
+  status          SaleStatus     @default(PENDING)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  customer        Customer?      @relation(fields: [customerId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           SaleItem[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([customerId])
+  @@index([shopId])
+  @@index([saleDate])
+  @@index([paymentStatus])
+  @@index([status])
+  @@index([isActive])
+}
+
+model SaleItem {
+  id              BigInt         @id @default(sequence())
+  saleId          BigInt
+  productId       BigInt
+  quantity        Int
+  unitPrice       Decimal        @db.Decimal(10, 2)
+  totalPrice      Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  sale            Sale           @relation(fields: [saleId], references: [id])
+  product         Product        @relation(fields: [productId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+// ===== PAYMENT MODELS =====
+
+model Payment {
+  id              BigInt         @id @default(sequence())
+  amount          Decimal        @db.Decimal(12, 2)
+  method          PaymentMethod
+  purpose         String
+  description     String?
+  date            DateTime
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([date])
+  @@index([method])
+  @@index([isActive])
+}
+
+// ===== EXPENSE MODELS =====
+
+model Expense {
+  id              BigInt         @id @default(sequence())
+  amount          Decimal        @db.Decimal(10, 2)
+  category        ExpenseCategory
+  description     String?
+  date            DateTime
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([date])
+  @@index([category])
+  @@index([isActive])
+}
+
+// ===== ANALYTICS MODELS =====
+
+model AnalyticsSummary {
+  id              BigInt         @id @default(sequence())
+  date            DateTime
+  totalSales      Decimal        @db.Decimal(12, 2)
+  totalExpenses   Decimal        @db.Decimal(12, 2)
+  netProfit       Decimal        @db.Decimal(12, 2)
+  totalCustomers  Int
+  totalProducts   Int
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([date, shopId])
+  @@index([shopId])
+  @@index([date])
+  @@index([isActive])
+}
+
+model ProductSalesAnalytics {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  date            DateTime
+  quantitySold    Int
+  totalRevenue    Decimal        @db.Decimal(12, 2)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  product         Product        @relation(fields: [productId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([productId, date, shopId])
+  @@index([productId])
+  @@index([shopId])
+  @@index([date])
+  @@index([isActive])
+}
+
+// ===== TMT MODELS =====
+
+model TmtCompany {
+  id              BigInt         @id @default(sequence())
+  name            String
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([name, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+}
+
+model TmtSize {
+  id              BigInt         @id @default(sequence())
+  sizeMm          Decimal        @db.Decimal(5, 1)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([sizeMm, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([sizeMm])
+}
+
+model TmtProduct {
+  id                  BigInt         @id @default(sequence())
+  productName         String
+  companyId           BigInt
+  sizeId              BigInt
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  defaultUnit         TmtUnitType    @default(KG)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  createdBy           BigInt?
+  updatedBy           BigInt?
+  shopId              BigInt?
+
+  company             TmtCompany     @relation(fields: [companyId], references: [id])
+  size                TmtSize        @relation(fields: [sizeId], references: [id])
+  shop                Shop?          @relation(fields: [shopId], references: [id])
+  inventory           TmtInventory[]
+  purchases           TmtPurchaseItem[]
+  sales               TmtSaleItem[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([companyId, sizeId, shopId])
+  @@index([companyId])
+  @@index([sizeId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([productName])
+}
+
+model TmtPurchase {
+  id              BigInt         @id @default(sequence())
+  invoiceNumber   String
+  supplierName    String
+  totalWeightTon  Decimal        @db.Decimal(10, 2)
+  dateReceived    DateTime
+  remarks         String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           TmtPurchaseItem[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([dateReceived])
+  @@index([invoiceNumber])
+  @@index([isActive])
+}
+
+model TmtPurchaseItem {
+  id                  BigInt         @id @default(sequence())
+  purchaseId          BigInt
+  productId           BigInt
+  quantity            Decimal        @db.Decimal(10, 2)
+  unitType            TmtUnitType
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  totalBundles         Decimal        @db.Decimal(10, 2)
+  totalPieces          Decimal        @db.Decimal(10, 2)
+  equivalentKg         Decimal        @db.Decimal(10, 2)
+  remarks             String?
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  createdBy           BigInt?
+  updatedBy           BigInt?
+
+  purchase            TmtPurchase    @relation(fields: [purchaseId], references: [id])
+  product             TmtProduct     @relation(fields: [productId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([purchaseId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+model TmtInventory {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  availableQtyKg  Decimal        @db.Decimal(12, 3)
+  reservedQtyKg   Decimal        @db.Decimal(12, 3) @default(0)
+  lastUpdated     DateTime       @default(now())
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  product         TmtProduct     @relation(fields: [productId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([productId, shopId])
+  @@index([productId])
+  @@index([shopId])
+  @@index([lastUpdated])
+  @@index([isActive])
+}
+
+model TmtSale {
+  id              BigInt         @id @default(sequence())
+  customerName    String?
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod
+  saleDate        DateTime
+  notes           String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+  shopId          BigInt
+
+  shop            Shop           @relation(fields: [shopId], references: [id])
+  items           TmtSaleItem[]
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([shopId])
+  @@index([saleDate])
+  @@index([paymentMethod])
+  @@index([isActive])
+}
+
+model TmtSaleItem {
+  id                  BigInt         @id @default(sequence())
+  saleId              BigInt
+  productId           BigInt
+  quantity            Decimal        @db.Decimal(10, 2)
+  unitType            TmtUnitType
+  unitPrice           Decimal        @db.Decimal(10, 2)
+  totalPrice          Decimal        @db.Decimal(12, 2)
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  createdBy           BigInt?
+  updatedBy           BigInt?
+
+  sale                TmtSale        @relation(fields: [saleId], references: [id])
+  product             TmtProduct     @relation(fields: [productId], references: [id])
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([saleId])
+  @@index([productId])
+  @@index([isActive])
+}
+
+// ===== UNIT CONVERSION MODEL =====
+
+model UnitConversion {
+  id              BigInt         @id @default(sequence())
+  fromUnit        TmtUnitType
+  toUnit          TmtUnitType
+  conversionFactor Decimal        @db.Decimal(10, 6)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@unique([fromUnit, toUnit])
+  @@index([fromUnit])
+  @@index([toUnit])
+  @@index([isActive])
+}
+
+// ===== SYSTEM MODELS =====
+
+model SystemSetting {
+  id              BigInt         @id @default(sequence())
+  key             String         @unique
+  value           String
+  description     String?
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  createdBy       BigInt?
+  updatedBy       BigInt?
+
+  createdByUser User? @relation("AuditCreated", fields: [createdBy], references: [id], onDelete: SetNull)
+  updatedByUser User? @relation("AuditUpdated", fields: [updatedBy], references: [id], onDelete: SetNull)
+
+  @@index([key])
+  @@index([isActive])
+}
+
+model OTP {
+  id              BigInt         @id @default(sequence())
+  email           String
+  otp             String
+  expiresAt       DateTime
+  isUsed          Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+
+  @@index([email])
+  @@index([expiresAt])
+  @@index([isUsed])
+}
+
+// ===== AUDIT MODELS =====
+
+model TrustedDevice {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt
+  deviceId   String
+  deviceName String
+  ipAddress  String?
+  userAgent  String?
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  @@unique([userId, deviceId])
+  @@index([userId])
+  @@index([deviceId])
+}
+
+model User2FASetting {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt   @unique
+  otp_method String
+  secret     String?
+  isEnabled  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user       User     @relation(fields: [userId], references: [id])
+}
+
+model UserShopAssignment {
+  id           BigInt   @id @default(sequence())
+  userId       BigInt
+  shopId       BigInt
+  role         UserRole
+  assignedAt   DateTime @default(now())
+  active       Boolean  @default(true)
+  assignedById BigInt
+
+  assignedBy   User     @relation("ShopAssignmentCreatedBy", fields: [assignedById], references: [id])
+  shop         Shop     @relation(fields: [shopId], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, shopId])
+  @@index([shopId])
+  @@index([userId])
+  @@index([active])
+}
+
+model LoginLog {
+  id            BigInt   @id @default(sequence())
+  userId        BigInt
+  ipAddress     String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+
+  user          User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+  @@index([success])
+}
+
+model ActivityLog {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt
+  action     String
+  resource   String
+  resourceId BigInt?
+  details    String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id])
+  @@index([userId, createdAt])
+  @@index([action])
+  @@index([resource])
+}

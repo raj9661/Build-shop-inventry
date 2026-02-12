@@ -1,0 +1,10 @@
+﻿≡ƒÜÇ Checking Dashboard API Health...
+node : Γ¥î Dashboard API Down: 500 Internal Server Error
+At line:1 char:1
++ node scripts/test_dashboard_health.js 2>&1 | Out-File -Encoding utf8  ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Γ¥î Dashboard A...al Server Error:String) [], RemoteExc 
+   eption
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+Internal Server Error

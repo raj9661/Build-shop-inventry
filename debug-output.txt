@@ -1,0 +1,10 @@
+Found 2 cancelled sales
+
+
+Sale 8: Sumit Kumar, Shop 1
+  TATA TISCON 8MM TMT BAR: 1 BUNDLE
+    Current stock: 797.139kg
+
+Sale 9: Sumit Kumar, Shop 1
+  TATA TISCON 8MM TMT BAR: 1 BUNDLE
+    Current stock: 797.139kg

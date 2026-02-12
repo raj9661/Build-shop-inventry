@@ -1,0 +1,2 @@
+﻿app/lib/ultra-fast-dashboard.ts(95,38): error TS2802: Type 'Map<string, number[]>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.
+app/lib/ultra-fast-dashboard.ts(537,23): error TS2802: Type 'MapIterator<string>' can only be iterated through when using the '--downlevelIteration' flag or with a '--target' of 'es2015' or higher.

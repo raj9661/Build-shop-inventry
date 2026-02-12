@@ -1,0 +1,3 @@
+--- CHECK DUPLICATES START ---
+Found 58 TMT-related ledger entries.
+Found 0 sets of duplicate PURCHASE entries.

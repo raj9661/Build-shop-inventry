@@ -1,0 +1,87 @@
+﻿≡ƒÜÇ Starting Mixed Sale Grouping Verification...
+≡ƒ¢Æ Creating Regular Sale...
+node : Γ¥î Regular 
+Sale Failed: 500 
+Internal Server Error
+At line:1 char:1
++ node scripts/verify
+_mixed_sale_grouping.
+js 2>&1 | Out-File 
+-Encoding  ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Γ¥î Reg   
+ ular Sal...al Se    
+rver Error:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+Response Body: 
+<!DOCTYPE html><html>
+<head><meta 
+charSet="utf-8" data-
+next-head=""/><meta 
+name="viewport" conte
+nt="width=device-widt
+h" data-next-head=""/
+><style data-next-hid
+e-fouc="true">body{di
+splay:none}</style><n
+oscript data-next-hid
+e-fouc="true"><style>
+body{display:block}</
+style></noscript><nos
+cript data-n-css=""><
+/noscript><script src
+="/_next/static/chunk
+s/%5Broot%20of%20the%
+20server%5D__3a40d6d2
+._.js" defer=""></scr
+ipt><script src="/_ne
+xt/static/chunks/node
+_modules_react-dom_82
+bb97c6._.js" defer=""
+></script><script src
+="/_next/static/chunk
+s/node_modules_beb007
+41._.js" defer=""></s
+cript><script src="/_
+next/static/chunks/%5
+Broot%20of%20the%20se
+rver%5D__49fd8634._.j
+s" defer=""></script>
+<script src="/_next/s
+tatic/chunks/pages__a
+pp_5771e187._.js" def
+er=""></script><scrip
+t src="/_next/static/
+chunks/pages__app_6a9
+8ce7c._.js" defer="">
+</script><script src=
+"/_next/static/chunks
+/%5Broot%20of%20the%2
+0server%5D__73499ecc.
+_.js" defer=""></scri
+pt><script src="/_nex
+t/static/chunks/%5Bro
+ot%20of%20the%20serve
+r%
+Γ¥î Verification 
+failed: Error: 
+Regular Sale Failed: 
+500
+    at 
+runVerification (C:\B
+uild-shop-inventry\sc
+ripts\verify_mixed_sa
+le_grouping.js:72:19)
+    at process.proces
+sTicksAndRejections (
+node:internal/process
+/task_queues:105:5)
