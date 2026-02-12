@@ -181,24 +181,6 @@ function LoginForm() {
             </Link>
           </p>
         </div>
-
-        {/* Demo Accounts */}
-        <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-sm font-medium text-gray-900 mb-3">Demo Accounts:</h3>
-          <div className="text-xs text-gray-600 space-y-2">
-            <div className="flex justify-between">
-              <span><strong>Platform Owner:</strong></span>
-              <span>admin@yourcompany.com</span>
-            </div>
-            <div className="flex justify-between">
-              <span><strong>Sample Customer:</strong></span>
-              <span>customer@example.com</span>
-            </div>
-            <div className="text-center text-gray-500 mt-2">
-              Password: <code className="bg-gray-200 px-1 rounded">password123</code>
-            </div>
-          </div>
-        </div>
       </CardContent>
     </Card>
   );
