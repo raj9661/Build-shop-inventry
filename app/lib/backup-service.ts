@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
+import os from 'os';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
@@ -29,8 +30,9 @@ class BackupService {
   constructor() {
     // In serverless environments like Vercel, the filesystem is read-only
     // except for the /tmp directory.
-    const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
-    const basePath = isVercel ? '/tmp' : process.cwd();
+    const cwd = process.cwd();
+    const isServerless = process.env.VERCEL === '1' || process.env.AWS_REGION || cwd.includes('/var/task') || cwd.includes('/opt');
+    const basePath = isServerless ? os.tmpdir() : cwd;
 
     this.baseBackupDir = path.join(basePath, 'backups');
     this.settings = {
