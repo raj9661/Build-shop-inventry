@@ -1229,38 +1229,46 @@ function SuperDuperAdminDashboardContent() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="w-full justify-start overflow-x-auto flex flex-nowrap h-auto py-2 px-1 gap-2 bg-muted/50 rounded-lg no-scrollbar">
-          <TabsTrigger value="overview" className="flex items-center gap-2 min-w-fit px-4 py-2">
+        <TabsList className="flex w-full overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hide justify-start h-auto gap-1 p-1 bg-muted/50 rounded-lg">
+          <TabsTrigger value="overview" className="flex items-center gap-2 py-2 flex-shrink-0">
             <BarChart3 className="h-4 w-4" />
-            Overview
+            <span className="hidden sm:inline">Overview</span>
+            <span className="sm:hidden">Overview</span>
           </TabsTrigger>
-          <TabsTrigger value="shops" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="shops" className="flex items-center gap-2 py-2 flex-shrink-0">
             <Building2 className="h-4 w-4" />
-            Shops
+            <span className="hidden sm:inline">Shops</span>
+            <span className="sm:hidden">Shops</span>
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="users" className="flex items-center gap-2 py-2 flex-shrink-0">
             <Users className="h-4 w-4" />
-            User Management
+            <span className="hidden sm:inline">User Management</span>
+            <span className="sm:hidden">Users</span>
           </TabsTrigger>
-          <TabsTrigger value="categories" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="categories" className="flex items-center gap-2 py-2 flex-shrink-0">
             <Package className="h-4 w-4" />
-            Categories
+            <span className="hidden sm:inline">Categories</span>
+            <span className="sm:hidden">Categories</span>
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="analytics" className="flex items-center gap-2 py-2 flex-shrink-0">
             <TrendingUp className="h-4 w-4" />
-            Analytics
+            <span className="hidden sm:inline">Analytics</span>
+            <span className="sm:hidden">Analytics</span>
           </TabsTrigger>
-          <TabsTrigger value="transactions" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="transactions" className="flex items-center gap-2 py-2 flex-shrink-0">
             <DollarSign className="h-4 w-4" />
-            Transactions
+            <span className="hidden sm:inline">Transactions</span>
+            <span className="sm:hidden">Transact</span>
           </TabsTrigger>
-          <TabsTrigger value="backup" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="backup" className="flex items-center gap-2 py-2 flex-shrink-0">
             <Database className="h-4 w-4" />
-            Backup
+            <span className="hidden sm:inline">Backup</span>
+            <span className="sm:hidden">Backup</span>
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center gap-2 min-w-fit px-4 py-2">
+          <TabsTrigger value="logs" className="flex items-center gap-2 py-2 flex-shrink-0">
             <Activity className="h-4 w-4" />
-            Logs
+            <span className="hidden sm:inline">Logs</span>
+            <span className="sm:hidden">Logs</span>
           </TabsTrigger>
         </TabsList>
 

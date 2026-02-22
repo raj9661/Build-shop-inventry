@@ -33,7 +33,6 @@ export function Sidebar() {
     { href: "/suppliers", icon: Truck, label: t("Suppliers", "सप्लायर") },
     { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी") },
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
-    { href: "/customer-details", icon: Users, label: t("Customer Details", "ग्राहक विवरण") },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
     { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन") },
   ]
@@ -64,7 +63,7 @@ export function Sidebar() {
             ))}
           </nav>
         </div>
-        
+
         <div className="p-4 mt-auto">
           <button
             onClick={() => {

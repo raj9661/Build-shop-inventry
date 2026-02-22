@@ -38,7 +38,6 @@ export function MobileNav() {
     { href: "/suppliers", icon: Truck, label: t("Suppliers", "सप्लायर") },
     { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी") },
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
-    { href: "/customer-details", icon: Users, label: t("Customer Details", "ग्राहक विवरण") },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
   ]
 
@@ -80,9 +79,6 @@ export function MobileNav() {
                       <Package className="h-6 w-6 text-blue-600" />
                       <span className="text-lg">Inventry</span>
                     </Link>
-                    <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)} className="h-8 w-8">
-                      <X className="h-4 w-4" />
-                    </Button>
                   </div>
 
                   {/* Navigation Items */}
@@ -130,9 +126,9 @@ export function MobileNav() {
             </Sheet>
 
             {/* Back Button */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
+            <Button
+              variant="ghost"
+              size="icon"
               className="h-10 w-10 rounded-lg"
               onClick={handleBackClick}
             >
