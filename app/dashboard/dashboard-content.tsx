@@ -28,7 +28,7 @@ export function DashboardContent() {
 
   // Debug shop context
   console.log('🔍 [DashboardContent] Shop context:', { userRole, currentShopId, shopsCount: shops.length, shops: shops.map(s => ({ id: s.id, name: s.name })) });
-  
+
   // Debug dashboard data
   useEffect(() => {
     console.log('🔍 [DashboardContent] Dashboard data updated:', dashboardData);
@@ -62,7 +62,7 @@ export function DashboardContent() {
           }
         }
       }
-    } catch {}
+    } catch { }
 
     if (!prefetched) {
       let url = currentShopId ? `/api/dashboard/ultra-fast?shopId=${currentShopId}` : "/api/dashboard/ultra-fast";
@@ -76,7 +76,7 @@ export function DashboardContent() {
         toast.error('Authentication required');
         return;
       }
-      
+
       fetch(url, {
         method: 'GET',
         headers: {
@@ -108,7 +108,7 @@ export function DashboardContent() {
         })
         .catch((error) => {
           console.error('Dashboard fetch error:', error);
-          
+
           // If it's an access error, try to switch to a shop the user has access to
           if (error.message.includes('do not have access to this shop')) {
             console.log('🔄 [Dashboard] Access denied, trying to switch to available shop...');
@@ -221,7 +221,7 @@ export function DashboardContent() {
         toast.error('Authentication required');
         return;
       }
-      
+
       const res = await fetch("/api/expenses", {
         method: "POST",
         headers: {
@@ -261,7 +261,7 @@ export function DashboardContent() {
         toast.error('Authentication required');
         return;
       }
-      
+
       const res = await fetch(`/api/products/${productId}/rate`, {
         method: "POST",
         headers: {
@@ -274,26 +274,26 @@ export function DashboardContent() {
       if (data.success) {
         toast.success(t("Rate updated!", "दर अपडेट की गई!"));
         console.log('✅ Rate updated successfully for product:', productId, 'new rate:', newRate);
-        
+
         // Update the local state immediately to show the new rate
         setDashboardData((prevData: any) => {
           if (!prevData) return prevData;
           return {
             ...prevData,
-            productsInStock: prevData.productsInStock.map((product: any) => 
-              product.id === productId 
+            productsInStock: prevData.productsInStock.map((product: any) =>
+              product.id === productId
                 ? { ...product, dailyRate: parseFloat(newRate) }
                 : product
             )
           };
         });
-        
+
         setRateEdits(prev => {
           const updated: { [productId: string]: string } = { ...prev };
           delete updated[productId];
           return updated;
         });
-        
+
         // Clear dashboard cache for this shop
         if (currentShopId) {
           const token = localStorage.getItem('accessToken');
@@ -321,7 +321,7 @@ export function DashboardContent() {
   };
 
   return (
-    <div className="p-4 space-y-6">
+    <div className="p-2 md:p-4 space-y-4 md:space-y-6">
       {/* Summary Cards */}
       <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
         <Card className="shadow-lg border-0 bg-white">
@@ -466,55 +466,50 @@ export function DashboardContent() {
       {/* Set Daily Rate Section */}
       <Card className="shadow-lg border-0 bg-white">
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
-          <CardTitle className="text-sm font-medium">{t("Set Daily Rate", "दैनिक दर सेट करें")}</CardTitle>
+          <CardTitle className="text-sm font-medium">{t("Set Daily Rate", "दैनिक दर सेट करें")} {productsInStock?.length > 0 && <span className="text-xs text-muted-foreground ml-1">({productsInStock.length})</span>}</CardTitle>
           <BarChart3 className="h-4 w-4 text-muted-foreground" />
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          {(() => { console.log("productsInStock for Set Daily Rate:", productsInStock); return null; })()}
           {productsInStock && productsInStock.length > 0 ? (
-            <div className="space-y-2">
+            <div className="flex flex-col max-h-[500px] overflow-y-auto pr-1 w-full relative">
               {productsInStock.map((product: any) => {
-                console.log('🔍 Rendering product for daily rate:', {
-                  id: product.id,
-                  name: product.name,
-                  unit: product.unit,
-                  dailyRate: product.dailyRate,
-                  rateEdit: rateEdits[product.id]
-                });
                 return (
-                <div key={product.id} className="flex items-center gap-2 justify-between border-b py-1">
-                  <span>{product.name} ({product.unit})</span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      className="w-24"
-                      value={
-                        rateEdits[product.id] !== undefined
-                          ? String(rateEdits[product.id])
-                          : (product.dailyRate !== null && product.dailyRate !== undefined ? String(product.dailyRate) : "")
-                      }
-                      onChange={e => {
-                        console.log('🔍 Rate input changed for product:', product.id, 'value:', e.target.value);
-                        setRateEdits({ ...rateEdits, [product.id]: e.target.value });
-                      }}
-                      placeholder={t("Rate", "दर")}
-                      disabled={savingRates[product.id]}
-                    />
-                    {/* Show green text for today's rate if set (not null/undefined/empty string) */}
-                    {product.dailyRate !== null && product.dailyRate !== undefined && String(product.dailyRate).trim() !== "" && (
-                      <span className="text-green-600 text-xs ml-2">
-                        {t("Today's rate:", "आज की दर:")} {String(product.dailyRate)}
-                      </span>
-                    )}
+                  <div key={product.id} className="flex flex-col sm:flex-row items-start sm:items-center gap-3 justify-between border-b last:border-0 py-3 w-full">
+                    <span className="text-sm font-medium">{product.name} ({product.unit})</span>
+
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full sm:w-auto">
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <Input
+                          type="number"
+                          className="flex-1 sm:w-24 h-9"
+                          value={
+                            rateEdits[product.id] !== undefined
+                              ? String(rateEdits[product.id])
+                              : (product.dailyRate !== null && product.dailyRate !== undefined ? String(product.dailyRate) : "")
+                          }
+                          onChange={e => {
+                            setRateEdits({ ...rateEdits, [product.id]: e.target.value });
+                          }}
+                          placeholder={t("Rate", "दर")}
+                          disabled={savingRates[product.id]}
+                        />
+                        <Button
+                          size="sm"
+                          className="h-9 px-4 shrink-0"
+                          onClick={() => handleSaveRate(product.id, rateEdits[product.id] || product.dailyRate)}
+                          disabled={savingRates[product.id]}
+                        >
+                          {savingRates[product.id] ? t("Saving...", "सेव...") : t("Save", "सेव करें")}
+                        </Button>
+                      </div>
+
+                      {product.dailyRate !== null && product.dailyRate !== undefined && String(product.dailyRate).trim() !== "" && (
+                        <span className="text-green-600 text-xs whitespace-nowrap">
+                          {t("Today:", "आज:")} {String(product.dailyRate)}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={() => handleSaveRate(product.id, rateEdits[product.id] || product.dailyRate)}
-                    disabled={savingRates[product.id]}
-                  >
-                    {savingRates[product.id] ? t("Saving...", "सेव हो रहा है...") : t("Save", "सेव करें")}
-                  </Button>
-                </div>
                 );
               })}
             </div>

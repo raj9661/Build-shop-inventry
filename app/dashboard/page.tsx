@@ -5,10 +5,10 @@ import { useSession, getSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Users, 
-  CreditCard, 
-  ShoppingCart, 
+import {
+  Users,
+  CreditCard,
+  ShoppingCart,
   BarChart3,
   Settings,
   LogOut
@@ -65,18 +65,18 @@ export default function Dashboard() {
 
       // Determine which analytics endpoint to use based on user role
       let analyticsEndpoint = '/api/analytics/user?days=30';
-      
+
       // Get user role from session or token
       const session = await getSession();
       const userRole = (session?.user as any)?.role;
-      
+
       // SUPER_DUPER_ADMIN uses system analytics, others use user analytics
       if (userRole === 'SUPER_DUPER_ADMIN') {
         analyticsEndpoint = '/api/analytics/system?days=30';
       }
-      
+
       console.log('📊 Using analytics endpoint:', analyticsEndpoint, 'for role:', userRole);
-      
+
       // Fetch dashboard analytics data for current month (30 days)
       const analyticsResponse = await fetch(analyticsEndpoint, {
         headers: {
@@ -106,7 +106,7 @@ export default function Dashboard() {
         console.error('Failed to fetch analytics data:', analyticsResponse.status, analyticsResponse.statusText);
         const errorText = await analyticsResponse.text();
         console.error('Analytics API error response:', errorText);
-        
+
         // Set default values if API fails
         setDashboardData(prev => ({
           ...prev,
@@ -135,7 +135,7 @@ export default function Dashboard() {
             email: session.user.email || '',
             role: (session.user as any).role || ''
           });
-          
+
           // Store API token for API calls
           if ((session as any).apiToken) {
             localStorage.setItem('accessToken', (session as any).apiToken);
@@ -217,24 +217,26 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-2 md:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8">
-          <div className="flex justify-between items-center">
+        <div className="mb-4 md:mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-              <p className="text-gray-600 mt-2">Welcome back, {user.name}!</p>
+              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Dashboard</h1>
+              <p className="text-sm md:text-base text-gray-600 mt-1 md:mt-2">Welcome back, {user.name}!</p>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 md:space-x-4 w-full md:w-auto justify-between md:justify-end">
               <NotificationBell />
-              <Badge variant="outline" className="capitalize">
-                {user.role?.toLowerCase().replace('_', ' ')}
-              </Badge>
-              <Button variant="outline" onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </Button>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="capitalize">
+                  {user.role?.toLowerCase().replace('_', ' ')}
+                </Badge>
+                <Button variant="outline" size="sm" onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </Button>
+              </div>
             </div>
           </div>
         </div>

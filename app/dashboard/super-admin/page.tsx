@@ -1229,36 +1229,36 @@ function SuperDuperAdminDashboardContent() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-8">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
+        <TabsList className="w-full justify-start overflow-x-auto flex flex-nowrap h-auto py-2 px-1 gap-2 bg-muted/50 rounded-lg no-scrollbar">
+          <TabsTrigger value="overview" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <BarChart3 className="h-4 w-4" />
             Overview
           </TabsTrigger>
-          <TabsTrigger value="shops" className="flex items-center gap-2">
+          <TabsTrigger value="shops" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <Building2 className="h-4 w-4" />
             Shops
           </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
+          <TabsTrigger value="users" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <Users className="h-4 w-4" />
             User Management
           </TabsTrigger>
-          <TabsTrigger value="categories" className="flex items-center gap-2">
+          <TabsTrigger value="categories" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <Package className="h-4 w-4" />
             Categories
           </TabsTrigger>
-          <TabsTrigger value="analytics" className="flex items-center gap-2">
+          <TabsTrigger value="analytics" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <TrendingUp className="h-4 w-4" />
             Analytics
           </TabsTrigger>
-          <TabsTrigger value="transactions" className="flex items-center gap-2">
+          <TabsTrigger value="transactions" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <DollarSign className="h-4 w-4" />
             Transactions
           </TabsTrigger>
-          <TabsTrigger value="backup" className="flex items-center gap-2">
+          <TabsTrigger value="backup" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <Database className="h-4 w-4" />
             Backup
           </TabsTrigger>
-          <TabsTrigger value="logs" className="flex items-center gap-2">
+          <TabsTrigger value="logs" className="flex items-center gap-2 min-w-fit px-4 py-2">
             <Activity className="h-4 w-4" />
             Logs
           </TabsTrigger>
@@ -1284,9 +1284,9 @@ function SuperDuperAdminDashboardContent() {
                         <div key={log.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                           <div className="flex items-center gap-3">
                             <div className={`w-2 h-2 rounded-full ${log.action?.includes('create') ? 'bg-green-500' :
-                                log.action?.includes('update') ? 'bg-blue-500' :
-                                  log.action?.includes('delete') ? 'bg-red-500' :
-                                    'bg-gray-500'
+                              log.action?.includes('update') ? 'bg-blue-500' :
+                                log.action?.includes('delete') ? 'bg-red-500' :
+                                  'bg-gray-500'
                               }`}></div>
                             <div>
                               <p className="font-medium">{log.action || 'Unknown action'}</p>

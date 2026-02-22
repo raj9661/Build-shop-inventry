@@ -1199,8 +1199,8 @@ function AddSalePage() {
       <MobileNav />
 
       {/* Main Content with Mobile Padding */}
-      <div className="p-4 pb-20 md:pb-4">
-        <Card className="shadow-lg border-0 bg-white rounded-2xl overflow-hidden max-w-4xl mx-auto">
+      <div className="p-4 pb-32 md:pb-4">
+        <Card className="shadow-lg border-0 bg-white rounded-2xl max-w-4xl mx-auto overflow-visible md:overflow-hidden">
           <CardHeader className="bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-t-2xl p-4 md:p-6">
             <CardTitle className="flex justify-between items-center text-lg md:text-xl">
               <span>{t("Add Sale", "बिक्री जोड़ें")}</span>
@@ -1337,7 +1337,7 @@ function AddSalePage() {
               </div>
 
               {/* TMT Mode Toggle */}
-              <div className="flex items-center justify-center space-x-4 mb-6">
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
                 <Button
                   type="button"
                   variant={!isTmtMode ? "default" : "outline"}
@@ -1390,7 +1390,7 @@ function AddSalePage() {
                   </div>
 
                   {/* Quantity, Unit, and Price */}
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                     <div className="space-y-3">
                       <Label className="text-lg font-medium text-gray-800">Quantity</Label>
                       <Input
@@ -1478,7 +1478,7 @@ function AddSalePage() {
                     </div>
 
                     <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="cash" id="tmt-cash" />
                           <Label htmlFor="tmt-cash">{t("Cash", "कैश")}</Label>
@@ -1550,7 +1550,7 @@ function AddSalePage() {
                   {/* Discount and Tax for TMT Sale */}
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">{t("Discount and Tax", "छूट और कर")}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <Label>{t("Discount", "छूट")}</Label>
                         <div className="flex gap-2 items-center">
@@ -1674,21 +1674,23 @@ function AddSalePage() {
                   </div>
 
                   {/* TMT Sale Submit Button */}
-                  <Button
-                    type="button"
-                    onClick={handleTmtSaleSubmit}
-                    disabled={isSubmitting || !selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit}
-                    className="w-full h-12 text-lg"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        {t("Creating Sale...", "बिक्री बनाई जा रही है...")}
-                      </>
-                    ) : (
-                      t("Create Sale", "बिक्री बनाएं")
-                    )}
-                  </Button>
+                  <div className="sticky bottom-4 z-10 pt-4 bg-white/80 backdrop-blur-sm -mx-4 px-4 border-t mt-4 md:static md:bg-transparent md:p-0 md:m-0 md:border-0 shadow-lg md:shadow-none pb-4 md:pb-0 safe-pb-4">
+                    <Button
+                      type="button"
+                      onClick={handleTmtSaleSubmit}
+                      disabled={isSubmitting || !selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit}
+                      className="w-full h-14 text-lg font-bold shadow-md"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                          {t("Creating Sale...", "बिक्री बनाई जा रही है...")}
+                        </>
+                      ) : (
+                        t("Create Sale", "बिक्री बनाएं")
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ) : (
                 /* Regular Sale Form */
@@ -1741,7 +1743,6 @@ function AddSalePage() {
                               <Select
                                 value={item.typeId > 0 ? item.typeId.toString() : ""}
                                 onValueChange={(value) => {
-                                  console.log('🔍 [AddSale] Type Select onValueChange - value:', value, 'item.typeId:', item.typeId);
                                   handleItemChange(index, "typeId", value);
                                 }}
                                 disabled={!item.categoryId || loading}
@@ -1752,7 +1753,6 @@ function AddSalePage() {
                                 <SelectContent>
                                   {(() => {
                                     const types = getTypesForCategory(item.categoryId);
-                                    console.log('🔍 [AddSale] Type Select render - item.typeId:', item.typeId, 'types:', types.map(t => ({ id: t.id, name: t.name })));
                                     return types.map((type: any) => (
                                       <SelectItem key={type.id} value={type.id.toString()}>
                                         {type.name}
@@ -1761,12 +1761,7 @@ function AddSalePage() {
                                   })()}
                                 </SelectContent>
                               </Select>
-                              {/* Debug info - remove this after fixing */}
-                              {process.env.NODE_ENV === 'development' && (
-                                <div className="text-xs text-gray-500 mt-1">
-                                  Debug: typeId={item.typeId}, typeName={item.typeName}
-                                </div>
-                              )}
+
                             </div>
                             <div>
                               <Label>{t("Name", "नाम")}</Label>
@@ -1780,12 +1775,6 @@ function AddSalePage() {
                                 </SelectTrigger>
                                 <SelectContent>
                                   {(() => {
-                                    console.log('🔍 [AddSale] Product dropdown render - item:', {
-                                      categoryId: item.categoryId,
-                                      typeId: item.typeId,
-                                      categoryName: item.categoryName,
-                                      typeName: item.typeName
-                                    });
 
                                     // Only filter products if both categoryId and typeId are valid (not 0)
                                     const filteredProducts = (item.categoryId > 0 && item.typeId > 0)
@@ -1795,33 +1784,6 @@ function AddSalePage() {
                                           Number(p.type?.id) === Number(item.typeId)
                                       )
                                       : [];
-
-                                    console.log('🔍 [AddSale] Product dropdown - categoryId:', item.categoryId, 'typeId:', item.typeId, 'filtered products:', filteredProducts.length);
-                                    console.log('🔍 [AddSale] All products sample:', products.slice(0, 3).map(p => ({
-                                      id: p.id,
-                                      name: p.name,
-                                      categoryId: p.category?.id,
-                                      typeId: p.type?.id,
-                                      categoryName: p.category?.name,
-                                      typeName: p.type?.name
-                                    })));
-                                    console.log('🔍 [AddSale] Filtered products:', filteredProducts.map(p => ({
-                                      id: p.id,
-                                      name: p.name,
-                                      categoryId: p.category?.id,
-                                      typeId: p.type?.id
-                                    })));
-
-                                    if (filteredProducts.length === 0 && item.categoryId > 0 && item.typeId > 0) {
-                                      console.log('🔍 [AddSale] No products found - checking all products for this category:',
-                                        products.filter(p => Number(p.category?.id) === Number(item.categoryId)).map(p => ({
-                                          id: p.id,
-                                          name: p.name,
-                                          categoryId: p.category?.id,
-                                          typeId: p.type?.id
-                                        }))
-                                      );
-                                    }
 
                                     return filteredProducts.map((product: any) => (
                                       <SelectItem key={product.id} value={product.id.toString()}>
@@ -1835,7 +1797,7 @@ function AddSalePage() {
                             {/* TMT Bar Bundle/Piece Input */}
                             {item.categoryName && (item.categoryName.toLowerCase().includes('tmt') || item.categoryName.toLowerCase().includes('steel')) && getTmtBundleSize(item) ? (
                               <div className="flex flex-col gap-1">
-                                <div className="flex gap-2 items-center">
+                                <div className="flex flex-wrap gap-2 items-center">
                                   <Input
                                     type="number"
                                     min="0"
@@ -2092,7 +2054,7 @@ function AddSalePage() {
                     </div>
 
                     <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                         <div className="flex items-center space-x-2">
                           <RadioGroupItem value="cash" id="cash" />
                           <Label htmlFor="cash">{t("Cash", "कैश")}</Label>
@@ -2164,7 +2126,7 @@ function AddSalePage() {
                   {/* Discount and Tax */}
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">{t("Discount and Tax", "छूट और कर")}</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
                         <Label>{t("Discount", "छूट")}</Label>
                         <div className="flex gap-2 items-center">
@@ -2289,23 +2251,25 @@ function AddSalePage() {
 
                   {/* Bill Summary */}
                   {/* Submit Button */}
-                  <Button
-                    type="submit"
-                    className="w-full h-12 text-lg"
-                    disabled={
-                      isSubmitting ||
-                      !selectedCustomer ||
-                      saleItems.length === 0 ||
-                      saleItems.some(item =>
-                        !item.productId ||
-                        !item.unit ||
-                        !item.quantity ||
-                        item.quantity <= 0
-                      )
-                    }
-                  >
-                    {isSubmitting ? t("Creating Sale...", "बिक्री बनाई जा रही है...") : t("Create Sale", "बिक्री बनाएं")}
-                  </Button>
+                  <div className="sticky bottom-4 z-10 pt-4 bg-white/80 backdrop-blur-sm -mx-4 px-4 border-t mt-4 md:static md:bg-transparent md:p-0 md:m-0 md:border-0 shadow-lg md:shadow-none pb-4 md:pb-0 safe-pb-4">
+                    <Button
+                      type="submit"
+                      className="w-full h-14 text-lg font-bold shadow-md"
+                      disabled={
+                        isSubmitting ||
+                        !selectedCustomer ||
+                        saleItems.length === 0 ||
+                        saleItems.some(item =>
+                          !item.productId ||
+                          !item.unit ||
+                          !item.quantity ||
+                          item.quantity <= 0
+                        )
+                      }
+                    >
+                      {isSubmitting ? t("Creating Sale...", "बिक्री बनाई जा रही है...") : t("Create Sale", "बिक्री बनाएं")}
+                    </Button>
+                  </div>
                 </div>
               )}
             </form>

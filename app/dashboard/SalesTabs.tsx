@@ -192,7 +192,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
 
   return (
     <Card className="shadow-lg border-0 bg-white">
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-4">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2 p-3 md:p-4">
         <CardTitle className="text-sm font-medium">{t("Sales", "बिक्री")}</CardTitle>
         <div className="flex items-center gap-2">
           <ShoppingBag className="h-4 w-4 text-muted-foreground" />
@@ -201,7 +201,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="p-4 pt-0">
+      <CardContent className="p-2 md:p-4 pt-0">
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <ShoppingBag className="h-8 w-8 animate-spin text-blue-600" />
@@ -209,7 +209,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="flex w-full bg-gray-100 p-1 m-2 rounded-xl overflow-x-auto">
+            <TabsList className="flex w-full bg-gray-100 p-1 mb-2 rounded-xl overflow-x-auto">
               <TabsTrigger value="active" className="text-xs py-1 px-2 md:py-2 md:px-3 rounded-lg whitespace-nowrap flex-shrink-0">
                 🔄 {t("Active", "सक्रिय")} ({activeSales.length})
               </TabsTrigger>

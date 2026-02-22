@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { ShopProvider } from "../contexts/ShopContext";
 import { CollapsibleSidebar } from "./collapsible-sidebar";
 import { CompactModeProvider } from "./compact-mode-provider";
+import { MobileNav } from "./mobile-nav";
 import { Toaster } from "@/components/ui/sonner";
 
 function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
@@ -18,8 +19,9 @@ function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         {/* Mobile Layout */}
-        <div className="md:hidden min-h-screen w-full">
-          <main className="flex flex-1 flex-col">{children}</main>
+        <div className="md:hidden min-h-screen w-full flex flex-col">
+          <MobileNav />
+          <main className="flex flex-1 flex-col p-4">{children}</main>
         </div>
         <Toaster />
       </CompactModeProvider>
@@ -34,7 +36,7 @@ export default function LayoutClientWrapper({ children }: { children: React.Reac
   const isSignupPage = pathname === "/signup";
   const isVerifyEmailPage = pathname === "/verify-email";
   const isOnboardingPage = pathname === "/onboarding";
-  
+
   if (isAuthPage || isLandingPage || isSignupPage || isVerifyEmailPage || isOnboardingPage) {
     // No sidebar, no ShopProvider for auth pages, landing page, signup page, verify email page, and onboarding page
     return <>{children}</>;

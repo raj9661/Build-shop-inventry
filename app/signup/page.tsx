@@ -37,7 +37,7 @@ export default function SignupPage() {
     hasSpecialChar: false,
     isAlphanumeric: false
   });
-  
+
   const router = useRouter();
   const { toast } = useToast();
 
@@ -110,8 +110,8 @@ export default function SignupPage() {
       newErrors.password = 'Password is required';
     } else {
       const criteria = checkPasswordCriteria(formData.password);
-      const allCriteriaMet = criteria.minLength && criteria.hasUppercase && criteria.hasLowercase && 
-                            criteria.hasNumber && criteria.hasSpecialChar && criteria.isAlphanumeric;
+      const allCriteriaMet = criteria.minLength && criteria.hasUppercase && criteria.hasLowercase &&
+        criteria.hasNumber && criteria.hasSpecialChar && criteria.isAlphanumeric;
       if (!allCriteriaMet) {
         newErrors.password = 'Password does not meet all requirements';
       }
@@ -144,13 +144,13 @@ export default function SignupPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!validateForm()) {
       return;
     }
 
     setLoading(true);
-    
+
     try {
       const response = await fetch('/api/auth/register', {
         method: 'POST',
@@ -203,7 +203,7 @@ export default function SignupPage() {
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // Clear error when user starts typing
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: '' }));
@@ -231,7 +231,7 @@ export default function SignupPage() {
         setFormData(prev => ({ ...prev, phone: limitedPhone }));
         return;
       }
-      
+
       // Check if phone is valid (exactly 10 digits)
       if (phoneDigits.length === 10) {
         setErrors(prev => ({ ...prev, phone: '' }));
@@ -289,7 +289,7 @@ export default function SignupPage() {
               Start your free 14-day trial today. No credit card required.
             </CardDescription>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {/* Name */}
@@ -400,19 +400,19 @@ export default function SignupPage() {
                 {errors.password && (
                   <p className="text-sm text-red-500">{errors.password}</p>
                 )}
-                
+
                 {/* Password Criteria */}
                 {formData.password && (
                   <div className="mt-2 space-y-1">
                     <div className="flex items-center justify-between">
                       <p className="text-xs text-gray-600 font-medium">Password must contain:</p>
-                      {passwordCriteria.minLength && passwordCriteria.hasUppercase && passwordCriteria.hasLowercase && 
-                       passwordCriteria.hasNumber && passwordCriteria.hasSpecialChar && passwordCriteria.isAlphanumeric && (
-                        <div className="flex items-center space-x-1 text-green-600">
-                          <CheckCircle className="w-3 h-3" />
-                          <span className="text-xs font-medium">Strong password!</span>
-                        </div>
-                      )}
+                      {passwordCriteria.minLength && passwordCriteria.hasUppercase && passwordCriteria.hasLowercase &&
+                        passwordCriteria.hasNumber && passwordCriteria.hasSpecialChar && passwordCriteria.isAlphanumeric && (
+                          <div className="flex items-center space-x-1 text-green-600">
+                            <CheckCircle className="w-3 h-3" />
+                            <span className="text-xs font-medium">Strong password!</span>
+                          </div>
+                        )}
                     </div>
                     <div className="grid grid-cols-2 gap-1 text-xs">
                       <div className={`flex items-center space-x-1 ${passwordCriteria.minLength ? 'text-green-600' : 'text-gray-400'}`}>
@@ -541,7 +541,7 @@ export default function SignupPage() {
         </Card>
 
         {/* Features Preview */}
-        <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
           <div className="flex flex-col items-center">
             <CheckCircle className="w-6 h-6 text-green-500 mb-2" />
             <span className="text-sm text-gray-600">14-day free trial</span>

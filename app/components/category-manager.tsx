@@ -1221,22 +1221,26 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
   return (
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="categories" className="flex items-center gap-2">
+        <TabsList className="grid w-full grid-cols-2 lg:grid-cols-4 h-auto gap-1 p-1">
+          <TabsTrigger value="categories" className="flex items-center gap-2 py-2">
             <Package className="h-4 w-4" />
-            Categories
+            <span className="hidden sm:inline">Categories</span>
+            <span className="sm:hidden">Cats</span>
           </TabsTrigger>
-          <TabsTrigger value="types" className="flex items-center gap-2">
+          <TabsTrigger value="types" className="flex items-center gap-2 py-2">
             <Tag className="h-4 w-4" />
-            Product Types
+            <span className="hidden sm:inline">Product Types</span>
+            <span className="sm:hidden">Types</span>
           </TabsTrigger>
-          <TabsTrigger value="tmt" className="flex items-center gap-2">
+          <TabsTrigger value="tmt" className="flex items-center gap-2 py-2">
             <Wrench className="h-4 w-4" />
-            TMT Management
+            <span className="hidden sm:inline">TMT Management</span>
+            <span className="sm:hidden">TMT Mgmt</span>
           </TabsTrigger>
-          <TabsTrigger value="inventory" className="flex items-center gap-2">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 py-2">
             <Scale className="h-4 w-4" />
-            TMT Inventory
+            <span className="hidden sm:inline">TMT Inventory</span>
+            <span className="sm:hidden">Inventory</span>
           </TabsTrigger>
         </TabsList>
 
@@ -1469,16 +1473,59 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
                               {category.description}
                             </p>
                           )}
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 mb-2">
                             <Badge variant={category.isActive ? "default" : "secondary"} className="text-xs px-2 py-0.5">
                               {category.isActive ? 'Active' : 'Inactive'}
                             </Badge>
-                            <span className="text-xs text-gray-500">
-                              {category.types?.length || 0} types
-                            </span>
-                            <span className="text-xs text-gray-500">
-                              {category.productCount || 0} products
-                            </span>
+                          </div>
+                          {/* Subcategories (Product Types) */}
+                          <div className="mt-2">
+                            <p className="text-xs font-medium text-gray-500 mb-1.5">Products ({category.types?.length || 0})</p>
+                            {category.types && category.types.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {category.types.map((type) => (
+                                  <span
+                                    key={type.id}
+                                    className="inline-flex items-center gap-1 bg-gray-100 hover:bg-gray-200 text-gray-700 text-xs px-2 py-0.5 rounded-full cursor-pointer transition-colors"
+                                    onClick={() => openTypeDialog(type)}
+                                    title={type.description || type.name}
+                                  >
+                                    {type.name}
+                                    <Edit2 className="h-2.5 w-2.5 text-gray-400" />
+                                  </span>
+                                ))}
+                                <span
+                                  className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full cursor-pointer transition-colors border border-blue-200 border-dashed"
+                                  onClick={() => {
+                                    setTypeForm({ name: '', description: '', categoryId: category.id.toString() })
+                                    setEditingType(null)
+                                    setTypeScope(category.shopId ? 'shop' : 'global')
+                                    setSelectedTypeShopId(category.shopId ? category.shopId.toString() : null)
+                                    setTypeDialogOpen(true)
+                                  }}
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                  Add type
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs text-gray-400 italic">No products yet</span>
+                                <span
+                                  className="inline-flex items-center gap-1 bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs px-2 py-0.5 rounded-full cursor-pointer transition-colors border border-blue-200 border-dashed ml-1"
+                                  onClick={() => {
+                                    setTypeForm({ name: '', description: '', categoryId: category.id.toString() })
+                                    setEditingType(null)
+                                    setTypeScope(category.shopId ? 'shop' : 'global')
+                                    setSelectedTypeShopId(category.shopId ? category.shopId.toString() : null)
+                                    setTypeDialogOpen(true)
+                                  }}
+                                >
+                                  <Plus className="h-2.5 w-2.5" />
+                                  Add type
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -1519,173 +1566,10 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
         <TabsContent value="types" className="space-y-4">
           <div className="flex justify-between items-center mb-2">
             <h3 className="text-lg font-semibold">Product Types</h3>
-            <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
-              <DialogTrigger asChild>
-                <Button onClick={() => openTypeDialog()}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Type
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>
-                    {editingType ? 'Edit Product Type' : 'Add New Product Type'}
-                  </DialogTitle>
-                </DialogHeader>
-                <form onSubmit={handleTypeSubmit} className="space-y-4">
-                  {/* Shop Assignment Section */}
-                  {userRole === 'SUPER_DUPER_ADMIN' && (
-                    <div className="space-y-3 border-t pt-4">
-                      <div>
-                        <h4 className="text-sm font-medium text-gray-900 mb-2">Shop Assignment</h4>
-                        <p className="text-sm text-gray-500 mb-3">
-                          Choose whether this product type should be available globally or assigned to a specific shop
-                        </p>
-                      </div>
-
-                      <div className="space-y-3">
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="type-global"
-                            name="typeShopAssignment"
-                            value="global"
-                            checked={typeScope === 'global'}
-                            onChange={(e) => {
-                              setTypeScope('global')
-                              setSelectedTypeShopId(null)
-                              // Clear selected category when switching to global
-                              setTypeForm({ ...typeForm, categoryId: '' })
-                            }}
-                            className="h-4 w-4 text-blue-600"
-                          />
-                          <Label htmlFor="type-global" className="text-sm font-medium">
-                            Assign to All Shops (Global)
-                          </Label>
-                        </div>
-
-                        <div className="flex items-center space-x-2">
-                          <input
-                            type="radio"
-                            id="type-shop"
-                            name="typeShopAssignment"
-                            value="shop"
-                            checked={typeScope === 'shop'}
-                            onChange={(e) => {
-                              setTypeScope('shop')
-                              // Clear selected category when switching scope
-                              setTypeForm({ ...typeForm, categoryId: '' })
-                            }}
-                            className="h-4 w-4 text-blue-600"
-                          />
-                          <Label htmlFor="type-shop" className="text-sm font-medium">
-                            Assign to Specific Shop
-                          </Label>
-                        </div>
-                      </div>
-
-                      {typeScope === 'shop' && (
-                        <div>
-                          <Label htmlFor="typeShopSelect">Select Shop</Label>
-                          <Select
-                            value={selectedTypeShopId || (editingType ? (editingType.shopId?.toString() || shopId?.toString() || '') : (shopId?.toString() || ''))}
-                            onValueChange={(value) => {
-                              setSelectedTypeShopId(value)
-                              // Clear selected category when shop changes
-                              setTypeForm({ ...typeForm, categoryId: '' })
-                            }}
-                          >
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choose a shop" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {availableShops.length > 0 ? (
-                                availableShops.map((shop) => (
-                                  <SelectItem key={shop.id} value={shop.id.toString()}>
-                                    {shop.name}
-                                  </SelectItem>
-                                ))
-                              ) : (
-                                <SelectItem value={shopId?.toString() || ''} disabled>
-                                  Current Shop
-                                </SelectItem>
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  <div>
-                    <Label htmlFor="typeName">Type Name</Label>
-                    <Input
-                      id="typeName"
-                      value={typeForm.name}
-                      onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })}
-                      placeholder="e.g., Lafarge, Nuvoco, PSC"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="typeCategory">Category</Label>
-                    <Select
-                      value={typeForm.categoryId}
-                      onValueChange={(value) => setTypeForm({ ...typeForm, categoryId: value })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {filteredCategories.length > 0 ? (
-                          filteredCategories.map((cat) => {
-                            const isGlobal = cat.shopId === null
-                            const displayName = isGlobal ? `${cat.name} (Global)` : cat.name
-                            return (
-                              <SelectItem key={cat.id} value={cat.id.toString()}>
-                                {displayName}
-                              </SelectItem>
-                            )
-                          })
-                        ) : (
-                          <div className="px-2 py-1.5 text-sm text-gray-500">
-                            {typeScope === 'global'
-                              ? 'No global categories available'
-                              : 'No categories available for selected shop'
-                            }
-                          </div>
-                        )}
-                      </SelectContent>
-                    </Select>
-                    {filteredCategories.length > 0 && (
-                      <p className="text-xs text-gray-500 mt-1">
-                        {typeScope === 'global'
-                          ? `${filteredCategories.length} global categories available`
-                          : `${filteredCategories.length} categories available (global + shop-specific)`
-                        }
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="typeDescription">Description</Label>
-                    <Textarea
-                      id="typeDescription"
-                      value={typeForm.description}
-                      onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })}
-                      placeholder="Optional description"
-                      rows={3}
-                    />
-                  </div>
-                  <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setTypeDialogOpen(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="submit">
-                      {editingType ? 'Update' : 'Create'} Type
-                    </Button>
-                  </div>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <Button onClick={() => openTypeDialog()}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Type
+            </Button>
           </div>
           <div className="mb-4">
             <Input
@@ -2364,6 +2248,169 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
           )}
         </TabsContent>
       </Tabs>
+
+      {/* Product Type Dialog (Moved Outside Tabs for Global Access) */}
+      <Dialog open={typeDialogOpen} onOpenChange={setTypeDialogOpen}>
+        <DialogContent className="pt-6 sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>
+              {editingType ? 'Edit Product Type' : 'Add New Product Type'}
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleTypeSubmit} className="space-y-4">
+            {/* Shop Assignment Section */}
+            {userRole === 'SUPER_DUPER_ADMIN' && (
+              <div className="space-y-3 border-t pt-4">
+                <div>
+                  <h4 className="text-sm font-medium text-gray-900 mb-2">Shop Assignment</h4>
+                  <p className="text-sm text-gray-500 mb-3">
+                    Choose whether this product type should be available globally or assigned to a specific shop
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="type-global-modal"
+                      name="typeShopAssignmentModal"
+                      value="global"
+                      checked={typeScope === 'global'}
+                      onChange={(e) => {
+                        setTypeScope('global')
+                        setSelectedTypeShopId(null)
+                        // Clear selected category when switching to global
+                        setTypeForm({ ...typeForm, categoryId: '' })
+                      }}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <Label htmlFor="type-global-modal" className="text-sm font-medium">
+                      Assign to All Shops (Global)
+                    </Label>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="radio"
+                      id="type-shop-modal"
+                      name="typeShopAssignmentModal"
+                      value="shop"
+                      checked={typeScope === 'shop'}
+                      onChange={(e) => {
+                        setTypeScope('shop')
+                        // Clear selected category when switching scope
+                        setTypeForm({ ...typeForm, categoryId: '' })
+                      }}
+                      className="h-4 w-4 text-blue-600"
+                    />
+                    <Label htmlFor="type-shop-modal" className="text-sm font-medium">
+                      Assign to Specific Shop
+                    </Label>
+                  </div>
+                </div>
+
+                {typeScope === 'shop' && (
+                  <div>
+                    <Label htmlFor="typeShopSelectModal">Select Shop</Label>
+                    <Select
+                      value={selectedTypeShopId || (editingType ? (editingType.shopId?.toString() || shopId?.toString() || '') : (shopId?.toString() || ''))}
+                      onValueChange={(value) => {
+                        setSelectedTypeShopId(value)
+                        // Clear selected category when shop changes
+                        setTypeForm({ ...typeForm, categoryId: '' })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a shop" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableShops.length > 0 ? (
+                          availableShops.map((shop) => (
+                            <SelectItem key={shop.id} value={shop.id.toString()}>
+                              {shop.name}
+                            </SelectItem>
+                          ))
+                        ) : (
+                          <SelectItem value={shopId?.toString() || ''} disabled>
+                            Current Shop
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+              </div>
+            )}
+            <div>
+              <Label htmlFor="typeNameModal">Type Name</Label>
+              <Input
+                id="typeNameModal"
+                value={typeForm.name}
+                onChange={(e) => setTypeForm({ ...typeForm, name: e.target.value })}
+                placeholder="e.g., Lafarge, Nuvoco, PSC"
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="typeCategoryModal">Category</Label>
+              <Select
+                value={typeForm.categoryId}
+                onValueChange={(value) => setTypeForm({ ...typeForm, categoryId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {filteredCategories.length > 0 ? (
+                    filteredCategories.map((cat) => {
+                      const isGlobal = cat.shopId === null
+                      const displayName = isGlobal ? `${cat.name} (Global)` : cat.name
+                      return (
+                        <SelectItem key={cat.id} value={cat.id.toString()}>
+                          {displayName}
+                        </SelectItem>
+                      )
+                    })
+                  ) : (
+                    <div className="px-2 py-1.5 text-sm text-gray-500">
+                      {typeScope === 'global'
+                        ? 'No global categories available'
+                        : 'No categories available for selected shop'
+                      }
+                    </div>
+                  )}
+                </SelectContent>
+              </Select>
+              {filteredCategories.length > 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  {typeScope === 'global'
+                    ? `${filteredCategories.length} global categories available`
+                    : `${filteredCategories.length} categories available (global + shop-specific)`
+                  }
+                </p>
+              )}
+            </div>
+            <div>
+              <Label htmlFor="typeDescriptionModal">Description</Label>
+              <Textarea
+                id="typeDescriptionModal"
+                value={typeForm.description}
+                onChange={(e) => setTypeForm({ ...typeForm, description: e.target.value })}
+                placeholder="Optional description"
+                rows={3}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setTypeDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit">
+                {editingType ? 'Update' : 'Create'} Type
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 } 

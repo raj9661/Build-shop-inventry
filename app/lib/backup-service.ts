@@ -27,7 +27,12 @@ class BackupService {
   private settings: BackupSettings;
 
   constructor() {
-    this.baseBackupDir = path.join(process.cwd(), 'backups');
+    // In serverless environments like Vercel, the filesystem is read-only
+    // except for the /tmp directory.
+    const isVercel = process.env.VERCEL || process.env.NODE_ENV === 'production';
+    const basePath = isVercel ? '/tmp' : process.cwd();
+
+    this.baseBackupDir = path.join(basePath, 'backups');
     this.settings = {
       backupFrequency: 'daily',
       retentionDays: 30,
@@ -35,7 +40,11 @@ class BackupService {
     };
     // Only ensure directory exists if we're in a server context
     if (typeof window === 'undefined') {
-      this.ensureBaseBackupDirectory();
+      try {
+        this.ensureBaseBackupDirectory();
+      } catch (error) {
+        console.error('Failed to initialize backup directory:', error);
+      }
     }
   }
 
@@ -68,7 +77,7 @@ class BackupService {
     // Convert string values back to BigInt for database operations
     // Only convert fields that are typically BigInt in the database
     const bigIntFields = ['id', 'userId', 'shopId', 'productId', 'supplierId', 'customerId', 'saleId', 'purchaseId', 'paymentId', 'employeeId', 'categoryId', 'typeId', 'companyId', 'sizeId', 'subscriptionId', 'platformOwnerId', 'violationId', 'notificationId', 'analyticsId', 'expenseId', 'reportId', 'priceId', 'specialPriceId', 'ledgerId', 'sessionId', 'deviceId', 'assignmentId', 'logId', 'settingId', 'createdBy', 'updatedBy', 'assignedTo', 'createdById', 'updatedById', 'assignedToId'];
-    
+
     if (bigIntFields.includes(key) && typeof value === 'string' && /^\d+$/.test(value)) {
       return BigInt(value);
     }
@@ -134,11 +143,11 @@ class BackupService {
     try {
       // Create a comprehensive backup using Prisma
       const backupData = await this.createPrismaBackup();
-      
+
       // Write backup data to file with BigInt serialization
       const backupContent = JSON.stringify(backupData, this.bigIntReplacer, 2);
       await fs.promises.writeFile(filepath, backupContent, 'utf8');
-      
+
       const stats = fs.statSync(filepath);
       const size = stats.size;
 
@@ -172,7 +181,7 @@ class BackupService {
 
   private async createPrismaBackup(): Promise<any> {
     console.log('Starting comprehensive database backup...');
-    
+
     // Create a comprehensive backup of all data
     const backupData = {
       metadata: {
@@ -189,43 +198,43 @@ class BackupService {
         products: await this.backupTable('products', () => prisma.product.findMany()),
         suppliers: await this.backupTable('suppliers', () => prisma.supplier.findMany()),
         customers: await this.backupTable('customers', () => prisma.customer.findMany()),
-        
+
         // Transaction data
         sales: await this.backupTable('sales', () => prisma.sale.findMany()),
         saleItems: await this.backupTable('saleItems', () => prisma.saleItem.findMany()),
         tmtPurchases: await this.backupTable('tmtPurchases', () => prisma.tmtPurchase.findMany()),
         tmtPurchaseItems: await this.backupTable('tmtPurchaseItems', () => prisma.tmtPurchaseItem.findMany()),
-        
+
         // Inventory data
         stockEntries: await this.backupTable('stockEntries', () => prisma.stockEntry.findMany()),
         tmtInventory: await this.backupTable('tmtInventory', () => prisma.tmtInventory.findMany()),
-        
+
         // Financial data
         payments: await this.backupTable('payments', () => prisma.payment.findMany()),
         customerLedgerEntries: await this.backupTable('customerLedgerEntries', () => prisma.customerLedgerEntry.findMany()),
         supplierPayments: await this.backupTable('supplierPayments', () => prisma.supplierPayment.findMany()),
-        
+
         // System data
         activityLogs: await this.backupTable('activityLogs', () => prisma.activityLog.findMany()),
         loginLogs: await this.backupTable('loginLogs', () => prisma.loginLog.findMany()),
         trustedDevices: await this.backupTable('trustedDevices', () => prisma.trustedDevice.findMany()),
-        
+
         // TMT specific data
         tmtCompanies: await this.backupTable('tmtCompanies', () => prisma.tmtCompany.findMany()),
         tmtSizes: await this.backupTable('tmtSizes', () => prisma.tmtSize.findMany()),
         tmtProducts: await this.backupTable('tmtProducts', () => prisma.tmtProduct.findMany()),
         tmtSales: await this.backupTable('tmtSales', () => prisma.tmtSale.findMany()),
         tmtSaleItems: await this.backupTable('tmtSaleItems', () => prisma.tmtSaleItem.findMany()),
-        
+
         // Employee data
         employees: await this.backupTable('employees', () => prisma.employee.findMany()),
         employeePayments: await this.backupTable('employeePayments', () => prisma.employeePayment.findMany()),
         employeeSalaryDues: await this.backupTable('employeeSalaryDues', () => prisma.employeeSalaryDue.findMany()),
-        
+
         // Analytics data
         analyticsSummaries: await this.backupTable('analyticsSummaries', () => prisma.analyticsSummary.findMany()),
         productSalesAnalytics: await this.backupTable('productSalesAnalytics', () => prisma.productSalesAnalytics.findMany()),
-        
+
         // Platform data
         platformOwners: await this.backupTable('platformOwners', () => prisma.platformOwner.findMany()),
         subscriptions: await this.backupTable('subscriptions', () => prisma.subscription.findMany()),
@@ -234,7 +243,7 @@ class BackupService {
         violations: await this.backupTable('violations', () => prisma.violation.findMany()),
         notifications: await this.backupTable('notifications', () => prisma.notification.findMany()),
         platformAnalytics: await this.backupTable('platformAnalytics', () => prisma.platformAnalytics.findMany()),
-        
+
         // Settings and configurations
         websiteSettings: await this.backupTable('websiteSettings', () => prisma.websiteSetting.findMany()),
         user2FASettings: await this.backupTable('user2FASettings', () => prisma.user2FASetting.findMany()),
@@ -268,7 +277,7 @@ class BackupService {
     try {
       await this.loadSettings();
       const userBackupDir = this.getUserBackupDir(userId);
-      
+
       console.log('Cleanup settings for user', userId, ':', {
         autoBackup: this.settings.autoBackup,
         retentionDays: this.settings.retentionDays,
@@ -287,7 +296,7 @@ class BackupService {
 
       const files = fs.readdirSync(userBackupDir);
       console.log('Total files in backup directory for user', userId, ':', files.length);
-      
+
       const jsonFiles = files.filter(file => file.endsWith('.json'));
       console.log('JSON backup files found for user', userId, ':', jsonFiles.length);
 
@@ -297,9 +306,9 @@ class BackupService {
       for (const file of jsonFiles) {
         const filepath = path.join(userBackupDir, file);
         const stats = fs.statSync(filepath);
-        
+
         console.log(`File: ${file}, Modified: ${stats.mtime.toISOString()}, Older than cutoff: ${stats.mtime < cutoffDate}`);
-        
+
         if (stats.mtime < cutoffDate) {
           filesToDelete.push(file);
         }
@@ -330,7 +339,7 @@ class BackupService {
 
       const message = `Cleanup completed: ${deletedCount} old backups deleted (retention: ${this.settings.retentionDays} days)`;
       console.log(message);
-      
+
       return { deletedCount, message };
     } catch (error) {
       console.error('Backup cleanup failed:', error);
@@ -340,7 +349,7 @@ class BackupService {
 
   async getBackupSchedule(): Promise<{ nextBackup: Date; frequency: string }> {
     await this.loadSettings();
-    
+
     const now = new Date();
     let nextBackup = new Date(now);
 
@@ -374,7 +383,7 @@ class BackupService {
 
   async shouldRunBackup(): Promise<boolean> {
     await this.loadSettings();
-    
+
     if (!this.settings.autoBackup) {
       return false;
     }
@@ -385,12 +394,12 @@ class BackupService {
   async listBackups(userId: number): Promise<BackupRecord[]> {
     try {
       const userBackupDir = this.getUserBackupDir(userId);
-      
+
       // Check if directory exists
       if (!fs.existsSync(userBackupDir)) {
         return [];
       }
-      
+
       const files = fs.readdirSync(userBackupDir);
       const backups: BackupRecord[] = [];
 
@@ -399,7 +408,7 @@ class BackupService {
 
         const filepath = path.join(userBackupDir, file);
         const stats = fs.statSync(filepath);
-        
+
         backups.push({
           id: file.replace('.sql', ''),
           filename: file,
@@ -419,7 +428,7 @@ class BackupService {
   async restoreBackup(filename: string, userId: number): Promise<void> {
     const userBackupDir = this.getUserBackupDir(userId);
     const filepath = path.join(userBackupDir, filename);
-    
+
     if (!fs.existsSync(filepath)) {
       throw new Error(`Backup file not found for user ${userId}: ${filename}`);
     }
@@ -436,7 +445,7 @@ class BackupService {
 
       // Restore data using Prisma
       await this.restorePrismaBackup(backupData);
-      
+
       await prisma.activityLog.create({
         data: {
           userId: userId,
@@ -489,15 +498,15 @@ class BackupService {
     await this.deleteTable('productType');
     await this.deleteTable('productCategory');
     await this.deleteTable('shop');
-    
+
     // Delete subscription-related tables before users
     await this.deleteTable('subscriptionUsage');
     await this.deleteTable('subscriptionPayment');
     await this.deleteTable('subscription');
-    
+
     // Now safe to delete users
     await this.deleteTable('user');
-    
+
     // Delete remaining tables
     await this.deleteTable('websiteSetting');
     await this.deleteTable('platformAnalytics');
@@ -515,7 +524,7 @@ class BackupService {
 
     // Restore data (in order of dependencies)
     console.log('Restoring data from backup...');
-    
+
     await this.restoreTable('platformOwners', data.platformOwners, () => prisma.platformOwner.createMany({ data: data.platformOwners }));
     await this.restoreTable('users', data.users, () => prisma.user.createMany({ data: data.users }));
     await this.restoreTable('shops', data.shops, () => prisma.shop.createMany({ data: data.shops }));
@@ -556,7 +565,7 @@ class BackupService {
     await this.restoreTable('websiteSettings', data.websiteSettings, () => prisma.websiteSetting.createMany({ data: data.websiteSettings }));
     await this.restoreTable('user2FASettings', data.user2FASettings, () => prisma.user2FASetting.createMany({ data: data.user2FASettings }));
     await this.restoreTable('userShopAssignments', data.userShopAssignments, () => prisma.userShopAssignment.createMany({ data: data.userShopAssignments }));
-    
+
     console.log('✅ Database restoration completed successfully');
   }
 }

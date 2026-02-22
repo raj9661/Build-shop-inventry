@@ -211,7 +211,7 @@ export default function LoginPage() {
         </Suspense>
 
         {/* Features Preview */}
-        <div className="mt-8 grid grid-cols-3 gap-4 text-center">
+        <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-4 text-center">
           <div className="flex flex-col items-center">
             <CheckCircle className="w-6 h-6 text-green-500 mb-2" />
             <span className="text-sm text-gray-600">Secure login</span>
