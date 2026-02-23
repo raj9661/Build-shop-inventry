@@ -10,10 +10,12 @@ import Image from 'next/image';
 import { Badge } from '@/components/ui/badge';
 import { CheckCircle, Star, Users, BarChart3, Shield, Zap, Globe, Smartphone, Database, TrendingUp, Clock, HeadphonesIcon, Sparkles, Rocket, Brain, Cpu, Network, Layers, Play, ArrowRight } from 'lucide-react';
 import ShaderBackground from '@/components/ui/shader-background';
+import { useTheme } from 'next-themes';
 
 import './landing.css';
 
 export default function LandingPage() {
+  const { theme, setTheme } = useTheme();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isLoaded, setIsLoaded] = useState(false);
   const [scrollY, setScrollY] = useState(0);
@@ -22,6 +24,10 @@ export default function LandingPage() {
 
   useEffect(() => {
     setIsLoaded(true);
+    // Force light theme for landing page
+    if (theme !== 'light') {
+      setTheme('light');
+    }
 
     // Mouse tracking
     const handleMouseMove = (e: MouseEvent) => {

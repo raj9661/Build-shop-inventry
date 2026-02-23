@@ -514,6 +514,7 @@ export async function GET(req: NextRequest) {
         case 'UPI': return 'UPI';
         case 'BANK_TRANSFER': return 'Bank Transfer';
         case 'CHEQUE': return 'Cheque';
+        case 'OTHER': return 'Loan';
         default: return method;
       }
     }
@@ -565,8 +566,9 @@ export async function GET(req: NextRequest) {
       // ADDED: Deduplication logic
       if (entry.type === 'sale_payment') {
         if (!entry.saleId) {
-          // Entry without saleId - exclude (likely old data or incomplete)
-          return false;
+          // Entry without saleId - keep it if it's a manual purchase (positive amount)
+          // or a manual payment (negative amount).
+          return true;
         }
         const saleKey = entry.isTmt ? `tmt-${entry.saleId}` : `regular-${entry.saleId}`;
         const isCompleted = completedSaleKeys.has(saleKey);
@@ -632,8 +634,10 @@ export async function GET(req: NextRequest) {
       if (entry.type === 'sale_payment') {
         if (amount < 0) {
           isCredit = true;
+          isDebit = false;
         } else {
           isDebit = true;
+          isCredit = false;
         }
       }
 
@@ -801,14 +805,31 @@ export async function GET(req: NextRequest) {
         } else {
           // Fallback for manual 'debit' entries or sale_payment without sale info
           total = amount;
-          paid = 0; // Assume unpaid/loan for manual debits unless specified otherwise
-          due = amount;
-          paymentMode = 'Loan'; // Default to Loan for manual entries
+
+          // Determine if it was paid upfront based on the method
+          // The database stores "OTHER" for loans, but the description has "[LOAN]" prepended usually.
+          const isLoan = entry.method === 'OTHER' && entry.description?.includes('[LOAN]');
+
+          if (isLoan) {
+            paid = 0;
+            due = Math.abs(amount);
+            paymentMode = 'Loan';
+          } else {
+            // If it's CASH, UPI, CARD, etc., it means they paid for the purchase immediately
+            paid = Math.abs(amount);
+            due = 0;
+            paymentMode = mapPaymentMethodLabel(entry.method) || entry.method;
+          }
 
           // Try to parse description for item info if it looks like "Product Name (QTY unit)"
           // But usually manual entries might just be a description string
+          let cleanDescription = entry.description || 'manual debit';
+          if (cleanDescription.startsWith('[LOAN] ')) {
+            cleanDescription = cleanDescription.substring(7); // Remove the [LOAN] prefix for the item name
+          }
+
           items = [{
-            name: entry.description || 'manual debit',
+            name: cleanDescription,
             quantity: 1,
             price: amount,
             unit: 'units'
@@ -963,15 +984,26 @@ export async function GET(req: NextRequest) {
         return true; // Keep other debits
       }
 
-      if (entry.type === 'sale_payment' && entry.description) {
-        const tmtMatch = entry.description.match(/TMT Sale #(\d+)/i);
-        if (tmtMatch) {
-          return completedSaleIdsSet.has(`tmt-${tmtMatch[1]}`);
+      if (entry.type === 'sale_payment') {
+        // If it lacks a saleId, it's a manual entry from POST /api/ledger, so count it!
+        // We look at the description as a safeguard, but standard manual entries
+        // don't have saleIds and should always be counted.
+        // Let's check if it matches a sale from description for TMT or Regular sales
+        // that we explicitly ignore unless completed.
+        if (entry.description) {
+          const tmtMatch = entry.description.match(/TMT Sale #(\d+)/i);
+          if (tmtMatch) {
+            return completedSaleIdsSet.has(`tmt-${tmtMatch[1]}`);
+          }
+          const saleIdMatch = entry.description.match(/Sale #(\d+)/);
+          if (saleIdMatch) {
+            return completedSaleIdsSet.has(`regular-${saleIdMatch[1]}`);
+          }
         }
-        const saleIdMatch = entry.description.match(/Sale #(\d+)/);
-        if (saleIdMatch) {
-          return completedSaleIdsSet.has(`regular-${saleIdMatch[1]}`);
-        }
+
+        // If it didn't match the specific "Sale #X" generated format,
+        // it's a manual entry (e.g. "Purchase - CASH"), so count it.
+        return true;
       }
       return false;
     }).length;
@@ -1063,6 +1095,22 @@ export async function POST(req: NextRequest) {
       paymentMethod = paymentMethod.toUpperCase();
     }
 
+    // Handle LOAN which is not a valid enum value in prisma schema
+    let dbPaymentMethod = paymentMethod;
+    let finalDescription = description || `${type === 'debit' ? 'Purchase' : 'Payment'} - ${paymentMethod || ''}`;
+
+    if (paymentMethod === 'LOAN') {
+      dbPaymentMethod = 'OTHER';
+      finalDescription = '[LOAN] ' + finalDescription;
+    }
+
+    // Since there's no CustomerLedgerItem model in the given schema block,
+    // we'll append the item details to the description so it displays correctly.
+    if (items && items.length > 0) {
+      const itemsStr = items.map((item: any) => `${item.name} (${item.quantity} ${item.unit || 'units'} @ ₹${item.price})`).join(', ');
+      finalDescription = `${itemsStr} | ${finalDescription}`;
+    }
+
     if (!customerId || !date || !amount || !type) {
       return NextResponse.json({
         success: false,
@@ -1089,9 +1137,9 @@ export async function POST(req: NextRequest) {
         customerId: parseInt(customerId),
         amount: parseFloat(amount),
         type: type === 'debit' ? 'sale_payment' : 'loan_clearing',
-        method: paymentMethod || 'CASH',
+        method: dbPaymentMethod || 'CASH',
         date: new Date(date),
-        description: description || `${type === 'debit' ? 'Purchase' : 'Payment'} - ${paymentMethod || ''}`,
+        description: finalDescription,
         shopId,
         isActive: true
       }

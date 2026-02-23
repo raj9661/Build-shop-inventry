@@ -85,6 +85,8 @@ export default function CustomerLedger() {
   const [ledgerLoading, setLedgerLoading] = useState(false)
   const [isEditCustomerOpen, setIsEditCustomerOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState({ name: "", phone: "", address: "" })
+  const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false)
+  const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" })
 
   const [newEntry, setNewEntry] = useState({
     amount: "",
@@ -93,6 +95,9 @@ export default function CustomerLedger() {
     purpose: "purchase",
     description: "",
     items: [] as LedgerItem[],
+    itemName: "",
+    quantity: "1",
+    unitPrice: "",
     date: new Date().toISOString().split("T")[0],
   })
 
@@ -347,6 +352,45 @@ export default function CustomerLedger() {
     entry => entry.type === 'credit' && (!entry.purpose || entry.purpose === 'payment')
   );
 
+  const handleAddItem = () => {
+    if (!newEntry.itemName || !newEntry.quantity || !newEntry.unitPrice) {
+      toast.error(t("Please enter all item details", "कृपया सभी सामान विवरण दर्ज करें"));
+      return;
+    }
+    const newItem = {
+      name: newEntry.itemName,
+      quantity: Number(newEntry.quantity),
+      price: Number(newEntry.unitPrice),
+      unit: 'units'
+    };
+    setNewEntry(prev => {
+      const newItems = [...prev.items, newItem];
+      const newAmount = newItems.reduce((sum, item) => sum + (item.quantity * item.price), 0).toString();
+      return {
+        ...prev,
+        items: newItems,
+        itemName: "",
+        quantity: "1",
+        unitPrice: "",
+        amount: newAmount === '0' ? '' : newAmount
+      };
+    });
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setNewEntry(prev => {
+      const newItems = prev.items.filter((_, i) => i !== index);
+      const currentInputTotal = (Number(prev.quantity || 0) * Number(prev.unitPrice || 0));
+      const itemsTotal = newItems.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+      const newAmount = itemsTotal + currentInputTotal;
+      return {
+        ...prev,
+        items: newItems,
+        amount: newAmount === 0 ? '' : newAmount.toString()
+      };
+    });
+  };
+
   const handleAddEntry = async () => {
     if (!newEntry.amount || !selectedCustomer) {
       toast.error(t("Please enter amount and select customer", "कृपया राशि दर्ज करें और ग्राहक चुनें"))
@@ -355,6 +399,17 @@ export default function CustomerLedger() {
 
     try {
       const token = localStorage.getItem('accessToken');
+
+      const itemsToSend = [...newEntry.items];
+      if (newEntry.type === 'debit' && newEntry.itemName && newEntry.quantity && newEntry.unitPrice) {
+        itemsToSend.push({
+          name: newEntry.itemName,
+          quantity: Number(newEntry.quantity),
+          price: Number(newEntry.unitPrice),
+          unit: 'units'
+        });
+      }
+
       const entryData = {
         customerId: selectedCustomer,
         date: newEntry.date,
@@ -364,7 +419,7 @@ export default function CustomerLedger() {
         method: newEntry.method, // Keep for backward compatibility
         purpose: newEntry.purpose,
         description: newEntry.description,
-        items: newEntry.items,
+        items: newEntry.type === 'debit' ? itemsToSend : newEntry.items,
       };
 
       const res = await fetch('/api/ledger', {
@@ -389,6 +444,9 @@ export default function CustomerLedger() {
           purpose: "purchase",
           description: "",
           items: [],
+          itemName: "",
+          quantity: "1",
+          unitPrice: "",
           date: new Date().toISOString().split("T")[0],
         });
         setIsAddEntryOpen(false);
@@ -455,6 +513,63 @@ export default function CustomerLedger() {
     }
   }
 
+  const handleAddCustomer = async () => {
+    if (!newCustomer.name || !newCustomer.phone || !newCustomer.address) {
+      toast.error(t("All fields are required", "सभी फ़ील्ड आवश्यक हैं"));
+      return;
+    }
+
+    if (newCustomer.phone.length !== 10 || !/^\d+$/.test(newCustomer.phone)) {
+      toast.error(t("Phone number must be 10 digits", "फोन नंबर 10 अंकों का होना चाहिए"));
+      return;
+    }
+
+    if (newCustomer.name.length > 50) {
+      toast.error(t("Name cannot exceed 50 characters", "नाम 50 अक्षरों से अधिक नहीं हो सकता"));
+      return;
+    }
+
+    if (newCustomer.address.length > 150) {
+      toast.error(t("Address cannot exceed 150 characters", "पता 150 अक्षरों से अधिक नहीं हो सकता"));
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/customers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          ...newCustomer,
+          shopId: currentShop?.id
+        })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success(t("Customer added successfully", "ग्राहक सफलतापूर्वक जोड़ा गया"));
+        setIsAddCustomerOpen(false);
+        setNewCustomer({ name: "", phone: "", address: "" });
+
+        // Clear cache and fetch fresh customers
+        searchCache.current.clear();
+        await fetchCustomers();
+
+        setSelectedCustomer(data.data.id);
+        setCustomerSearchTerm(data.data.name);
+      } else {
+        toast.error(data.message || t("Failed to add customer", "ग्राहक जोड़ने में विफल"));
+      }
+    } catch (error) {
+      console.error('Error adding customer:', error);
+      toast.error(t("Failed to add customer", "ग्राहक जोड़ने में विफल"));
+    }
+  };
+
   // When opening the Add dialog, set type and purpose based on activeTab
   const handleOpenAddEntry = () => {
     if (activeTab === 'payment') {
@@ -465,6 +580,9 @@ export default function CustomerLedger() {
         purpose: 'payment',
         description: '',
         items: [],
+        itemName: '',
+        quantity: '1',
+        unitPrice: '',
         date: new Date().toISOString().split('T')[0],
       });
     } else {
@@ -475,6 +593,9 @@ export default function CustomerLedger() {
         purpose: 'purchase',
         description: '',
         items: [],
+        itemName: '',
+        quantity: '1',
+        unitPrice: '',
         date: new Date().toISOString().split('T')[0],
       });
     }
@@ -503,8 +624,14 @@ export default function CustomerLedger() {
                   <span className="text-gray-500">
                     (
                     {item.quantity} {item.unit || ""}
+                    {item.price ? ` × ₹${item.price.toLocaleString()}` : ""}
                     )
                   </span>
+                  {item.price ? (
+                    <span className="font-semibold text-gray-700">
+                      ₹{(item.quantity * item.price).toLocaleString()}
+                    </span>
+                  ) : null}
                 </div>
               ))}</div>
               : <span className="text-gray-400">-</span>
@@ -584,80 +711,91 @@ export default function CustomerLedger() {
             <CardContent className="p-4">
               <div className="space-y-4">
                 {/* Customer Search & Selection (Amazon-like) */}
-                <div className="relative">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 z-10" />
-                    <Input
-                      placeholder={t("Search customers by name or phone...", "नाम या फोन से ग्राहक खोजें...")}
-                      value={customerSearchTerm}
-                      onFocus={() => setIsDropdownOpen(true)}
-                      onBlur={() => {
-                        // Delay closing to allow click event to fire
-                        setTimeout(() => setIsDropdownOpen(false), 200);
-                      }}
-                      onChange={(e) => {
-                        setCustomerSearchTerm(e.target.value);
-                        setIsDropdownOpen(true);
-                      }}
-                      className="pl-10 h-12 text-base rounded-xl border-2 border-indigo-100 focus:border-indigo-500 focus:ring-indigo-500 transition-all"
-                    />
-                    {loading && (
-                      <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                        <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 z-10" />
+                      <Input
+                        placeholder={t("Search customers by name or phone...", "नाम या फोन से ग्राहक खोजें...")}
+                        value={customerSearchTerm}
+                        onFocus={() => setIsDropdownOpen(true)}
+                        onBlur={() => {
+                          // Delay closing to allow click event to fire
+                          setTimeout(() => setIsDropdownOpen(false), 200);
+                        }}
+                        onChange={(e) => {
+                          setCustomerSearchTerm(e.target.value);
+                          setIsDropdownOpen(true);
+                        }}
+                        className="pl-10 h-12 text-base rounded-xl border-2 border-indigo-100 focus:border-indigo-500 focus:ring-indigo-500 transition-all"
+                      />
+                      {loading && (
+                        <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                          <Loader2 className="h-4 w-4 animate-spin text-indigo-600" />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Dropdown Results - Show when searching or typing */}
+                    {(isDropdownOpen && (customerSearchTerm.length > 0 || customers.length > 0)) && (
+                      <div className="absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-80 overflow-y-auto">
+                        {customers.length === 0 && !loading ? (
+                          <div className="p-4 text-center text-gray-500">
+                            {t("No customers found", "कोई ग्राहक नहीं मिला")}
+                          </div>
+                        ) : (
+                          <div className="py-2">
+                            {customers.map((customer) => (
+                              <div
+                                key={customer.id}
+                                className={`px-4 py-3 hover:bg-indigo-50 cursor-pointer border-b last:border-0 border-gray-50 transition-colors ${selectedCustomer === customer.id ? 'bg-indigo-50' : ''}`}
+                                onClick={() => {
+                                  setSelectedCustomer(customer.id);
+                                  setCustomerSearchTerm(customer.name);
+                                  setIsDropdownOpen(false);
+                                }}
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <User className="h-5 w-5 text-indigo-600" />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-semibold text-gray-900 truncate">{customer.name}</div>
+                                    <div className="text-sm text-gray-500 truncate">{customer.phone}</div>
+                                    {customer.stats && (
+                                      <div className="text-xs text-gray-400 mt-0.5">
+                                        {customer.stats.totalTransactions} {t("transactions", "लेनदेन")}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="text-right">
+                                    <Badge
+                                      variant={customer.isActive ? "default" : "secondary"}
+                                      className={`text-xs ${customer.isActive
+                                        ? "bg-green-100 text-green-800 border-green-200"
+                                        : "bg-red-100 text-red-800 border-red-200"
+                                        }`}
+                                    >
+                                      {customer.isActive ? t("Active", "सक्रिय") : t("Inactive", "निष्क्रिय")}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
 
-                  {/* Dropdown Results - Show when searching or typing */}
-                  {(isDropdownOpen && (customerSearchTerm.length > 0 || customers.length > 0)) && (
-                    <div className="absolute z-50 w-full mt-1 bg-white rounded-xl shadow-xl border border-gray-100 max-h-80 overflow-y-auto">
-                      {customers.length === 0 && !loading ? (
-                        <div className="p-4 text-center text-gray-500">
-                          {t("No customers found", "कोई ग्राहक नहीं मिला")}
-                        </div>
-                      ) : (
-                        <div className="py-2">
-                          {customers.map((customer) => (
-                            <div
-                              key={customer.id}
-                              className={`px-4 py-3 hover:bg-indigo-50 cursor-pointer border-b last:border-0 border-gray-50 transition-colors ${selectedCustomer === customer.id ? 'bg-indigo-50' : ''}`}
-                              onClick={() => {
-                                setSelectedCustomer(customer.id);
-                                setCustomerSearchTerm(customer.name);
-                                setIsDropdownOpen(false);
-                              }}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-indigo-100 rounded-full flex items-center justify-center flex-shrink-0">
-                                  <User className="h-5 w-5 text-indigo-600" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="font-semibold text-gray-900 truncate">{customer.name}</div>
-                                  <div className="text-sm text-gray-500 truncate">{customer.phone}</div>
-                                  {customer.stats && (
-                                    <div className="text-xs text-gray-400 mt-0.5">
-                                      {customer.stats.totalTransactions} {t("transactions", "लेनदेन")}
-                                    </div>
-                                  )}
-                                </div>
-                                <div className="text-right">
-                                  <Badge
-                                    variant={customer.isActive ? "default" : "secondary"}
-                                    className={`text-xs ${customer.isActive
-                                      ? "bg-green-100 text-green-800 border-green-200"
-                                      : "bg-red-100 text-red-800 border-red-200"
-                                      }`}
-                                  >
-                                    {customer.isActive ? t("Active", "सक्रिय") : t("Inactive", "निष्क्रिय")}
-                                  </Badge>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <Button
+                    onClick={() => setIsAddCustomerOpen(true)}
+                    className="h-12 w-12 flex-shrink-0 rounded-xl bg-indigo-600 hover:bg-indigo-700 shadow-md"
+                    size="icon"
+                    title={t("Add New Customer", "नया ग्राहक जोड़ें")}
+                  >
+                    <Plus className="h-6 w-6" />
+                  </Button>
                 </div>
 
                 {selectedCustomerData && (
@@ -819,15 +957,29 @@ export default function CustomerLedger() {
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 m-4 rounded-xl">
-                <TabsTrigger value="ledger" className="text-xs md:text-base py-2 rounded-lg">
-                  📋 {t("All", "सभी")} ({allEntries.length})
+              <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 mx-2 my-3 rounded-xl" style={{ width: 'calc(100% - 16px)' }}>
+                <TabsTrigger value="ledger" className="text-xs md:text-sm py-2 rounded-lg min-w-0 px-1">
+                  <span className="flex items-center gap-0.5 truncate">
+                    <span>📋</span>
+                    <span className="ml-0.5">{t("All", "सभी")}</span>
+                    <span className="ml-0.5">({allEntries.length})</span>
+                  </span>
                 </TabsTrigger>
-                <TabsTrigger value="purchase" className="text-xs md:text-base py-2 rounded-lg">
-                  🛒 {t("Purchase", "खरीदारी")} ({purchaseEntries.length})
+                <TabsTrigger value="purchase" className="text-xs md:text-sm py-2 rounded-lg min-w-0 px-1">
+                  <span className="flex items-center gap-0.5 truncate">
+                    <span>🛒</span>
+                    <span className="hidden sm:inline ml-1">{t("Purchase", "खरीदारी")}</span>
+                    <span className="sm:hidden ml-0.5 truncate max-w-[50px]">{t("Buy", "खरीद")}</span>
+                    <span className="ml-0.5">({purchaseEntries.length})</span>
+                  </span>
                 </TabsTrigger>
-                <TabsTrigger value="payment" className="text-xs md:text-base py-2 rounded-lg">
-                  💰 {t("Payment", "भुगतान")} ({paymentEntries.length})
+                <TabsTrigger value="payment" className="text-xs md:text-sm py-2 rounded-lg min-w-0 px-1">
+                  <span className="flex items-center gap-0.5 truncate">
+                    <span>💰</span>
+                    <span className="hidden sm:inline ml-1">{t("Payment", "भुगतान")}</span>
+                    <span className="sm:hidden ml-0.5 truncate max-w-[50px]">{t("Pay", "भुगतान")}</span>
+                    <span className="ml-0.5">({paymentEntries.length})</span>
+                  </span>
                 </TabsTrigger>
               </TabsList>
 
@@ -950,25 +1102,26 @@ export default function CustomerLedger() {
 
         {/* Add Entry Dialog */}
         <Dialog open={isAddEntryOpen} onOpenChange={setIsAddEntryOpen}>
-          <DialogContent className="max-w-md">
+          <DialogContent className="w-[95vw] md:max-w-md max-h-[90vh] overflow-y-auto p-4 md:p-6">
             <DialogHeader>
               <DialogTitle>{t("Add Ledger Entry", "खाता एंट्री जोड़ें")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div>
-                <Label>{t("Amount", "राशि")}</Label>
-                <Input
-                  type="number"
-                  value={newEntry.amount}
-                  onChange={(e) => setNewEntry({ ...newEntry, amount: e.target.value })}
-                  placeholder={t("Enter amount", "राशि दर्ज करें")}
-                />
-              </div>
-              <div>
                 <Label>{t("Type", "प्रकार")}</Label>
                 <Select
                   value={newEntry.type}
-                  onValueChange={(value: "debit" | "credit") => setNewEntry({ ...newEntry, type: value })}
+                  onValueChange={(value: "debit" | "credit") => {
+                    setNewEntry({
+                      ...newEntry,
+                      type: value,
+                      // Clear amounts/items when switching types to avoid confusion
+                      amount: "",
+                      itemName: "",
+                      quantity: "1",
+                      unitPrice: ""
+                    })
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -978,6 +1131,96 @@ export default function CustomerLedger() {
                     <SelectItem value="credit">{t("Payment", "भुगतान")}</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {newEntry.type === 'debit' ? (
+                <div className="space-y-4 p-4 border rounded-md bg-gray-50 flex flex-col">
+                  <h4 className="font-medium text-sm text-gray-700 flex-shrink-0">{t("Item Details", "सामान विवरण")}</h4>
+
+                  {newEntry.items.length > 0 && (
+                    <div className="space-y-2 mb-4 max-h-40 overflow-y-auto pr-1">
+                      {newEntry.items.map((item, index) => (
+                        <div key={index} className="flex justify-between items-center bg-white p-2 border rounded-md text-sm shadow-sm">
+                          <div>
+                            <span className="font-semibold">{item.name}</span>
+                            <span className="text-gray-500 ml-2">({item.quantity} × ₹{item.price})</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="font-bold text-indigo-700">₹{item.quantity * item.price}</span>
+                            <Button variant="ghost" size="sm" onClick={() => handleRemoveItem(index)} className="h-6 w-6 text-red-500 hover:bg-red-50 hover:text-red-700 p-0 rounded-full">
+                              ✕
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="flex-shrink-0">
+                    <Label>{t("Item Name", "सामान का नाम")}</Label>
+                    <Input
+                      value={newEntry.itemName}
+                      onChange={(e) => setNewEntry({ ...newEntry, itemName: e.target.value })}
+                      placeholder={t("e.g. Cement 50kg", "उदा. सीमेंट 50kg")}
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 flex-shrink-0">
+                    <div>
+                      <Label>{t("Quantity", "मात्रा")}</Label>
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={newEntry.quantity}
+                        onChange={(e) => {
+                          const quantity = e.target.value;
+                          const currentTotal = Number(quantity) * Number(newEntry.unitPrice || 0);
+                          const itemsTotal = newEntry.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                          const amount = (itemsTotal + currentTotal).toString();
+                          setNewEntry({ ...newEntry, quantity, amount: amount === '0' ? '' : amount });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <Label>{t("Unit Price", "इकाई कीमत")}</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={newEntry.unitPrice}
+                        onChange={(e) => {
+                          const unitPrice = e.target.value;
+                          const currentTotal = Number(newEntry.quantity || 0) * Number(unitPrice);
+                          const itemsTotal = newEntry.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                          const amount = (itemsTotal + currentTotal).toString();
+                          setNewEntry({ ...newEntry, unitPrice, amount: amount === '0' ? '' : amount });
+                        }}
+                        placeholder="₹"
+                      />
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAddItem}
+                    className="w-full mt-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 flex-shrink-0 flex items-center justify-center"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    {t("Add Another Item", "एक और सामान जोड़ें")}
+                  </Button>
+                </div>
+              ) : null}
+
+              <div>
+                <Label>{t("Amount", "राशि")}</Label>
+                <Input
+                  type="number"
+                  value={newEntry.amount}
+                  readOnly={newEntry.type === 'debit'}
+                  className={newEntry.type === 'debit' ? 'bg-gray-100 cursor-not-allowed' : ''}
+                  onChange={(e) => setNewEntry({ ...newEntry, amount: e.target.value })}
+                  placeholder={newEntry.type === 'debit' ? t("Auto-calculated", "स्वतः गणना") : t("Enter amount", "राशि दर्ज करें")}
+                />
               </div>
               <div>
                 <Label>{t("Method", "तरीका")}</Label>
@@ -994,6 +1237,7 @@ export default function CustomerLedger() {
                     <SelectItem value="UPI">{t("UPI", "यूपीआई")}</SelectItem>
                     <SelectItem value="BANK_TRANSFER">{t("Bank Transfer", "बैंक ट्रांसफर")}</SelectItem>
                     <SelectItem value="CHEQUE">{t("Cheque", "चेक")}</SelectItem>
+                    <SelectItem value="LOAN">{t("Loan", "उधार")}</SelectItem>
                     <SelectItem value="OTHER">{t("Other", "अन्य")}</SelectItem>
                   </SelectContent>
                 </Select>
@@ -1025,50 +1269,106 @@ export default function CustomerLedger() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Customer Dialog */}
+        <Dialog open={isEditCustomerOpen} onOpenChange={setIsEditCustomerOpen}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>{t("Edit Customer Details", "ग्राहक विवरण संपादित करें")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>{t("Name", "नाम")}</Label>
+                <Input
+                  value={editingCustomer.name}
+                  onChange={(e) => setEditingCustomer(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder={t("Customer Name", "ग्राहक का नाम")}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Phone", "फ़ोन")}</Label>
+                <Input
+                  value={editingCustomer.phone}
+                  onChange={(e) => setEditingCustomer(prev => ({ ...prev, phone: e.target.value }))}
+                  placeholder={t("Phone Number", "फ़ोन नंबर")}
+                  disabled={userRole === 'SUPER_ADMIN'}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Address", "पता")}</Label>
+                <Textarea
+                  value={editingCustomer.address}
+                  onChange={(e) => setEditingCustomer(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder={t("Address", "पता")}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsEditCustomerOpen(false)}>
+                {t("Cancel", "रद्द करें")}
+              </Button>
+              <Button onClick={handleUpdateCustomer}>
+                {t("Save Changes", "परिवर्तन सहेजें")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={isAddCustomerOpen} onOpenChange={setIsAddCustomerOpen}>
+          <DialogContent className="w-[95vw] md:max-w-md max-h-[90vh] overflow-y-auto p-4 md:p-6">
+            <DialogHeader>
+              <DialogTitle>{t("Add New Customer", "नया ग्राहक जोड़ें")}</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>{t("Name", "नाम")} <span className="text-red-500">*</span></Label>
+                <Input
+                  value={newCustomer.name}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder={t("Customer Name", "ग्राहक का नाम")}
+                  maxLength={50}
+                  required
+                />
+                <p className="text-[10px] text-gray-500 text-right">{newCustomer.name.length}/50</p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Phone", "फ़ोन")} <span className="text-red-500">*</span></Label>
+                <Input
+                  value={newCustomer.phone}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setNewCustomer(prev => ({ ...prev, phone: val }));
+                  }}
+                  placeholder={t("10-digit Phone Number", "10-अंकीय फ़ोन नंबर")}
+                  maxLength={10}
+                  pattern="[0-9]{10}"
+                  required
+                />
+                <p className="text-[10px] text-gray-500 text-right">{newCustomer.phone.length}/10</p>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Address", "पता")} <span className="text-red-500">*</span></Label>
+                <Textarea
+                  value={newCustomer.address}
+                  onChange={(e) => setNewCustomer(prev => ({ ...prev, address: e.target.value }))}
+                  placeholder={t("Address", "पता")}
+                  maxLength={150}
+                  required
+                />
+                <p className="text-[10px] text-gray-500 text-right">{newCustomer.address.length}/150</p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setIsAddCustomerOpen(false)}>
+                {t("Cancel", "रद्द करें")}
+              </Button>
+              <Button onClick={handleAddCustomer}>
+                {t("Save Customer", "ग्राहक सहेजें")}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
-      {/* Edit Customer Dialog */}
-      <Dialog open={isEditCustomerOpen} onOpenChange={setIsEditCustomerOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{t("Edit Customer Details", "ग्राहक विवरण संपादित करें")}</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>{t("Name", "नाम")}</Label>
-              <Input
-                value={editingCustomer.name}
-                onChange={(e) => setEditingCustomer(prev => ({ ...prev, name: e.target.value }))}
-                placeholder={t("Customer Name", "ग्राहक का नाम")}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("Phone", "फ़ोन")}</Label>
-              <Input
-                value={editingCustomer.phone}
-                onChange={(e) => setEditingCustomer(prev => ({ ...prev, phone: e.target.value }))}
-                placeholder={t("Phone Number", "फ़ोन नंबर")}
-                disabled={userRole === 'SUPER_ADMIN'}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>{t("Address", "पता")}</Label>
-              <Textarea
-                value={editingCustomer.address}
-                onChange={(e) => setEditingCustomer(prev => ({ ...prev, address: e.target.value }))}
-                placeholder={t("Address", "पता")}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setIsEditCustomerOpen(false)}>
-              {t("Cancel", "रद्द करें")}
-            </Button>
-            <Button onClick={handleUpdateCustomer}>
-              {t("Save Changes", "परिवर्तन सहेजें")}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

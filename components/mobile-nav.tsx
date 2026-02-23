@@ -23,12 +23,16 @@ import { cn } from "@/lib/utils"
 import { useLanguage } from "@/hooks/use-language"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { useShop, ALL_SHOPS_ID } from "@/app/contexts/ShopContext"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Store } from "lucide-react"
 
 export function MobileNav() {
   const pathname = usePathname()
   const router = useRouter()
   const { t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
+  const { currentShop, shops, switchShop, userRole, switchToAllShops } = useShop()
 
   const navItems = [
     { href: "/super-admin", icon: LayoutDashboard, label: t("Super Admin", "सुपर एडमिन") },
@@ -104,6 +108,43 @@ export function MobileNav() {
                     </nav>
                   </div>
 
+                  {/* Shop Switcher - Only show when there are multiple shops */}
+                  {shops.length > 1 && (
+                    <div className="p-4 border-t">
+                      <div className="flex items-center gap-2 mb-2 text-sm font-medium text-gray-700">
+                        <Store className="h-4 w-4" />
+                        {t("Switch Shop", "दुकान बदलें")}
+                      </div>
+                      <Select
+                        value={userRole === 'SUPER_DUPER_ADMIN' && pathname.includes('/analytics') && currentShop?.id === ALL_SHOPS_ID ? ALL_SHOPS_ID.toString() : (currentShop?.id?.toString() || "")}
+                        onValueChange={(value) => {
+                          if (value === ALL_SHOPS_ID.toString() && userRole === 'SUPER_DUPER_ADMIN' && pathname.includes('/analytics')) {
+                            switchToAllShops()
+                          } else {
+                            switchShop(parseInt(value))
+                          }
+                          setIsOpen(false)
+                        }}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder={t("Select Shop", "दुकान चुनें")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {userRole === 'SUPER_DUPER_ADMIN' && pathname.includes('/analytics') && (
+                            <SelectItem key={ALL_SHOPS_ID.toString()} value={ALL_SHOPS_ID.toString()}>
+                              All shops Analytics Dashboard
+                            </SelectItem>
+                          )}
+                          {shops.map((shop) => (
+                            <SelectItem key={shop.id} value={shop.id.toString()}>
+                              {shop.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
                   {/* Footer */}
                   <div className="border-t p-4">
                     <div className="text-xs text-gray-500 text-center mb-2">
@@ -113,6 +154,7 @@ export function MobileNav() {
                     <button
                       onClick={() => {
                         localStorage.removeItem('accessToken');
+                        localStorage.removeItem('userRole');
                         router.push('/login');
                         setIsOpen(false);
                       }}
