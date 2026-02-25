@@ -1549,18 +1549,20 @@ function SuperDuperAdminDashboardContent() {
           </Card>
           {/* Shop Management Dialog */}
           <Dialog open={shopDialogOpen} onOpenChange={setShopDialogOpen}>
-            <DialogContent className="max-w-3xl w-full">
+            <DialogContent className="max-w-3xl w-[95vw] md:w-full max-h-[90vh] overflow-y-auto p-4 md:p-6">
               <DialogHeader>
                 <DialogTitle>Manage Shop: {shopDialogShop?.name}</DialogTitle>
               </DialogHeader>
-              <InnerTabs defaultValue="details" className="space-y-4">
-                <InnerTabsList className="mb-4">
-                  <InnerTabsTrigger value="details">Shop Details</InnerTabsTrigger>
-                  <InnerTabsTrigger value="users">User Assignment</InnerTabsTrigger>
-                  <InnerTabsTrigger value="analytics">Analytics</InnerTabsTrigger>
-                  <InnerTabsTrigger value="financials">Financials</InnerTabsTrigger>
-                  <InnerTabsTrigger value="logs">Logs</InnerTabsTrigger>
-                </InnerTabsList>
+              <InnerTabs defaultValue="details" className="space-y-4 w-full">
+                <div className="overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
+                  <InnerTabsList className="mb-4 inline-flex w-max min-w-full md:w-full">
+                    <InnerTabsTrigger value="details" className="whitespace-nowrap">Shop Details</InnerTabsTrigger>
+                    <InnerTabsTrigger value="users" className="whitespace-nowrap">User Assignment</InnerTabsTrigger>
+                    <InnerTabsTrigger value="analytics" className="whitespace-nowrap">Analytics</InnerTabsTrigger>
+                    <InnerTabsTrigger value="financials" className="whitespace-nowrap">Financials</InnerTabsTrigger>
+                    <InnerTabsTrigger value="logs" className="whitespace-nowrap">Logs</InnerTabsTrigger>
+                  </InnerTabsList>
+                </div>
                 <InnerTabsContent value="details">
                   {shopDetails ? (
                     <form className="space-y-3" onSubmit={e => { e.preventDefault(); handleSaveDetails() }}>
@@ -1640,7 +1642,7 @@ function SuperDuperAdminDashboardContent() {
                       {/* Sales Chart */}
                       <div className="mt-6">
                         <div className="font-medium mb-2">Recent Sales</div>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 overflow-x-auto pb-2">
                           {analytics.recentSales?.map((sale: any, i: number) => (
                             <div key={i} className="p-2 bg-blue-50 rounded text-center">
                               <div className="text-xs">Sale #{sale.id}</div>
@@ -1656,8 +1658,8 @@ function SuperDuperAdminDashboardContent() {
                 </InnerTabsContent>
                 <InnerTabsContent value="financials">
                   <div className="mb-4">
-                    <form className="flex gap-2 items-end" onSubmit={handleAddExpense}>
-                      <div>
+                    <form className="flex flex-wrap gap-2 items-end" onSubmit={handleAddExpense}>
+                      <div className="flex-1 min-w-[100px]">
                         <label className="block text-xs">Amount</label>
                         <input type="number" className="border rounded p-1 w-24" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} required />
                       </div>
@@ -1685,7 +1687,7 @@ function SuperDuperAdminDashboardContent() {
                           <option value="MARKETING">Marketing</option>
                         </select>
                       </div>
-                      <button type="submit" className="btn btn-primary" disabled={expenseLoading}>Add</button>
+                      <button type="submit" className="btn btn-primary w-full md:w-auto" disabled={expenseLoading}>Add</button>
                     </form>
                   </div>
                   <div className="overflow-x-auto max-h-64">
@@ -1713,11 +1715,13 @@ function SuperDuperAdminDashboardContent() {
                   <button className="btn btn-secondary mt-2" onClick={() => exportCSV(expenses, ['amount', 'description', 'date', 'category'], 'expenses.csv')}>Export CSV</button>
                 </InnerTabsContent>
                 <InnerTabsContent value="logs">
-                  <div className="mb-2 flex gap-2 items-center">
-                    <input type="text" className="border rounded p-1 w-48" placeholder="Search logs..." value={logsSearch} onChange={e => setLogsSearch(e.target.value)} />
-                    <button className={`btn btn-sm ${logsTab === 'activity' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('activity')}>Activity</button>
-                    <button className={`btn btn-sm ${logsTab === 'login' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('login')}>Login</button>
-                    <button className="btn btn-secondary ml-auto" onClick={() => exportCSV(shopLogs[`${logsTab}Log` as keyof typeof shopLogs], ['userId', 'action', 'resource', 'details', 'createdAt', 'ipAddress'], logsTab + '-logs.csv')}>Export CSV</button>
+                  <div className="mb-4 flex flex-wrap gap-2 items-center font-sans">
+                    <input type="text" className="border rounded p-2 text-sm w-full md:w-48 flex-grow" placeholder="Search logs..." value={logsSearch} onChange={e => setLogsSearch(e.target.value)} />
+                    <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1">
+                      <button className={`btn btn-sm flex-1 md:flex-none ${logsTab === 'activity' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('activity')}>Activity</button>
+                      <button className={`btn btn-sm flex-1 md:flex-none ${logsTab === 'login' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('login')}>Login</button>
+                    </div>
+                    <button className="btn btn-sm btn-secondary w-full md:w-auto md:ml-auto" onClick={() => exportCSV(shopLogs[`${logsTab}Log` as keyof typeof shopLogs], ['userId', 'action', 'resource', 'details', 'createdAt', 'ipAddress'], logsTab + '-logs.csv')}>Export CSV</button>
                   </div>
                   {logsLoading ? (
                     <div className="text-center py-8">Loading logs...</div>

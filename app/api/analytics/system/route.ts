@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   try {
     console.log('🔍 System Analytics API called');
     let decoded: any = null;
-    
+
     // Check if this is a NextAuth.js request (has cookies)
     const cookies = req.headers.get('cookie');
     if (cookies && cookies.includes('next-auth.session-token')) {
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
       }
     }
-    
+
     console.log('✅ Token validated for user:', decoded.email, 'role:', decoded.role);
 
     // Only SUPER_DUPER_ADMIN and SUPER_ADMIN can access system-wide analytics
@@ -61,7 +61,7 @@ export async function GET(req: NextRequest) {
       console.log('❌ Insufficient permissions for role:', decoded.role);
       return NextResponse.json({ success: false, message: 'Insufficient permissions' }, { status: 403 });
     }
-    
+
     console.log('✅ Access granted for role:', decoded.role, 'fetching analytics data...');
 
     // Get shop filter from query parameters
@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
     const shopIdParam = searchParams.get('shopId');
     const days = parseInt(searchParams.get('days') || '30');
     const shopId = shopIdParam ? parseInt(shopIdParam) : null;
-    
+
     console.log('🏪 Shop filter:', shopId ? `Shop ID: ${shopId}` : 'All shops');
     console.log('📅 Date range:', days, 'days');
     console.log('👤 Current user ID:', decoded.userId);
@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
     // Special handling for "today" (days=1) - use calendar day instead of rolling 24 hours
     const endDate = new Date();
     const startDate = new Date();
-    
+
     if (days === 1) {
       // For "today", set to start and end of current calendar day
       startDate.setHours(0, 0, 0, 0); // Start of today (00:00:00)
@@ -120,14 +120,14 @@ export async function GET(req: NextRequest) {
             },
             select: { id: true }
           });
-          return { 
+          return {
             shopId: { in: userShops.map(shop => shop.id) }
           };
         } else {
           // SUPER_ADMIN can see shops they are assigned to
           console.log('🔍 SUPER_ADMIN: Getting assigned shops...');
           console.log('🔍 SUPER_ADMIN userId:', decoded.userId);
-          
+
           // Get shop assignments for this SUPER_ADMIN
           const assignments = await prisma.userShopAssignment.findMany({
             where: {
@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
               }
             }
           });
-          
+
           console.log('🔍 SUPER_ADMIN assignments:', {
             userId: decoded.userId,
             assignmentCount: assignments.length,
@@ -150,20 +150,20 @@ export async function GET(req: NextRequest) {
               isActive: a.shop.isActive
             }))
           });
-          
+
           // Filter to only active shops
           const activeShops = assignments
             .filter(assignment => assignment.shop.isActive)
             .map(assignment => assignment.shop.id);
-          
+
           console.log('🔍 Active shops for SUPER_ADMIN:', activeShops);
-          
+
           if (activeShops.length === 0) {
             console.log('⚠️ No active shops found for SUPER_ADMIN, returning empty filter');
             return { shopId: { in: [] } };
           }
-          
-          return { 
+
+          return {
             shopId: { in: activeShops }
           };
         }
@@ -178,56 +178,68 @@ export async function GET(req: NextRequest) {
       typeof value === 'bigint' ? value.toString() : value
     ));
     console.log('🔍 Shop filter values:', JSON.stringify(shopFilterForLogging, null, 2));
-    
+
     // Check if shop filter is empty (no assigned shops)
     if (shopFilter.shopId && typeof shopFilter.shopId === 'object' && 'in' in shopFilter.shopId && Array.isArray(shopFilter.shopId.in) && shopFilter.shopId.in.length === 0) {
       console.log('⚠️ WARNING: No shops assigned to this user. All queries will return 0 results.');
     }
 
+    // Helper function to get authorized users for this tenant
+    const getTenantUserIds = async () => {
+      let allowedUserIds = new Set<bigint>();
+      allowedUserIds.add(BigInt(decoded.userId));
+
+      if (decoded.role === 'SUPER_DUPER_ADMIN') {
+        const users = await prisma.user.findMany({
+          where: { createdBy: BigInt(decoded.userId) },
+          select: { id: true }
+        });
+        users.forEach(u => allowedUserIds.add(u.id));
+
+        const shops = await prisma.shop.findMany({
+          where: { createdBy: BigInt(decoded.userId) },
+          select: { id: true }
+        });
+        if (shops.length > 0) {
+          const assignments = await prisma.userShopAssignment.findMany({
+            where: { shopId: { in: shops.map(s => s.id) } },
+            select: { userId: true }
+          });
+          assignments.forEach(a => allowedUserIds.add(a.userId));
+        }
+      } else {
+        const assignments = await prisma.userShopAssignment.findMany({
+          where: { userId: BigInt(decoded.userId), active: true },
+          select: { shopId: true }
+        });
+        const shopIds = assignments.map(a => a.shopId);
+
+        if (shopIds.length > 0) {
+          const userAssignments = await prisma.userShopAssignment.findMany({
+            where: { shopId: { in: shopIds }, active: true },
+            select: { userId: true }
+          });
+          userAssignments.forEach(a => allowedUserIds.add(a.userId));
+
+          const shops = await prisma.shop.findMany({
+            where: { id: { in: shopIds } },
+            select: { createdBy: true }
+          });
+          shops.forEach(s => {
+            if (s.createdBy) allowedUserIds.add(s.createdBy);
+          });
+        }
+      }
+      return Array.from(allowedUserIds);
+    };
+
     // Helper function to get activity logs
     const getActivityLogs = async () => {
-      let userShops;
-      
-      if (decoded.role === 'SUPER_DUPER_ADMIN') {
-        // SUPER_DUPER_ADMIN sees only their own shops
-        userShops = await prisma.shop.findMany({
-          where: { createdBy: BigInt(decoded.userId), isActive: true },
-          select: { id: true, name: true }
-        });
-      } else {
-        // SUPER_ADMIN sees shops they are assigned to
-        const assignments = await prisma.userShopAssignment.findMany({
-          where: {
-            userId: BigInt(decoded.userId),
-            active: true
-          },
-          include: {
-            shop: {
-              select: { id: true, name: true, isActive: true }
-            }
-          }
-        });
-        
-        userShops = assignments
-          .filter(assignment => assignment.shop.isActive)
-          .map(assignment => ({
-            id: assignment.shop.id,
-            name: assignment.shop.name
-          }));
-      }
-      
-      const shopIds = userShops.map(s => s.id);
-      const shopNames = userShops.map(s => s.name);
-      
+      const allowedUserIds = await getTenantUserIds();
+
       const activityLogs = await prisma.activityLog.findMany({
         where: {
-          OR: [
-            { resource: 'Shop', resourceId: { in: shopIds }},
-            ...shopNames.map(shopName => ({
-              resource: { in: ['Product', 'Sale', 'Customer', 'Supplier', 'Employee', 'Expense', 'Stock', 'User'] },
-              details: { contains: shopName }
-            }))
-          ]
+          userId: { in: allowedUserIds }
         },
         take: 50,
         orderBy: { createdAt: 'desc' },
@@ -237,20 +249,19 @@ export async function GET(req: NextRequest) {
           }
         }
       });
-      
+
       console.log('🔍 [System Analytics] Activity logs fetched:', activityLogs.length, 'logs');
-      console.log('🔍 [System Analytics] Sample activity log:', activityLogs[0]);
-      console.log('🔍 [System Analytics] Activity logs with IPs:', activityLogs.filter(log => log.ipAddress && log.ipAddress !== 'unknown').length);
-      console.log('🔍 [System Analytics] Activity logs without IPs:', activityLogs.filter(log => !log.ipAddress || log.ipAddress === 'unknown').length);
-      
       return activityLogs;
     };
 
     // Helper function to get login logs
     const getLoginLogs = async () => {
-      // Login logs should show ALL login attempts, not filtered by shops
-      // This is system-wide security monitoring
+      const allowedUserIds = await getTenantUserIds();
+
       const loginLogs = await prisma.loginLog.findMany({
+        where: {
+          userId: { in: allowedUserIds }
+        },
         take: 50,
         orderBy: { createdAt: 'desc' },
         include: {
@@ -259,17 +270,8 @@ export async function GET(req: NextRequest) {
           }
         }
       });
-      
+
       console.log('🔍 [System Analytics] Login logs fetched:', loginLogs.length, 'logs');
-      console.log('🔍 [System Analytics] Sample login log:', loginLogs[0]);
-      console.log('🔍 [System Analytics] Failed login attempts:', loginLogs.filter(log => !log.success).length);
-      console.log('🔍 [System Analytics] Successful login attempts:', loginLogs.filter(log => log.success).length);
-      console.log('🔍 [System Analytics] User data samples:', loginLogs.slice(0, 3).map(log => ({ 
-        userId: log.userId, 
-        userName: log.user?.name, 
-        userEmail: log.user?.email 
-      })));
-      
       return loginLogs;
     };
 
@@ -294,44 +296,44 @@ export async function GET(req: NextRequest) {
       businessGoals
     ] = await Promise.all([
       // Total shops - only count shops created by this SUPER_DUPER_ADMIN
-      shopId && shopId !== ALL_SHOPS_ID ? 1 : prisma.shop.count({ 
-        where: { 
+      shopId && shopId !== ALL_SHOPS_ID ? 1 : prisma.shop.count({
+        where: {
           isActive: true,
           createdBy: decoded.userId
-        } 
+        }
       }),
-      
+
       // Active shops - only count shops created by this SUPER_DUPER_ADMIN
-      shopId && shopId !== ALL_SHOPS_ID ? 1 : prisma.shop.count({ 
-        where: { 
+      shopId && shopId !== ALL_SHOPS_ID ? 1 : prisma.shop.count({
+        where: {
           isActive: true,
           createdBy: decoded.userId
-        } 
+        }
       }),
-      
+
       // Total users - only count users created by this SUPER_DUPER_ADMIN
-      prisma.user.count({ 
-        where: { 
+      prisma.user.count({
+        where: {
           isActive: true,
           createdBy: decoded.userId
-        } 
+        }
       }),
-      
+
       // Total sales
-      prisma.sale.count({ 
-        where: { 
+      prisma.sale.count({
+        where: {
           isActive: true,
           saleDate: {
             gte: startDate,
             lte: endDate
           },
           ...shopFilter
-        } 
+        }
       }),
-      
+
       // Total revenue
       prisma.sale.aggregate({
-        where: { 
+        where: {
           isActive: true,
           saleDate: {
             gte: startDate,
@@ -341,42 +343,42 @@ export async function GET(req: NextRequest) {
         },
         _sum: { finalAmount: true }
       }),
-      
+
       // Total products
-      prisma.product.count({ 
-        where: { 
+      prisma.product.count({
+        where: {
           isActive: true,
           ...shopFilter
-        } 
+        }
       }),
-      
+
       // Total customers
-      prisma.customer.count({ 
-        where: { 
+      prisma.customer.count({
+        where: {
           isActive: true,
           ...shopFilter
-        } 
+        }
       }),
-      
+
       // Total employees
-      prisma.employee.count({ 
-        where: { 
+      prisma.employee.count({
+        where: {
           isActive: true,
           ...shopFilter
-        } 
+        }
       }),
-      
+
       // Total suppliers
-      prisma.supplier.count({ 
-        where: { 
+      prisma.supplier.count({
+        where: {
           isActive: true,
           ...shopFilter
-        } 
+        }
       }),
-      
+
       // Total expenses
       prisma.expense.aggregate({
-        where: { 
+        where: {
           isActive: true,
           date: {
             gte: startDate,
@@ -386,10 +388,10 @@ export async function GET(req: NextRequest) {
         },
         _sum: { amount: true }
       }),
-      
+
       // Total employee payments
       prisma.employeePayment.aggregate({
-        where: { 
+        where: {
           isActive: true,
           paymentDate: {
             gte: startDate,
@@ -399,10 +401,10 @@ export async function GET(req: NextRequest) {
         },
         _sum: { amount: true }
       }),
-      
+
       // Total supplier payments
       prisma.supplierPayment.aggregate({
-        where: { 
+        where: {
           isActive: true,
           paymentDate: {
             gte: startDate,
@@ -412,13 +414,13 @@ export async function GET(req: NextRequest) {
         },
         _sum: { amount: true }
       }),
-      
+
       // Recent activity logs (last 50) - only from shops created by this SUPER_DUPER_ADMIN
       getActivityLogs(),
-      
+
       // Recent login logs (last 50) - only from users assigned to shops created by this SUPER_DUPER_ADMIN
       getLoginLogs(),
-      
+
       // Business Metrics - Historical ROI, ROS, Gross Margin
       prisma.businessMetric.findMany({
         where: {
@@ -436,7 +438,7 @@ export async function GET(req: NextRequest) {
           }
         }
       }),
-      
+
       // Inventory Analytics
       prisma.inventoryAnalytics.findMany({
         where: {
@@ -457,7 +459,7 @@ export async function GET(req: NextRequest) {
           }
         }
       }),
-      
+
       // Business Goals
       prisma.businessGoal.findMany({
         where: {
@@ -473,11 +475,11 @@ export async function GET(req: NextRequest) {
 
     // Get shops with their statistics (only shops created by this SUPER_DUPER_ADMIN)
     // Get shops with their statistics based on role isolation
-    let shopsWhereClause: any = { 
+    let shopsWhereClause: any = {
       isActive: true,
       ...(shopId && shopId !== ALL_SHOPS_ID && { id: shopId })
     };
-    
+
     if (decoded.role === 'SUPER_DUPER_ADMIN') {
       // SUPER_DUPER_ADMIN sees only their own shops
       shopsWhereClause.createdBy = BigInt(decoded.userId);
@@ -494,11 +496,11 @@ export async function GET(req: NextRequest) {
           }
         }
       });
-      
+
       const activeShopIds = assignments
         .filter(assignment => assignment.shop.isActive)
         .map(assignment => assignment.shop.id);
-      
+
       if (activeShopIds.length > 0) {
         shopsWhereClause.id = { in: activeShopIds };
       } else {
@@ -535,7 +537,7 @@ export async function GET(req: NextRequest) {
     // Calculate revenue by shop for the selected range
     const revenueByShop = await prisma.sale.groupBy({
       by: ['shopId'],
-      where: { 
+      where: {
         isActive: true,
         saleDate: { gte: startDate, lte: endDate },
         ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
@@ -570,7 +572,7 @@ export async function GET(req: NextRequest) {
       console.log('🔍 Date range for payment breakdown:', { startDate, endDate, days });
       const paymentBreakdown = await prisma.sale.groupBy({
         by: ['paymentMethod'],
-        where: { 
+        where: {
           isActive: true,
           saleDate: {
             gte: startDate,
@@ -600,16 +602,16 @@ export async function GET(req: NextRequest) {
     // Calculate how many months to show (default to 6 months if not specified)
     const numMonths = Math.max(1, Math.ceil(days / 30));
     const monthsToShow = Math.min(numMonths, 12); // Cap at 12 months
-    
+
     for (let i = monthsToShow - 1; i >= 0; i--) {
       const now = new Date();
       // Calculate the target month by subtracting i months from now (using UTC)
       const targetYear = now.getUTCFullYear();
       const targetMonth = now.getUTCMonth() - i;
-      
+
       // Create month start (first day of month, 00:00:00 UTC)
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      
+
       // Create month end (last day of month, 23:59:59.999 UTC)
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
@@ -628,10 +630,10 @@ export async function GET(req: NextRequest) {
 
       // Format month as "MMM YYYY"
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       const revenue = Number(monthSales._sum.finalAmount || 0);
       console.log(`📊 Month ${monthLabel}: ${monthSales._count.id || 0} sales, ₹${revenue}`);
-      
+
       salesByMonth.push({
         month: monthLabel,
         sales: monthSales._count.id || 0,
@@ -646,7 +648,7 @@ export async function GET(req: NextRequest) {
       const now = new Date();
       const targetYear = now.getUTCFullYear();
       const targetMonth = now.getUTCMonth() - i;
-      
+
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
@@ -663,7 +665,7 @@ export async function GET(req: NextRequest) {
       });
 
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       expensesByMonth.push({
         month: monthLabel,
         expenses: Number(monthExpenses._sum.amount || 0)
@@ -696,7 +698,7 @@ export async function GET(req: NextRequest) {
       const topProducts = await prisma.saleItem.groupBy({
         by: ['productId'],
         where: {
-          sale: { 
+          sale: {
             isActive: true,
             ...shopFilter
           }
@@ -729,7 +731,7 @@ export async function GET(req: NextRequest) {
     // Top shops by revenue
     const topShops = await prisma.sale.groupBy({
       by: ['shopId'],
-      where: { 
+      where: {
         isActive: true,
         saleDate: {
           gte: startDate,
@@ -752,7 +754,7 @@ export async function GET(req: NextRequest) {
             where: { id: item.shopId },
             select: { name: true }
           });
-          
+
           // Get customer count for this shop
           const customerCount = await prisma.customer.count({
             where: {
@@ -798,16 +800,16 @@ export async function GET(req: NextRequest) {
     const supplierPayments = Number(totalSupplierPayments._sum.amount || 0);
     const totalAllExpenses = expenses + employeePayments + supplierPayments;
     const netProfit = revenue - totalAllExpenses;
-    
+
     // ROI (Return on Investment) = (Net Profit / Total Expenses) * 100
     const roi = totalAllExpenses > 0 ? (netProfit / totalAllExpenses) * 100 : 0;
-    
+
     // ROS (Return on Sales) = (Net Profit / Total Sales) * 100
     const ros = revenue > 0 ? (netProfit / revenue) * 100 : 0;
-    
+
     // Gross Margin = ((Revenue - Expenses) / Revenue) * 100
     const grossMargin = revenue > 0 ? ((revenue - totalAllExpenses) / revenue) * 100 : 0;
-    
+
     console.log('📊 Business Metrics calculated:', {
       revenue,
       expenses,
@@ -841,7 +843,7 @@ export async function GET(req: NextRequest) {
         roi: Number(roi.toFixed(2)),
         ros: Number(ros.toFixed(2)),
         grossMargin: Number(grossMargin.toFixed(2)),
-        
+
         // Shops data
         shops: shopsWithStats.map(shop => ({
           id: Number(shop.id),
@@ -855,31 +857,31 @@ export async function GET(req: NextRequest) {
           totalEmployees: Number(shop._count.employees),
           assignedUsers: Number(shop._count.userAssignments)
         })),
-        
+
         // Revenue breakdown
         revenueByShop: shopRevenueData,
-        
+
         // Sales by month
         salesByMonth: salesByMonth,
-        
+
         // Expenses by month
         expensesByMonth: expensesByMonth,
-        
+
         // Expenses by category
         expensesByCategory: expensesByCategory.map(exp => ({
           category: exp.category,
           amount: Number(exp._sum.amount || 0)
         })),
-        
+
         // Top products
         topProducts: topProductsData,
-        
+
         // Top shops
         topShops: topShopsData,
-        
+
         // Payment methods
         paymentMethodBreakdown: paymentMethodData,
-        
+
         // Recent activity
         activityLog: recentActivityLogs.map(log => ({
           id: Number(log.id),
@@ -892,7 +894,7 @@ export async function GET(req: NextRequest) {
             email: log.user.email
           } : null
         })),
-        
+
         loginLog: recentLoginLogs.map(log => ({
           id: Number(log.id),
           success: log.success,
@@ -905,7 +907,7 @@ export async function GET(req: NextRequest) {
             email: log.user.email
           } : null
         })),
-        
+
         // Business Metrics (Historical)
         businessMetrics: businessMetrics.map(metric => ({
           id: Number(metric.id),
@@ -917,7 +919,7 @@ export async function GET(req: NextRequest) {
           shopId: Number(metric.shopId),
           shopName: metric.shop.name
         })),
-        
+
         // Inventory Analytics
         inventoryAnalytics: inventoryAnalytics.map(analytics => ({
           id: Number(analytics.id),
@@ -931,7 +933,7 @@ export async function GET(req: NextRequest) {
           daysInInventory: Number(analytics.daysInInventory),
           recordedAt: analytics.recordedAt
         })),
-        
+
         // Business Goals
         businessGoals: businessGoals.map(goal => ({
           id: Number(goal.id),
@@ -956,14 +958,14 @@ export async function GET(req: NextRequest) {
       totalExpenses: Number(totalExpenses._sum.amount || 0),
       shopFilter: shopId ? `Shop ${shopId}` : 'All shops'
     });
-    
+
     return NextResponse.json(serializeBigInt(responseData));
-    
+
   } catch (error) {
     console.error('System analytics error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      message: 'Failed to fetch system analytics' 
+    return NextResponse.json({
+      success: false,
+      message: 'Failed to fetch system analytics'
     }, { status: 500 });
   }
 } 

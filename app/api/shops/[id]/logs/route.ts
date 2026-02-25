@@ -28,17 +28,29 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, message: 'Shop not found' }, { status: 404 });
     }
 
+    // Get shop-specific users (assigned to this shop + shop creator)
+    const shopUserIds = await prisma.userShopAssignment.findMany({
+      where: { shopId: shopId },
+      select: { userId: true }
+    });
+
+    const userIds = shopUserIds.map(assignment => assignment.userId);
+    if (shop.createdBy) {
+      userIds.push(shop.createdBy);
+    }
+
     // Get shop-specific activity logs
     const activityLogs = await prisma.activityLog.findMany({
-        where: {
-          OR: [
-            { resource: 'Shop', resourceId: shopId },
-            { 
-              resource: { in: ['Product', 'Sale', 'Customer', 'Supplier', 'Employee', 'Expense', 'Stock', 'User'] },
-              details: { contains: shop.name }
-            }
-          ]
-        },
+      where: {
+        userId: { in: userIds },
+        OR: [
+          { resource: 'Shop', resourceId: shopId },
+          {
+            resource: { in: ['Product', 'Sale', 'Customer', 'Supplier', 'Employee', 'Expense', 'Stock', 'User'] },
+            details: { contains: shop.name }
+          }
+        ]
+      },
       include: {
         user: {
           select: {
@@ -53,14 +65,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       take: 100
     });
 
-    // Get shop-specific login logs (for users assigned to this shop)
-    const shopUserIds = await prisma.userShopAssignment.findMany({
-      where: { shopId: shopId, active: true },
-      select: { userId: true }
-    });
-
-    const userIds = shopUserIds.map(assignment => assignment.userId);
-    
+    // Get shop-specific login logs
     const loginLogs = await prisma.loginLog.findMany({
       where: {
         userId: { in: userIds }
