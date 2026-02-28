@@ -15,9 +15,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Lock, 
-  Mail, 
+import {
+  Lock,
+  Mail,
   Key,
   Eye,
   EyeOff,
@@ -96,10 +96,12 @@ export function PasswordChangeDialog({ userEmail, trigger, open: controlledOpen,
 
     setLoading(true)
     try {
-      const response = await fetch('/api/auth', {
-        method: 'PATCH',
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch('/api/auth/change-password/request-otp', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ email })
       })
@@ -182,10 +184,12 @@ export function PasswordChangeDialog({ userEmail, trigger, open: controlledOpen,
 
     setLoading(true)
     try {
+      const token = localStorage.getItem('accessToken')
       const response = await fetch('/api/auth/change-password', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ email, otp, newPassword })
       })
@@ -243,14 +247,14 @@ export function PasswordChangeDialog({ userEmail, trigger, open: controlledOpen,
       {trigger && (
         <DialogTrigger asChild>{trigger}</DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="max-w-[95vw] sm:max-w-md p-4 md:p-6 rounded-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Lock className="h-5 w-5" />
             Change Password
           </DialogTitle>
           <DialogDescription>
-            {step === 'request' 
+            {step === 'request'
               ? "Enter your email to receive an OTP for password change"
               : "Enter the OTP sent to your email and your new password"
             }
@@ -271,8 +275,8 @@ export function PasswordChangeDialog({ userEmail, trigger, open: controlledOpen,
                     onChange={(e) => setEmail(e.target.value)}
                     disabled={!!userEmail}
                   />
-                  <Button 
-                    onClick={handleRequestOTP} 
+                  <Button
+                    onClick={handleRequestOTP}
                     disabled={loading || !email}
                     size="sm"
                   >
@@ -341,12 +345,12 @@ export function PasswordChangeDialog({ userEmail, trigger, open: controlledOpen,
                     )}
                   </Button>
                 </div>
-                
+
                 {/* Password Strength Indicator */}
                 {newPassword && securitySettings && (
                   <div className="mt-3">
-                    <PasswordStrengthIndicator 
-                      password={newPassword} 
+                    <PasswordStrengthIndicator
+                      password={newPassword}
                       policy={securitySettings.passwordPolicy}
                     />
                   </div>

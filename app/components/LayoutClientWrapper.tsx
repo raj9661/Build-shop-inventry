@@ -5,7 +5,8 @@ import { ShopProvider } from "../contexts/ShopContext";
 import { CollapsibleSidebar } from "./collapsible-sidebar";
 import { CompactModeProvider } from "./compact-mode-provider";
 import { MobileNav } from "./mobile-nav";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/toaster";
 
 function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
   return (
@@ -23,6 +24,7 @@ function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
           <MobileNav />
           <main className="flex flex-1 flex-col p-4">{children}</main>
         </div>
+        <SonnerToaster />
         <Toaster />
       </CompactModeProvider>
     </ShopProvider>

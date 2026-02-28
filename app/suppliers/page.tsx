@@ -92,7 +92,7 @@ export default function Suppliers() {
 
   const loadAvailableItems = async () => {
     if (!currentShop) return
-    
+
     try {
       const token = localStorage.getItem('accessToken')
       if (!token) return
@@ -106,7 +106,7 @@ export default function Suppliers() {
       //   const items = data.data.products.map((product: any) => product.name)
       //   setAvailableItems(items)
       // }
-      
+
       // For now, set empty array
       setAvailableItems([])
     } catch (error) {
@@ -120,7 +120,7 @@ export default function Suppliers() {
       console.log('🔍 [Suppliers] No current shop available');
       return
     }
-    
+
     try {
       if (!silent) setLoading(true)
       const token = localStorage.getItem('accessToken')
@@ -143,7 +143,7 @@ export default function Suppliers() {
       if (response.ok) {
         const data = await response.json()
         console.log('🔍 [Suppliers] API response data:', data);
-        
+
         if (data.success && data.data && data.data.suppliers) {
           // Use backend-calculated fields directly
           const convertedSuppliers = data.data.suppliers.map((supplier: any) => ({
@@ -374,13 +374,13 @@ export default function Suppliers() {
 
   const handlePaySupplier = async () => {
     if (!viewingSupplier) return;
-    
+
     // Prevent duplicate submissions
     if (isProcessingPaymentRef.current) {
       toast.error('Payment is already being processed');
       return;
     }
-    
+
     isProcessingPaymentRef.current = true;
     setPayLoading(true);
     try {
@@ -503,14 +503,14 @@ export default function Suppliers() {
         {/* Main Content */}
         <Card className="shadow-lg border-0 bg-white rounded-2xl overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-t-2xl">
-              <TabsTrigger value="add" className="text-base py-3 rounded-xl">
+            <TabsList className="flex overflow-x-auto w-full bg-gray-100 p-1 rounded-t-2xl [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <TabsTrigger value="add" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4">
                 📝 {t("Add", "जोड़ें")}
               </TabsTrigger>
-              <TabsTrigger value="list" className="text-base py-3 rounded-xl">
+              <TabsTrigger value="list" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4">
                 📋 {t("List", "सूची")}
               </TabsTrigger>
-              <TabsTrigger value="view" className="text-base py-3 rounded-xl" disabled={!viewingSupplier}>
+              <TabsTrigger value="view" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4" disabled={!viewingSupplier}>
                 👁️ {t("View Details", "विवरण देखें")}
               </TabsTrigger>
             </TabsList>

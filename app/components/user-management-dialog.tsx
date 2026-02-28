@@ -46,7 +46,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
   const [searchTerm, setSearchTerm] = useState("")
   const [editingUser, setEditingUser] = useState<User | null>(null)
   const [showPassword, setShowPassword] = useState(false)
-  const [validationErrors, setValidationErrors] = useState<{[key: string]: string}>({})
+  const [validationErrors, setValidationErrors] = useState<{ [key: string]: string }>({})
   const [passwordStrength, setPasswordStrength] = useState({
     length: false,
     uppercase: false,
@@ -64,7 +64,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
     message: ''
   })
   const [usernameTimeout, setUsernameTimeout] = useState<NodeJS.Timeout | null>(null)
-  
+
   const [formData, setFormData] = useState({
     name: "",
     username: "",
@@ -125,46 +125,46 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
     if (!isEdit && !password.trim()) return "Password is required"
     if (password && password.length < 8) return "Password must be at least 8 characters"
     if (password && password.length > 100) return "Password must be less than 100 characters"
-    
+
     if (password) {
       // Check for at least one uppercase letter
       if (!/[A-Z]/.test(password)) {
         return "Password must contain at least one uppercase letter"
       }
-      
+
       // Check for at least one lowercase letter
       if (!/[a-z]/.test(password)) {
         return "Password must contain at least one lowercase letter"
       }
-      
+
       // Check for at least one number
       if (!/[0-9]/.test(password)) {
         return "Password must contain at least one number"
       }
-      
+
       // Check for at least one special character
       if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
         return "Password must contain at least one special character (!@#$%^&*()_+-=[]{}|;':\",./<>?)"
       }
-      
+
       // Check for only allowed characters (alphanumeric + special characters)
       if (!/^[a-zA-Z0-9!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]+$/.test(password)) {
         return "Password can only contain letters, numbers, and special characters"
       }
     }
-    
+
     return ""
   }
 
   const validateForm = (): boolean => {
-    const errors: {[key: string]: string} = {}
-    
+    const errors: { [key: string]: string } = {}
+
     errors.name = validateName(formData.name)
     errors.username = validateUsername(formData.username)
     errors.email = validateEmail(formData.email)
     errors.phone = validatePhone(formData.phone)
     errors.password = validatePassword(formData.password, !!editingUser)
-    
+
     // Check username availability if not editing or username changed
     if (formData.username && formData.username.length >= 3) {
       if (usernameStatus.checking) {
@@ -173,9 +173,9 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         errors.username = usernameStatus.message
       }
     }
-    
+
     setValidationErrors(errors)
-    
+
     return Object.values(errors).every(error => error === "")
   }
 
@@ -199,7 +199,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
 
     try {
       setUsernameStatus({ checking: true, available: null, message: 'Checking availability...' })
-      
+
       const token = localStorage.getItem('accessToken')
       if (!token) {
         setUsernameStatus({ checking: false, available: false, message: 'Authentication required. Please refresh the page.' })
@@ -212,7 +212,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         if (tokenParts.length !== 3) {
           throw new Error('Invalid token format')
         }
-        
+
         const payload = JSON.parse(atob(tokenParts[1]))
         const currentTime = Math.floor(Date.now() / 1000)
         if (payload.exp && payload.exp < currentTime) {
@@ -220,10 +220,10 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         }
       } catch (tokenError) {
         console.error('Token validation error:', tokenError)
-        setUsernameStatus({ 
-          checking: false, 
-          available: false, 
-          message: 'Session expired. Please refresh the page and login again.' 
+        setUsernameStatus({
+          checking: false,
+          available: false,
+          message: 'Session expired. Please refresh the page and login again.'
         })
         return
       }
@@ -236,9 +236,9 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
-          body: JSON.stringify({ 
+          body: JSON.stringify({
             username: username.trim(),
-            excludeUserId: editingUser?.id 
+            excludeUserId: editingUser?.id
           })
         })
 
@@ -250,7 +250,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ refreshToken: localStorage.getItem('refreshToken') })
             })
-            
+
             if (refreshResponse.ok) {
               const refreshData = await refreshResponse.json()
               localStorage.setItem('accessToken', refreshData.accessToken)
@@ -268,12 +268,12 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
       const response = await makeRequest()
 
       const data = await response.json()
-      
+
       if (response.ok) {
-        setUsernameStatus({ 
-          checking: false, 
-          available: data.available, 
-          message: data.message 
+        setUsernameStatus({
+          checking: false,
+          available: data.available,
+          message: data.message
         })
       } else {
         let errorMessage = 'Failed to check username'
@@ -284,19 +284,19 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         } else if (data.error) {
           errorMessage = data.error
         }
-        
-        setUsernameStatus({ 
-          checking: false, 
-          available: false, 
+
+        setUsernameStatus({
+          checking: false,
+          available: false,
           message: errorMessage
         })
       }
     } catch (error) {
       console.error('Username check error:', error)
-      setUsernameStatus({ 
-        checking: false, 
-        available: false, 
-        message: 'Network error' 
+      setUsernameStatus({
+        checking: false,
+        available: false,
+        message: 'Network error'
       })
     }
   }
@@ -306,11 +306,11 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
     if (usernameTimeout) {
       clearTimeout(usernameTimeout)
     }
-    
+
     const timeout = setTimeout(() => {
       checkUsernameAvailability(username)
     }, 500) // 500ms delay
-    
+
     setUsernameTimeout(timeout)
   }
 
@@ -325,7 +325,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         });
         return;
       }
-      
+
       console.log('🔍 UserManagementDialog: Token details:', {
         tokenLength: token.length,
         tokenStart: token.substring(0, 20) + '...',
@@ -333,7 +333,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         tokenType: typeof token,
         isString: typeof token === 'string'
       });
-      
+
       console.log('🔍 UserManagementDialog: Making API call to /api/users')
       const response = await fetch('/api/users', {
         method: 'GET',
@@ -342,7 +342,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
           'Authorization': `Bearer ${token}`
         }
       })
-      
+
       console.log('🔍 UserManagementDialog: API response status:', response.status)
 
       if (response.ok) {
@@ -372,22 +372,22 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     // Validate form before submission
     if (!validateForm()) {
       toast.error("Please fix the validation errors before submitting")
       return
     }
-    
+
     setLoading(true)
 
     try {
-      const url = editingUser 
+      const url = editingUser
         ? `/api/users/${editingUser.id}`
         : '/api/users'
-      
+
       const method = editingUser ? 'PUT' : 'POST'
-      const body = editingUser 
+      const body = editingUser
         ? { ...formData, password: formData.password || undefined }
         : formData
 
@@ -398,7 +398,7 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
         });
         return;
       }
-      
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -442,12 +442,12 @@ export function UserManagementDialog({ onUserCreated, open: controlledOpen, onOp
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) {
-toast.error("Authentication Required", {
+        toast.error("Authentication Required", {
           description: "Please log in again"
         });
         return;
       }
-      
+
       const response = await fetch(`/api/users/${userId}`, {
         method: 'DELETE',
         headers: {
@@ -523,7 +523,7 @@ toast.error("Authentication Required", {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl p-4 md:p-6 max-h-[90vh] overflow-y-auto rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
@@ -534,13 +534,13 @@ toast.error("Authentication Required", {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 w-full min-w-0">
           {/* Create/Edit User Form */}
-          <div className="border rounded-lg p-4">
+          <div className="border rounded-lg p-4 w-full">
             <h3 className="text-lg font-medium mb-4">
               {editingUser ? 'Edit User' : 'Create New User'}
             </h3>
-            <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-4">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               <div>
                 <Label htmlFor="name">Name</Label>
                 <Input
@@ -571,16 +571,16 @@ toast.error("Authentication Required", {
                 <Input
                   id="username"
                   value={formData.username}
-                    onChange={(e) => {
-                      const username = e.target.value
-                      setFormData({ ...formData, username })
-                      // Clear validation error when user starts typing
-                      if (validationErrors.username) {
-                        setValidationErrors({ ...validationErrors, username: "" })
-                      }
-                      // Check username availability with debouncing
-                      debouncedUsernameCheck(username)
-                    }}
+                  onChange={(e) => {
+                    const username = e.target.value
+                    setFormData({ ...formData, username })
+                    // Clear validation error when user starts typing
+                    if (validationErrors.username) {
+                      setValidationErrors({ ...validationErrors, username: "" })
+                    }
+                    // Check username availability with debouncing
+                    debouncedUsernameCheck(username)
+                  }}
                   onBlur={() => {
                     const error = validateUsername(formData.username)
                     if (error) {
@@ -766,12 +766,12 @@ toast.error("Authentication Required", {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="col-span-3 flex gap-2">
-                <Button type="submit" disabled={loading}>
+              <div className="col-span-1 sm:col-span-2 flex flex-col sm:flex-row gap-2 mt-2">
+                <Button type="submit" disabled={loading} className="w-full sm:w-auto">
                   {loading ? "Saving..." : (editingUser ? "Update User" : "Create User")}
                 </Button>
                 {editingUser && (
-                  <Button type="button" variant="outline" onClick={resetForm}>
+                  <Button type="button" variant="outline" onClick={resetForm} className="w-full sm:w-auto">
                     Cancel Edit
                   </Button>
                 )}
@@ -780,19 +780,21 @@ toast.error("Authentication Required", {
           </div>
 
           {/* Users List */}
-          <div className="border rounded-lg">
-            <div className="p-4 border-b">
-              <div className="flex items-center gap-2">
-                <Search className="h-4 w-4" />
-                <Input
-                  placeholder="Search users..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="max-w-sm"
-                />
-                <div className="flex gap-2">
-                  <Button 
-                    variant="outline" 
+          <div className="border rounded-lg w-full min-w-0">
+            <div className="p-3 sm:p-4 border-b w-full min-w-0">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <div className="flex items-center w-full sm:w-auto flex-1 gap-2">
+                  <Search className="h-4 w-4 text-gray-500 shrink-0" />
+                  <Input
+                    placeholder="Search users..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full sm:max-w-sm text-sm p-2"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={async () => {
                       try {
@@ -803,7 +805,7 @@ toast.error("Authentication Required", {
                           tokenStart: token?.substring(0, 20) + '...',
                           tokenParts: token?.split('.').length
                         });
-                        
+
                         // Test username check API
                         const response = await fetch('/api/users/check-username', {
                           method: 'POST',
@@ -824,8 +826,8 @@ toast.error("Authentication Required", {
                   >
                     Debug
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => {
                       localStorage.removeItem('accessToken');
@@ -839,57 +841,59 @@ toast.error("Authentication Required", {
                 </div>
               </div>
             </div>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Username</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Phone</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">{user.name || user.username}</TableCell>
-                    <TableCell>{user.username}</TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>{user.phone || '-'}</TableCell>
-                    <TableCell>{getRoleBadge(user.role)}</TableCell>
-                    <TableCell>
-                      <Badge variant={user.isActive ? "default" : "secondary"}>
-                        {user.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.createdAt).toLocaleDateString()}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleEditUser(user)}
-                        >
-                          <Edit className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={() => handleDeleteUser(user.id)}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </TableCell>
+            <div className="overflow-x-auto w-full max-h-96">
+              <Table className="min-w-full">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Username</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Phone</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">{user.name || user.username}</TableCell>
+                      <TableCell>{user.username}</TableCell>
+                      <TableCell>{user.email}</TableCell>
+                      <TableCell>{user.phone || '-'}</TableCell>
+                      <TableCell>{getRoleBadge(user.role)}</TableCell>
+                      <TableCell>
+                        <Badge variant={user.isActive ? "default" : "secondary"}>
+                          {user.isActive ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(user.createdAt).toLocaleDateString()}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleEditUser(user)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDeleteUser(user.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </div>
         </div>
 

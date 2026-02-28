@@ -1,6 +1,4 @@
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
+import redisService from '@/app/lib/redis-service';
 
 // OTP storage and management utility
 interface OTPData {
@@ -15,50 +13,41 @@ const otpUtils = {
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
-  // Store OTP for an email in database
+  // Store OTP for an email in Redis
   async storeOTP(email: string, otp: string, userId: number, expiryMinutes: number = 10, type: string = 'PASSWORD_CHANGE'): Promise<void> {
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
-    
-    // Delete any existing OTP for this email and type
-    await prisma.oTP.deleteMany({
-      where: { email: email.toLowerCase(), type }
-    });
+    const key = `otp:${type}:${email.toLowerCase()}`;
 
-    // Store new OTP
-    await prisma.oTP.create({
-      data: {
-        email: email.toLowerCase(),
-        otp,
-        expiresAt,
-        userId,
-        type
-      }
-    });
+    const data: OTPData = {
+      otp,
+      expiresAt,
+      userId
+    };
+
+    // Store in Redis with TTL in seconds
+    await redisService.set(key, data, expiryMinutes * 60);
   },
 
-  // Get OTP data for an email from database
+  // Get OTP data for an email from Redis
   async getOTP(email: string, type: string = 'PASSWORD_CHANGE'): Promise<OTPData | null> {
-    const otpRecord = await prisma.oTP.findFirst({
-      where: { 
-        email: email.toLowerCase(),
-        type
-      }
-    });
+    const key = `otp:${type}:${email.toLowerCase()}`;
+    const otpRecord = await redisService.get<OTPData>(key);
 
     if (!otpRecord) return null;
 
+    // Convert string date back to Date object if needed
+    const expiresAt = new Date(otpRecord.expiresAt);
+
     // Check if expired
-    if (new Date() > otpRecord.expiresAt) {
+    if (new Date() > expiresAt) {
       // Delete expired OTP
-      await prisma.oTP.delete({
-        where: { id: otpRecord.id }
-      });
+      await redisService.del(key);
       return null;
     }
 
     return {
       otp: otpRecord.otp,
-      expiresAt: otpRecord.expiresAt,
+      expiresAt: expiresAt,
       userId: otpRecord.userId
     };
   },
@@ -66,7 +55,7 @@ const otpUtils = {
   // Verify OTP
   async verifyOTP(email: string, otp: string, type: string = 'PASSWORD_CHANGE'): Promise<{ valid: boolean; userId?: number; message?: string }> {
     const data = await this.getOTP(email, type);
-    
+
     if (!data) {
       return { valid: false, message: 'OTP not found or expired' };
     }
@@ -76,35 +65,21 @@ const otpUtils = {
     }
 
     // Remove OTP after successful verification
-    await prisma.oTP.deleteMany({
-      where: { 
-        email: email.toLowerCase(),
-        type
-      }
-    });
-    
+    await this.removeOTP(email, type);
+
     return { valid: true, userId: data.userId };
   },
 
   // Remove OTP (for cleanup)
   async removeOTP(email: string, type: string = 'PASSWORD_CHANGE'): Promise<void> {
-    await prisma.oTP.deleteMany({
-      where: { 
-        email: email.toLowerCase(),
-        type
-      }
-    });
+    const key = `otp:${type}:${email.toLowerCase()}`;
+    await redisService.del(key);
   },
 
-  // Clean up expired OTPs
+  // Clean up expired OTPs (handled automatically by Redis TTL)
   async cleanupExpiredOTPs(): Promise<void> {
-    await prisma.oTP.deleteMany({
-      where: {
-        expiresAt: {
-          lt: new Date()
-        }
-      }
-    });
+    // Redis handles expiration automatically via TTL, so this is just a no-op for compatibility
+    console.log('Redis automatically handles OTP cleanup via TTL.');
   }
 };
 

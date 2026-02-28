@@ -55,7 +55,7 @@ const emailTemplates = {
       </div>
     `
   }),
-  
+
   shopDeletionOTP: (otp: string, userName: string, shopName: string) => ({
     subject: 'Shop Deletion Verification - Shop Inventory System',
     html: `
@@ -142,6 +142,46 @@ const emailTemplates = {
             <li>Do not share this code with anyone</li>
             <li>If you didn't attempt to login, please change your password immediately</li>
             <li>This is required for all SUPER_DUPER_ADMIN logins</li>
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 1px solid #e0e0e0;">
+          <p style="color: #999; font-size: 14px; margin: 0;">
+            This is an automated message from Shop Inventory System.<br>
+            Please do not reply to this email.
+          </p>
+        </div>
+      </div>
+    `
+  }),
+
+  passwordResetLink: (resetUrl: string, userName: string) => ({
+    subject: 'Password Reset Request - Shop Inventory System',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h2 style="color: #333; margin-bottom: 10px;">Shop Inventory System</h2>
+          <p style="color: #666; margin: 0;">Password Reset Request</p>
+        </div>
+        
+        <div style="background-color: #f8f9fa; padding: 20px; border-radius: 6px; margin-bottom: 20px;">
+          <h3 style="color: #333; margin-top: 0;">Hello ${userName},</h3>
+          <p style="color: #555; line-height: 1.6;">
+            We received a request to reset your password. You can reset your password by clicking the secure link below:
+          </p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background-color: #007bff; color: white; padding: 15px 30px; border-radius: 6px; display: inline-block; font-size: 16px; font-weight: bold; text-decoration: none;">
+              Reset Password
+            </a>
+          </div>
+          
+          <p style="color: #555; line-height: 1.6;">
+            <strong>Important:</strong>
+          </p>
+          <ul style="color: #555; line-height: 1.6;">
+            <li>This link will expire in 30 minutes.</li>
+            <li>If you did not request this password reset, no further action is required and your password will remain the same.</li>
           </ul>
         </div>
         
@@ -361,7 +401,7 @@ export const emailService = {
   async sendPasswordChangeOTP(email: string, otp: string, userName: string): Promise<boolean> {
     try {
       const template = emailTemplates.passwordChangeOTP(otp, userName);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -382,7 +422,7 @@ export const emailService = {
   async sendShopDeletionOTP(email: string, otp: string, userName: string, shopName: string): Promise<boolean> {
     try {
       const template = emailTemplates.shopDeletionOTP(otp, userName, shopName);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -403,7 +443,7 @@ export const emailService = {
   async sendLoginOTP(email: string, otp: string, userName: string): Promise<boolean> {
     try {
       const template = emailTemplates.loginOTP(otp, userName);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -436,7 +476,7 @@ export const emailService = {
   async sendTestNotification(email: string, shopName: string): Promise<boolean> {
     try {
       const template = emailTemplates.testNotification(shopName);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -457,7 +497,7 @@ export const emailService = {
   async sendLowStockAlert(email: string, shopName: string, products: any[]): Promise<boolean> {
     try {
       const template = emailTemplates.lowStockAlert(shopName, products);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -478,7 +518,7 @@ export const emailService = {
   async sendSalesReport(email: string, shopName: string, reportData: any, reportType: string): Promise<boolean> {
     try {
       const template = emailTemplates.salesReport(shopName, reportData, reportType);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -499,7 +539,7 @@ export const emailService = {
   async sendCriticalAlert(email: string, shopName: string, alertType: string, details: string): Promise<boolean> {
     try {
       const template = emailTemplates.criticalAlert(shopName, alertType, details);
-      
+
       const mailOptions = {
         from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
         to: email,
@@ -512,6 +552,27 @@ export const emailService = {
       return true;
     } catch (error) {
       console.error('Failed to send critical alert email:', error);
+      return false;
+    }
+  },
+
+  // Send Password Reset Link
+  async sendPasswordResetLink(email: string, resetUrl: string, userName: string): Promise<boolean> {
+    try {
+      const template = emailTemplates.passwordResetLink(resetUrl, userName);
+
+      const mailOptions = {
+        from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
+        to: email,
+        subject: template.subject,
+        html: template.html
+      };
+
+      const result = await transporter.sendMail(mailOptions);
+      console.log('Password reset link email sent successfully:', result.messageId);
+      return true;
+    } catch (error) {
+      console.error('Failed to send password reset link email:', error);
       return false;
     }
   }

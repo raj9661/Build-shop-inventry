@@ -44,7 +44,7 @@ export async function POST(req: NextRequest) {
 
     // Update password in database
     const updatedUser = await prisma.user.update({
-      where: { id: otpResult.userId! },
+      where: { id: BigInt(otpResult.userId!) },
       data: { password: hashedPassword },
       select: {
         id: true,
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     // Log security event
     await securityService.logSecurityEvent(
-      otpResult.userId!,
+      Number(otpResult.userId!),
       'password_changed',
       'Password changed successfully via OTP',
       req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'Unknown',
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
       message: 'Password changed successfully',
       data: {
         user: {
-          id: updatedUser.id,
+          id: String(updatedUser.id),
           name: updatedUser.name,
           email: updatedUser.email,
           role: updatedUser.role

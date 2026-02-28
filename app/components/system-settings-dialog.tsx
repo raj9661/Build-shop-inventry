@@ -17,11 +17,11 @@ import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { 
-  Globe, 
-  Shield, 
-  Database, 
-  Bell, 
+import {
+  Globe,
+  Shield,
+  Database,
+  Bell,
   Palette,
   Save,
   RefreshCw
@@ -87,7 +87,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
-  
+
   const [settings, setSettings] = useState<SystemSettings>({
     general: {
       systemName: "Shop Inventory System",
@@ -232,7 +232,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl p-4 md:p-6 max-h-[90vh] overflow-y-auto rounded-lg">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Globe className="h-5 w-5" />
@@ -243,7 +243,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6">
+        <div className="space-y-6 w-full min-w-0">
           {loading ? (
             <div className="text-center py-8">
               <p className="text-gray-500">Loading settings...</p>
@@ -259,7 +259,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="systemName">System Name</Label>
                       <Input
@@ -363,11 +363,11 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       </p>
                     </div>
                   </div>
-                  
+
                   {/* Password Policy */}
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm text-gray-700">Password Policy</h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div>
                         <Label htmlFor="minLength">Minimum Length</Label>
                         <Input
@@ -427,7 +427,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           {settings.security.requireMFA ? "Enabled" : "Disabled"}
                         </Badge>
                       </div>
-                      
+
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center space-x-2">
                           <div className={`w-3 h-3 rounded-full ${settings.security.sessionTimeout <= 30 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
@@ -437,7 +437,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           {settings.security.sessionTimeout} minutes
                         </Badge>
                       </div>
-                      
+
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center space-x-2">
                           <div className={`w-3 h-3 rounded-full ${settings.security.passwordPolicy.minLength >= 8 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
@@ -463,7 +463,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           </div>
                         </div>
                       )}
-                      
+
                       {settings.security.sessionTimeout > 60 && (
                         <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                           <Shield className="h-4 w-4 text-yellow-600 mt-0.5" />
@@ -473,7 +473,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           </div>
                         </div>
                       )}
-                      
+
                       {!settings.security.passwordPolicy.requireSpecialChars && (
                         <div className="flex items-start space-x-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                           <Shield className="h-4 w-4 text-orange-600 mt-0.5" />
@@ -536,7 +536,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   {/* Notification Types */}
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm text-gray-700">Notification Types</h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="lowStockAlerts"
@@ -591,7 +591,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   {/* Other Notification Methods */}
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm text-gray-700">Other Notification Methods</h4>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="smsNotifications"
@@ -629,7 +629,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                               shopName: 'Test Shop'
                             })
                           });
-                          
+
                           if (response.ok) {
                             toast({
                               title: "Test Notification Sent",
@@ -667,7 +667,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="theme">Theme</Label>
                       <Select
@@ -713,7 +713,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <Label htmlFor="backupFrequency">Backup Frequency</Label>
                       <Select
@@ -755,11 +755,11 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>
+        <DialogFooter className="flex flex-col sm:flex-row gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)} className="w-full sm:w-auto">
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={saving}>
+          <Button onClick={handleSave} disabled={saving} className="w-full sm:w-auto">
             {saving ? (
               <>
                 <Save className="h-4 w-4 mr-2" />

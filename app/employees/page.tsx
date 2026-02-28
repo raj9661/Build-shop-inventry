@@ -163,7 +163,7 @@ export default function Employees() {
 
   const fetchEmployees = async (silent = false) => {
     if (!currentShop || currentShop.id === 0) return
-    
+
     try {
       if (!silent) setLoading(true)
       const token = localStorage.getItem('accessToken')
@@ -348,12 +348,12 @@ export default function Employees() {
       employees.map((employee) =>
         employee.id === employeeId
           ? {
-              ...employee,
-              weeklySalaries: employee.weeklySalaries.map((salary, index) =>
-                index === weekIndex ? { ...salary, status: "paid" as const } : salary,
-              ),
-              totalEarnings: employee.totalEarnings + employee.weeklySalaries[weekIndex].amount,
-            }
+            ...employee,
+            weeklySalaries: employee.weeklySalaries.map((salary, index) =>
+              index === weekIndex ? { ...salary, status: "paid" as const } : salary,
+            ),
+            totalEarnings: employee.totalEarnings + employee.weeklySalaries[weekIndex].amount,
+          }
           : employee,
       ),
     )
@@ -393,7 +393,7 @@ export default function Employees() {
       }
 
       console.log('🔍 [Employee Payment] Creating payment for employee:', employeeId, 'shopId:', currentShop.id, 'amount:', employee.salaryAmount);
-      
+
       const response = await fetch('/api/employee-payments', {
         method: 'POST',
         headers: {
@@ -412,7 +412,7 @@ export default function Employees() {
 
       const data = await response.json();
       console.log('🔍 [Employee Payment] Payment response:', data);
-      
+
       if (data.success) {
         toast.success(t("Salary marked as paid!", "वेतन भुगतान के रूप में चिह्नित!"))
         console.log('🔍 [Employee Payment] Refreshing employees list...');
@@ -439,14 +439,14 @@ export default function Employees() {
         {/* Main Content */}
         <Card className="shadow-lg border-0 bg-white rounded-2xl overflow-hidden">
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-3 bg-gray-100 p-1 rounded-t-2xl">
-              <TabsTrigger value="add" className="text-base py-3 rounded-xl">
+            <TabsList className="flex overflow-x-auto w-full bg-gray-100 p-1 rounded-t-2xl [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+              <TabsTrigger value="add" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4">
                 📝 {t("Add", "जोड़ें")}
               </TabsTrigger>
-              <TabsTrigger value="list" className="text-base py-3 rounded-xl">
+              <TabsTrigger value="list" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4">
                 📋 {t("List", "सूची")}
               </TabsTrigger>
-              <TabsTrigger value="view" className="text-base py-3 rounded-xl" disabled={!viewingEmployee}>
+              <TabsTrigger value="view" className="flex-1 min-w-[fit-content] text-sm md:text-base py-2 md:py-3 rounded-xl whitespace-nowrap px-4" disabled={!viewingEmployee}>
                 👁️ {t("View Details", "विवरण देखें")}
               </TabsTrigger>
             </TabsList>

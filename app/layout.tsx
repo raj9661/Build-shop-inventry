@@ -7,7 +7,8 @@ import { LanguageProvider } from "@/hooks/use-language"
 import { ShopProvider } from "./contexts/ShopContext"
 import { CollapsibleSidebar } from "@/app/components/collapsible-sidebar"
 import { CompactModeProvider } from "@/app/components/compact-mode-provider"
-import { Toaster } from "@/components/ui/sonner"
+import { Toaster as SonnerToaster } from "@/components/ui/sonner"
+import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import AuthProvider from "@/components/auth-provider"
 import LayoutClientWrapper from './components/LayoutClientWrapper';
@@ -23,7 +24,7 @@ const inter = Inter({ subsets: ["latin"] })
 export const metadata: Metadata = {
   title: "Inventry Management",
   description: "A modern inventory management system.",
-    generator: 'v0.dev'
+  generator: 'v0.dev'
 }
 
 function LayoutWithSidebar({ children }: { children: React.ReactNode }) {
@@ -59,7 +60,7 @@ export default function RootLayout({
       <head>
         <link rel="manifest" href="/manifest.json" />
       </head>
-      <body 
+      <body
         className={cn("min-h-screen bg-background font-sans antialiased", inter.className)}
         suppressHydrationWarning={true}
       >

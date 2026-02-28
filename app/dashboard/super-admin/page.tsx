@@ -152,6 +152,7 @@ function SuperDuperAdminDashboardContent() {
   const [logs, setLogs] = useState<{ activityLog: any[]; loginLog: any[] }>({ activityLog: [], loginLog: [] })
   const [shopLogs, setShopLogs] = useState<{ activityLog: any[]; loginLog: any[] }>({ activityLog: [], loginLog: [] })
   const [activeTab, setActiveTab] = useState("overview")
+  const [activeShopDialogTab, setActiveShopDialogTab] = useState("details")
   const [shopDialogOpen, setShopDialogOpen] = useState(false)
   const [shopDialogShop, setShopDialogShop] = useState<ShopStats | null>(null)
   const [shopDetails, setShopDetails] = useState<any>(null)
@@ -832,27 +833,29 @@ function SuperDuperAdminDashboardContent() {
   }
 
   return (
-    <div className="flex-1 space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">SUPER_DUPER_ADMIN Dashboard</h1>
-          <p className="text-muted-foreground">
+    <div className="flex-1 space-y-6 p-4 md:p-6 w-full max-w-full overflow-x-hidden">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div className="w-full md:w-auto">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight break-words">SUPER_DUPER_ADMIN Dashboard</h1>
+          <p className="text-sm md:text-base text-muted-foreground">
             Complete system management and oversight
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
           <Button
             variant={isEditMode ? "default" : "outline"}
             onClick={() => setIsEditMode(!isEditMode)}
-            className="flex items-center gap-2"
+            className="flex items-center gap-2 flex-1 md:flex-none justify-center whitespace-nowrap"
           >
             <Settings className="h-4 w-4" />
-            {isEditMode ? "Done Editing" : "Edit Widgets"}
+            {isEditMode ? "Done" : "Edit Widgets"}
           </Button>
-          <NotificationBell />
-          <Badge variant="destructive" className="text-sm">
-            SUPER_DUPER_ADMIN
-          </Badge>
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Badge variant="destructive" className="text-xs md:text-sm whitespace-nowrap">
+              SUPER_DUPER_ADMIN
+            </Badge>
+          </div>
         </div>
       </div>
 
@@ -1437,19 +1440,21 @@ function SuperDuperAdminDashboardContent() {
         <TabsContent value="shops" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+              <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-2">
-                  <Building2 className="h-5 w-5" />
+                  <Building2 className="h-5 w-5 shrink-0" />
                   All Shops
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={handleRefreshShops}
                     disabled={loading}
+                    className="flex-1 sm:flex-none"
                   >
-                    {loading ? 'Refreshing...' : 'Refresh'}
+                    <span className="hidden sm:inline">{loading ? 'Refreshing...' : 'Refresh'}</span>
+                    <span className="sm:hidden">{loading ? 'Wait...' : 'Refresh'}</span>
                   </Button>
                   <Button
                     variant="outline"
@@ -1457,17 +1462,19 @@ function SuperDuperAdminDashboardContent() {
                     onClick={refreshLimits}
                     disabled={limitsLoading}
                     title="Refresh subscription limits"
-                    className="flex items-center gap-1"
+                    className="flex items-center justify-center gap-1 flex-1 sm:flex-none"
                   >
                     {limitsLoading ? '...' : (
                       <>
                         <span className="font-medium">{shopCount}/{shopLimit}</span>
-                        <span className="text-xs text-gray-500">shops</span>
+                        <span className="text-xs text-gray-500 hidden sm:inline">shops</span>
                         <span className="text-xs">↻</span>
                       </>
                     )}
                   </Button>
-                  <CreateShopDialog onShopCreated={loadShops} />
+                  <div className="w-full sm:w-auto mt-2 sm:mt-0">
+                    <CreateShopDialog onShopCreated={loadShops} />
+                  </div>
                 </div>
               </CardTitle>
             </CardHeader>
@@ -1549,106 +1556,125 @@ function SuperDuperAdminDashboardContent() {
           </Card>
           {/* Shop Management Dialog */}
           <Dialog open={shopDialogOpen} onOpenChange={setShopDialogOpen}>
-            <DialogContent className="max-w-3xl w-[95vw] md:w-full max-h-[90vh] overflow-y-auto p-4 md:p-6">
-              <DialogHeader>
-                <DialogTitle>Manage Shop: {shopDialogShop?.name}</DialogTitle>
+            <DialogContent className="max-w-3xl w-[95vw] md:w-full max-h-[85vh] overflow-y-auto p-4 md:p-6">
+              <DialogHeader className="pr-8">
+                <DialogTitle className="text-lg md:text-xl font-semibold leading-tight break-words">Manage Shop: {shopDialogShop?.name}</DialogTitle>
               </DialogHeader>
-              <InnerTabs defaultValue="details" className="space-y-4 w-full">
-                <div className="overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0">
-                  <InnerTabsList className="mb-4 inline-flex w-max min-w-full md:w-full">
-                    <InnerTabsTrigger value="details" className="whitespace-nowrap">Shop Details</InnerTabsTrigger>
-                    <InnerTabsTrigger value="users" className="whitespace-nowrap">User Assignment</InnerTabsTrigger>
-                    <InnerTabsTrigger value="analytics" className="whitespace-nowrap">Analytics</InnerTabsTrigger>
-                    <InnerTabsTrigger value="financials" className="whitespace-nowrap">Financials</InnerTabsTrigger>
-                    <InnerTabsTrigger value="logs" className="whitespace-nowrap">Logs</InnerTabsTrigger>
-                  </InnerTabsList>
+              <InnerTabs value={activeShopDialogTab} onValueChange={setActiveShopDialogTab} className="space-y-4 w-full">
+                <div className="w-full">
+                  <div className="block lg:hidden mb-4">
+                    <select
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-shadow outline-none"
+                      value={activeShopDialogTab}
+                      onChange={(e) => setActiveShopDialogTab(e.target.value)}
+                    >
+                      <option value="details">Shop Details</option>
+                      <option value="users">User Assignment</option>
+                      <option value="analytics">Analytics</option>
+                      <option value="financials">Financials</option>
+                      <option value="logs">Logs</option>
+                    </select>
+                  </div>
+                  <div className="hidden lg:block w-full overflow-hidden">
+                    <InnerTabsList className="flex w-full overflow-x-auto overflow-y-hidden whitespace-nowrap scrollbar-hide justify-start h-auto gap-1 p-1 bg-muted/50 rounded-lg [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                      <InnerTabsTrigger value="details" className="flex-1 min-w-[fit-content] whitespace-nowrap px-4 py-2">Shop Details</InnerTabsTrigger>
+                      <InnerTabsTrigger value="users" className="flex-1 min-w-[fit-content] whitespace-nowrap px-4 py-2">User Assignment</InnerTabsTrigger>
+                      <InnerTabsTrigger value="analytics" className="flex-1 min-w-[fit-content] whitespace-nowrap px-4 py-2">Analytics</InnerTabsTrigger>
+                      <InnerTabsTrigger value="financials" className="flex-1 min-w-[fit-content] whitespace-nowrap px-4 py-2">Financials</InnerTabsTrigger>
+                      <InnerTabsTrigger value="logs" className="flex-1 min-w-[fit-content] whitespace-nowrap px-4 py-2">Logs</InnerTabsTrigger>
+                    </InnerTabsList>
+                  </div>
                 </div>
-                <InnerTabsContent value="details">
+                <InnerTabsContent value="details" className="w-full">
                   {shopDetails ? (
-                    <form className="space-y-3" onSubmit={e => { e.preventDefault(); handleSaveDetails() }}>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Name</label>
-                        <input type="text" className="w-full border rounded p-2" value={shopDetails.name || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, name: e.target.value })} />
+                    <form className="space-y-4" onSubmit={e => { e.preventDefault(); handleSaveDetails() }}>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                          <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.name || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, name: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>
+                          <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.location || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, location: e.target.value })} />
+                        </div>
+                        <div className="md:col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Address</label>
+                          <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.address || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, address: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                          <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.phone || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, phone: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                          <input type="email" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.email || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, email: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
+                          <input type="text" className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.gstNo || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, gstNo: e.target.value })} placeholder="Enter GST number" />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                          <select className="w-full border rounded-lg px-3 py-2 text-sm bg-white text-gray-900 focus:ring-2 focus:ring-blue-500 transition-shadow" value={shopDetails.isActive ? 'active' : 'inactive'} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, isActive: e.target.value === 'active' })}>
+                            <option value="active">Active</option>
+                            <option value="inactive">Inactive</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Location</label>
-                        <input type="text" className="w-full border rounded p-2" value={shopDetails.location || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, location: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Address</label>
-                        <input type="text" className="w-full border rounded p-2" value={shopDetails.address || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, address: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Phone</label>
-                        <input type="text" className="w-full border rounded p-2" value={shopDetails.phone || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, phone: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Email</label>
-                        <input type="email" className="w-full border rounded p-2" value={shopDetails.email || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, email: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">GST Number</label>
-                        <input type="text" className="w-full border rounded p-2" value={shopDetails.gstNo || ''} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, gstNo: e.target.value })} placeholder="Enter GST number" />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700">Status</label>
-                        <select className="w-full border rounded p-2" value={shopDetails.isActive ? 'active' : 'inactive'} disabled={!editing} onChange={e => setShopDetails({ ...shopDetails, isActive: e.target.value === 'active' })}>
-                          <option value="active">Active</option>
-                          <option value="inactive">Inactive</option>
-                        </select>
-                      </div>
-                      <div className="flex gap-2 mt-4">
+                      <div className="flex flex-col sm:flex-row gap-2 mt-6 pt-4 border-t w-full">
                         {editing ? (
                           <>
-                            <button type="submit" className="btn btn-primary" disabled={saving}>Save</button>
-                            <button type="button" className="btn btn-secondary" onClick={handleCancelEdit} disabled={saving}>Cancel</button>
+                            <Button type="submit" disabled={saving} className="flex-1">Save Changes</Button>
+                            <Button type="button" variant="outline" onClick={handleCancelEdit} disabled={saving} className="flex-1">Cancel</Button>
                           </>
                         ) : (
-                          <button type="button" className="btn btn-primary" onClick={handleEditDetails}>Edit</button>
+                          <Button type="button" onClick={handleEditDetails} className="w-full sm:w-auto">Edit Details</Button>
                         )}
-                        <button type="button" className="btn btn-danger ml-auto" onClick={handleDeleteShop} disabled={deleting}>Delete Shop</button>
+                        <Button type="button" variant="destructive" className="w-full sm:w-auto sm:ml-auto" onClick={handleDeleteShop} disabled={deleting}>Delete Shop</Button>
                       </div>
                     </form>
                   ) : (
-                    <div className="text-center py-8">Loading shop details...</div>
+                    <div className="text-center py-8 relative">Loading shop details...</div>
                   )}
                 </InnerTabsContent>
-                <InnerTabsContent value="users">
+                <InnerTabsContent value="users" className="w-full">
                   <UserAssignmentManager shop={shopDialogShop || undefined} />
                 </InnerTabsContent>
-                <InnerTabsContent value="analytics">
+                <InnerTabsContent value="analytics" className="w-full">
                   {analyticsLoading ? (
                     <div className="text-center py-8">Loading analytics...</div>
                   ) : analytics ? (
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="p-4 bg-gray-50 rounded">
-                          <div className="font-medium">Total Sales</div>
-                          <div className="text-2xl font-bold">{analytics.stats?.totalSales ?? 0}</div>
+                    <div className="space-y-4 w-full max-w-full overflow-hidden">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                        <div className="p-4 bg-gray-50 rounded-lg shadow-sm border overflow-hidden">
+                          <div className="text-sm text-gray-500 font-medium mb-1 truncate">Total Sales</div>
+                          <div className="text-2xl font-bold text-gray-900 truncate">{analytics.stats?.totalSales ?? 0}</div>
                         </div>
-                        <div className="p-4 bg-gray-50 rounded">
-                          <div className="font-medium">Total Products</div>
-                          <div className="text-2xl font-bold">{analytics.stats?.productCount ?? 0}</div>
+                        <div className="p-4 bg-gray-50 rounded-lg shadow-sm border overflow-hidden">
+                          <div className="text-sm text-gray-500 font-medium mb-1 truncate">Total Products</div>
+                          <div className="text-2xl font-bold text-gray-900 truncate">{analytics.stats?.productCount ?? 0}</div>
                         </div>
-                        <div className="p-4 bg-gray-50 rounded">
-                          <div className="font-medium">Total Customers</div>
-                          <div className="text-2xl font-bold">{analytics.stats?.totalCustomers ?? 0}</div>
+                        <div className="p-4 bg-gray-50 rounded-lg shadow-sm border overflow-hidden">
+                          <div className="text-sm text-gray-500 font-medium mb-1 truncate">Total Customers</div>
+                          <div className="text-2xl font-bold text-gray-900 truncate">{analytics.stats?.totalCustomers ?? 0}</div>
                         </div>
-                        <div className="p-4 bg-gray-50 rounded">
-                          <div className="font-medium">Total Expenses</div>
-                          <div className="text-2xl font-bold">₹{analytics.stats?.totalExpenses?.toLocaleString() ?? 0}</div>
+                        <div className="p-4 bg-gray-50 rounded-lg shadow-sm border overflow-hidden">
+                          <div className="text-sm text-gray-500 font-medium mb-1 truncate">Total Expenses</div>
+                          <div className="text-2xl font-bold text-red-600 truncate">₹{analytics.stats?.totalExpenses?.toLocaleString() ?? 0}</div>
                         </div>
                       </div>
                       {/* Sales Chart */}
-                      <div className="mt-6">
+                      <div className="mt-6 w-full">
                         <div className="font-medium mb-2">Recent Sales</div>
-                        <div className="flex gap-2 overflow-x-auto pb-2">
-                          {analytics.recentSales?.map((sale: any, i: number) => (
-                            <div key={i} className="p-2 bg-blue-50 rounded text-center">
-                              <div className="text-xs">Sale #{sale.id}</div>
-                              <div className="font-bold">₹{sale.totalAmount}</div>
+                        <div className="flex gap-3 overflow-x-auto pb-4 w-full snap-x">
+                          {analytics.recentSales?.length > 0 ? analytics.recentSales.map((sale: any, i: number) => (
+                            <div key={i} className="p-3 bg-blue-50 rounded-md text-center shrink-0 min-w-[120px] snap-center">
+                              <div className="text-xs text-blue-700 font-medium mb-1">Sale #{sale.id}</div>
+                              <div className="font-bold text-blue-900">₹{sale.totalAmount}</div>
                             </div>
-                          ))}
+                          )) : (
+                            <div className="text-sm text-gray-500 italic">No recent sales</div>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -1656,72 +1682,86 @@ function SuperDuperAdminDashboardContent() {
                     <div className="text-center py-8">No analytics data available</div>
                   )}
                 </InnerTabsContent>
-                <InnerTabsContent value="financials">
+                <InnerTabsContent value="financials" className="w-full overflow-hidden">
                   <div className="mb-4">
-                    <form className="flex flex-wrap gap-2 items-end" onSubmit={handleAddExpense}>
-                      <div className="flex-1 min-w-[100px]">
-                        <label className="block text-xs">Amount</label>
-                        <input type="number" className="border rounded p-1 w-24" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} required />
+                    <form className="space-y-4 mb-4" onSubmit={handleAddExpense}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 w-full">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Amount</label>
+                          <input type="number" className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500" value={expenseForm.amount} onChange={e => setExpenseForm({ ...expenseForm, amount: e.target.value })} required />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Description</label>
+                          <input type="text" className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500" value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} required />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Date</label>
+                          <input type="date" className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} required />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-700 mb-1">Category</label>
+                          <select className="w-full border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500 bg-white" value={expenseForm.category} onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })} required>
+                            <option value="OTHER">Other</option>
+                            <option value="TRANSPORTATION">Transportation</option>
+                            <option value="diesel">Diesel</option>
+                            <option value="petrol">Petrol</option>
+                            <option value="RENT">Rent</option>
+                            <option value="ELECTRICITY">Electricity</option>
+                            <option value="WATER">Water</option>
+                            <option value="INTERNET">Internet</option>
+                            <option value="SALARY">Salary</option>
+                            <option value="MAINTENANCE">Maintenance</option>
+                            <option value="MARKETING">Marketing</option>
+                          </select>
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs">Description</label>
-                        <input type="text" className="border rounded p-1 w-40" value={expenseForm.description} onChange={e => setExpenseForm({ ...expenseForm, description: e.target.value })} required />
-                      </div>
-                      <div>
-                        <label className="block text-xs">Date</label>
-                        <input type="date" className="border rounded p-1 w-32" value={expenseForm.date} onChange={e => setExpenseForm({ ...expenseForm, date: e.target.value })} required />
-                      </div>
-                      <div>
-                        <label className="block text-xs">Category</label>
-                        <select className="border rounded p-1 w-32" value={expenseForm.category} onChange={e => setExpenseForm({ ...expenseForm, category: e.target.value })} required>
-                          <option value="OTHER">Other</option>
-                          <option value="TRANSPORTATION">Transportation</option>
-                          <option value="diesel">Diesel</option>
-                          <option value="petrol">Petrol</option>
-                          <option value="RENT">Rent</option>
-                          <option value="ELECTRICITY">Electricity</option>
-                          <option value="WATER">Water</option>
-                          <option value="INTERNET">Internet</option>
-                          <option value="SALARY">Salary</option>
-                          <option value="MAINTENANCE">Maintenance</option>
-                          <option value="MARKETING">Marketing</option>
-                        </select>
-                      </div>
-                      <button type="submit" className="btn btn-primary w-full md:w-auto" disabled={expenseLoading}>Add</button>
+                      <Button type="submit" className="w-full sm:w-auto mt-2" disabled={expenseLoading}>Add Expense</Button>
                     </form>
                   </div>
-                  <div className="overflow-x-auto max-h-64">
-                    <table className="min-w-full text-xs">
-                      <thead>
+                  <div className="overflow-x-auto w-full max-h-64 border rounded-lg whitespace-nowrap">
+                    <table className="min-w-full text-xs text-left">
+                      <thead className="bg-gray-50 border-b">
                         <tr>
-                          <th className="px-2 py-1">Amount</th>
-                          <th className="px-2 py-1">Description</th>
-                          <th className="px-2 py-1">Date</th>
-                          <th className="px-2 py-1">Category</th>
+                          <th className="px-3 py-2 font-medium text-gray-700">Amount</th>
+                          <th className="px-3 py-2 font-medium text-gray-700">Description</th>
+                          <th className="px-3 py-2 font-medium text-gray-700">Date</th>
+                          <th className="px-3 py-2 font-medium text-gray-700">Category</th>
                         </tr>
                       </thead>
-                      <tbody>
-                        {expenses.map((exp, i) => (
-                          <tr key={exp.id || i}>
-                            <td className="px-2 py-1">₹{exp.amount}</td>
-                            <td className="px-2 py-1">{exp.description}</td>
-                            <td className="px-2 py-1">{new Date(exp.date).toLocaleDateString()}</td>
-                            <td className="px-2 py-1">{exp.category}</td>
+                      <tbody className="divide-y divide-gray-100 bg-white">
+                        {expenses.length > 0 ? expenses.map((exp, i) => (
+                          <tr key={exp.id || i} className="hover:bg-gray-50">
+                            <td className="px-3 py-2 font-semibold text-gray-900">₹{exp.amount}</td>
+                            <td className="px-3 py-2 max-w-[150px] truncate" title={exp.description}>{exp.description}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">{new Date(exp.date).toLocaleDateString()}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              <Badge variant="outline" className="text-[10px] sm:text-xs font-normal px-1 md:px-2.5">
+                                {exp.category}
+                              </Badge>
+                            </td>
                           </tr>
-                        ))}
+                        )) : (
+                          <tr>
+                            <td colSpan={4} className="px-3 py-4 text-center text-gray-500 italic">No expenses recorded</td>
+                          </tr>
+                        )}
                       </tbody>
                     </table>
                   </div>
-                  <button className="btn btn-secondary mt-2" onClick={() => exportCSV(expenses, ['amount', 'description', 'date', 'category'], 'expenses.csv')}>Export CSV</button>
+                  <button className="btn btn-secondary mt-3 w-full sm:w-auto" onClick={() => exportCSV(expenses, ['amount', 'description', 'date', 'category'], 'expenses.csv')}>Export CSV</button>
                 </InnerTabsContent>
-                <InnerTabsContent value="logs">
-                  <div className="mb-4 flex flex-wrap gap-2 items-center font-sans">
-                    <input type="text" className="border rounded p-2 text-sm w-full md:w-48 flex-grow" placeholder="Search logs..." value={logsSearch} onChange={e => setLogsSearch(e.target.value)} />
-                    <div className="flex gap-2 w-full md:w-auto overflow-x-auto pb-1">
-                      <button className={`btn btn-sm flex-1 md:flex-none ${logsTab === 'activity' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('activity')}>Activity</button>
-                      <button className={`btn btn-sm flex-1 md:flex-none ${logsTab === 'login' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setLogsTab('login')}>Login</button>
+                <InnerTabsContent value="logs" className="w-full overflow-hidden">
+                  <div className="mb-4 flex flex-col gap-3 font-sans w-full cursor-auto">
+                    <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center w-full">
+                      <input type="text" className="w-full sm:w-auto flex-1 border rounded-md p-2 text-sm focus:ring-2 focus:ring-blue-500" placeholder="Search logs..." value={logsSearch} onChange={e => setLogsSearch(e.target.value)} />
+                      <div className="flex w-full sm:w-auto gap-2">
+                        <Button size="sm" variant={logsTab === 'activity' ? 'default' : 'outline'} className="flex-1 sm:flex-none" onClick={() => setLogsTab('activity')}>Activity</Button>
+                        <Button size="sm" variant={logsTab === 'login' ? 'default' : 'outline'} className="flex-1 sm:flex-none" onClick={() => setLogsTab('login')}>Login</Button>
+                      </div>
                     </div>
-                    <button className="btn btn-sm btn-secondary w-full md:w-auto md:ml-auto" onClick={() => exportCSV(shopLogs[`${logsTab}Log` as keyof typeof shopLogs], ['userId', 'action', 'resource', 'details', 'createdAt', 'ipAddress'], logsTab + '-logs.csv')}>Export CSV</button>
+                    <Button size="sm" variant="secondary" className="w-full sm:w-auto mt-2" onClick={() => exportCSV(shopLogs[`${logsTab}Log` as keyof typeof shopLogs], ['userId', 'action', 'resource', 'details', 'createdAt', 'ipAddress'], logsTab + '-logs.csv')}>
+                      Export CSV
+                    </Button>
                   </div>
                   {logsLoading ? (
                     <div className="text-center py-8">Loading logs...</div>
@@ -1870,81 +1910,83 @@ function SuperDuperAdminDashboardContent() {
         </TabsContent>
 
         {/* Analytics Tab */}
-        <TabsContent value="analytics" className="space-y-6">
+        <TabsContent value="analytics" className="space-y-6 w-full overflow-hidden">
           {/* Enhanced Analytics Button */}
-          <div className="flex justify-between items-center">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold">System Analytics</h2>
-              <p className="text-gray-600">Comprehensive insights across all shops</p>
+              <h2 className="text-xl md:text-2xl font-bold">System Analytics</h2>
+              <p className="text-sm md:text-base text-gray-600">Comprehensive insights across all shops</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
               <Button
                 variant="outline"
                 onClick={handleRefreshAnalytics}
                 disabled={analyticsLoading}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 flex-1 sm:flex-none"
               >
                 <RefreshCw className={`h-4 w-4 ${analyticsLoading ? 'animate-spin' : ''}`} />
-                {analyticsLoading ? 'Refreshing...' : 'Refresh Data'}
+                <span className="hidden sm:inline">Refresh Data</span>
+                <span className="sm:hidden">Refresh</span>
               </Button>
               <Button
                 onClick={() => window.open('/dashboard/analytics', '_blank')}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white flex-1 sm:flex-none"
               >
-                <BarChart3 className="h-4 w-4 mr-2" />
-                Enhanced Analytics
+                <BarChart3 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Enhanced Analytics</span>
+                <span className="sm:hidden">Enhanced</span>
               </Button>
             </div>
           </div>
 
           {/* Analytics Cards */}
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Card>
+          <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 w-full">
+            <Card className="overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
                 <DollarSign className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(systemStats.totalRevenue ?? 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold truncate">₹{(systemStats.totalRevenue ?? 0).toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">
                   All time
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(systemStats.totalExpenses ?? 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold truncate">₹{(systemStats.totalExpenses ?? 0).toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">
                   All time
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Supplier Payments</CardTitle>
-                <Truck className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium shrink-0">Supplier Payments</CardTitle>
+                <Truck className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(systemStats.totalSupplierPayments ?? 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold truncate">₹{(systemStats.totalSupplierPayments ?? 0).toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">
                   All time
                 </p>
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-sm font-medium">Employee Payments</CardTitle>
-                <UserCheck className="h-4 w-4 text-muted-foreground" />
+                <CardTitle className="text-sm font-medium shrink-0">Employee Payments</CardTitle>
+                <UserCheck className="h-4 w-4 text-muted-foreground shrink-0 ml-2" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">₹{(systemStats.totalEmployeePayments ?? 0).toLocaleString()}</div>
+                <div className="text-2xl font-bold truncate">₹{(systemStats.totalEmployeePayments ?? 0).toLocaleString()}</div>
                 <p className="text-xs text-muted-foreground">
                   All time
                 </p>
@@ -1952,27 +1994,27 @@ function SuperDuperAdminDashboardContent() {
             </Card>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 w-full">
             {/* Today's Revenue by Shop */}
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader>
                 <CardTitle>Today's Revenue by Shop</CardTitle>
                 <CardDescription>System-wide revenue breakdown (today)</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="flex items-center justify-between mb-3">
+              <CardContent className="overflow-x-auto">
+                <div className="flex items-center justify-between mb-3 min-w-[200px]">
                   <span className="text-sm font-medium text-indigo-600">Total Today's Revenue</span>
                   <span className="font-semibold text-green-700">₹{Number((revenueByShopToday || []).reduce((sum, r) => sum + Number(r.amount || 0), 0)).toLocaleString()}</span>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-3 min-w-[200px]">
                   {(() => {
                     const revenueMap = new Map(revenueByShopToday.map((r) => [r.shopId, r.amount]));
                     return shops.map((shop) => {
                       const amount = revenueMap.get(shop.id) ?? 0;
                       return (
                         <div key={shop.id} className="flex items-center justify-between">
-                          <span className="text-sm">{shop.name}</span>
-                          <span className="font-medium">₹{Number(amount).toLocaleString()}</span>
+                          <span className="text-sm truncate pr-2">{shop.name}</span>
+                          <span className="font-medium shrink-0">₹{Number(amount).toLocaleString()}</span>
                         </div>
                       );
                     });
@@ -1982,20 +2024,20 @@ function SuperDuperAdminDashboardContent() {
             </Card>
 
             {/* User Distribution */}
-            <Card>
+            <Card className="overflow-hidden">
               <CardHeader>
                 <CardTitle>User Distribution</CardTitle>
                 <CardDescription>Users assigned to each shop</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="space-y-3">
+              <CardContent className="overflow-x-auto">
+                <div className="space-y-3 min-w-[200px]">
                   {(() => {
                     console.log('🔍 Rendering User Distribution - shops state:', shops);
                     console.log('🔍 Shop assignedUsers values:', shops.map((s: any) => ({ name: s.name, assignedUsers: s.assignedUsers })));
                     return shops.map((shop) => (
                       <div key={shop.id} className="flex items-center justify-between">
-                        <span className="text-sm">{shop.name}</span>
-                        <Badge variant="secondary">{shop.assignedUsers || 0} users</Badge>
+                        <span className="text-sm truncate pr-2">{shop.name}</span>
+                        <Badge variant="secondary" className="shrink-0">{shop.assignedUsers || 0} users</Badge>
                       </div>
                     ));
                   })()}
@@ -2005,59 +2047,59 @@ function SuperDuperAdminDashboardContent() {
           </div>
 
           {/* System Analytics Overview */}
-          <Card>
+          <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                System Analytics Overview
+                <BarChart3 className="h-5 w-5 shrink-0" />
+                <span className="truncate">System Analytics Overview</span>
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="truncate">
                 Comprehensive analytics for all shops in the system
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div className="p-4 bg-blue-50 rounded-lg">
-                  <div className="text-2xl font-bold text-blue-600">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                <div className="p-4 bg-blue-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-blue-600 truncate">
                     ₹{systemStats.totalRevenue?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Total Revenue</div>
+                  <div className="text-sm text-gray-600 truncate">Total Revenue</div>
                 </div>
-                <div className="p-4 bg-green-50 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
+                <div className="p-4 bg-green-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-green-600 truncate">
                     {systemStats.totalSales?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Total Sales</div>
+                  <div className="text-sm text-gray-600 truncate">Total Sales</div>
                 </div>
-                <div className="p-4 bg-purple-50 rounded-lg">
-                  <div className="text-2xl font-bold text-purple-600">
+                <div className="p-4 bg-purple-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-purple-600 truncate">
                     {systemStats.totalProducts?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Total Products</div>
+                  <div className="text-sm text-gray-600 truncate">Total Products</div>
                 </div>
-                <div className="p-4 bg-orange-50 rounded-lg">
-                  <div className="text-2xl font-bold text-orange-600">
+                <div className="p-4 bg-orange-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-orange-600 truncate">
                     {systemStats.totalCustomers?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Total Customers</div>
+                  <div className="text-sm text-gray-600 truncate">Total Customers</div>
                 </div>
-                <div className="p-4 bg-red-50 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
+                <div className="p-4 bg-red-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-red-600 truncate">
                     ₹{systemStats.totalExpenses?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Total Expenses</div>
+                  <div className="text-sm text-gray-600 truncate">Total Expenses</div>
                 </div>
-                <div className="p-4 bg-indigo-50 rounded-lg">
-                  <div className="text-2xl font-bold text-indigo-600">
+                <div className="p-4 bg-indigo-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-indigo-600 truncate">
                     ₹{systemStats.totalSupplierPayments?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Supplier Payments</div>
+                  <div className="text-sm text-gray-600 truncate">Supplier Payments</div>
                 </div>
-                <div className="p-4 bg-teal-50 rounded-lg">
-                  <div className="text-2xl font-bold text-teal-600">
+                <div className="p-4 bg-teal-50 rounded-lg overflow-hidden">
+                  <div className="text-xl sm:text-2xl font-bold text-teal-600 truncate">
                     ₹{systemStats.totalEmployeePayments?.toLocaleString() || '0'}
                   </div>
-                  <div className="text-sm text-gray-600">Employee Payments</div>
+                  <div className="text-sm text-gray-600 truncate">Employee Payments</div>
                 </div>
               </div>
 
@@ -2070,16 +2112,16 @@ function SuperDuperAdminDashboardContent() {
         <TabsContent value="transactions" className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div>
                   <CardTitle>All Transactions</CardTitle>
                   <CardDescription>Expenses, Supplier Payments, and Employee Payments</CardDescription>
                 </div>
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm">Shop:</label>
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 w-full md:w-auto">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <label className="text-sm font-medium">Shop:</label>
                     <select
-                      className="border rounded p-1 text-sm"
+                      className="border rounded p-2 text-sm w-full sm:w-auto bg-white"
                       value={selectedTransactionShop}
                       onChange={(e) => setSelectedTransactionShop(e.target.value)}
                     >
@@ -2091,10 +2133,10 @@ function SuperDuperAdminDashboardContent() {
                       ))}
                     </select>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm">Days:</label>
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                    <label className="text-sm font-medium">Days:</label>
                     <select
-                      className="border rounded p-1 text-sm"
+                      className="border rounded p-2 text-sm w-full sm:w-auto bg-white"
                       value={transactionDays}
                       onChange={(e) => setTransactionDays(Number(e.target.value))}
                     >
@@ -2107,6 +2149,7 @@ function SuperDuperAdminDashboardContent() {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="w-full sm:w-auto"
                     onClick={loadTransactions}
                     disabled={transactionsLoading}
                   >
@@ -2120,7 +2163,7 @@ function SuperDuperAdminDashboardContent() {
               {transactionsLoading ? (
                 <div className="text-center py-8">Loading transactions...</div>
               ) : transactions.length > 0 ? (
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto w-full pb-4">
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="border-b">
@@ -2352,30 +2395,34 @@ function SuperDuperAdminDashboardContent() {
       </Tabs>
 
       {/* Shop Deletion Dialog */}
-      {shopDialogShop && (
-        <ShopDeletionDialog
-          open={deletionDialogOpen}
-          onOpenChange={setDeletionDialogOpen}
-          shopId={shopDialogShop.id}
-          shopName={shopDialogShop.name}
-          onShopDeleted={() => {
-            setShopDialogOpen(false)
-            setShops(shops.filter(s => s.id !== shopDialogShop.id))
-            setDeletionDialogOpen(false)
-          }}
-        />
-      )}
+      {
+        shopDialogShop && (
+          <ShopDeletionDialog
+            open={deletionDialogOpen}
+            onOpenChange={setDeletionDialogOpen}
+            shopId={shopDialogShop.id}
+            shopName={shopDialogShop.name}
+            onShopDeleted={() => {
+              setShopDialogOpen(false)
+              setShops(shops.filter(s => s.id !== shopDialogShop.id))
+              setDeletionDialogOpen(false)
+            }}
+          />
+        )
+      }
 
       {/* Dialogs for Quick Links */}
-      {isSuperDuperAdmin && (
-        <PasswordChangeDialog
-          open={showPasswordDialog}
-          onOpenChange={setShowPasswordDialog}
-          trigger={null}
-          userEmail={undefined}
-          key="reset-password-dialog"
-        />
-      )}
+      {
+        isSuperDuperAdmin && (
+          <PasswordChangeDialog
+            open={showPasswordDialog}
+            onOpenChange={setShowPasswordDialog}
+            trigger={null}
+            userEmail={undefined}
+            key="reset-password-dialog"
+          />
+        )
+      }
       <UserManagementDialog
         open={showUserDialog}
         onOpenChange={setShowUserDialog}
@@ -2386,7 +2433,7 @@ function SuperDuperAdminDashboardContent() {
         onOpenChange={setShowSettingsDialog}
         onUserCreated={() => setShowSettingsDialog(false)}
       />
-    </div>
+    </div >
   )
 }
 

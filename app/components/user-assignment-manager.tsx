@@ -85,7 +85,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
           return data.data.token
         }
       }
-      
+
       console.log('❌ Token refresh failed')
       return null
     } catch (error) {
@@ -109,7 +109,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
 
   const loadAssignments = async () => {
     if (!targetShop) return
-    
+
     try {
       setLoading(true)
       const token = localStorage.getItem('accessToken');
@@ -118,7 +118,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
         toast.error('Authentication required. Please log in again.');
         return;
       }
-      
+
       console.log('🔍 Loading assignments for shop:', targetShop.id)
       const response = await fetch(`/api/shops/${targetShop.id}/users`, {
         method: 'GET',
@@ -127,9 +127,9 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
           'Authorization': `Bearer ${token}`
         }
       })
-      
+
       console.log('🔍 Assignments response status:', response.status)
-      
+
       if (response.ok) {
         const data = await response.json()
         console.log('Assignments response:', data)
@@ -142,7 +142,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error('Failed to load assignments:', response.status, errorData)
-        
+
         // Handle different error types
         if (response.status === 401) {
           console.log('❌ Token expired or invalid, attempting refresh')
@@ -157,7 +157,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
                 'Authorization': `Bearer ${newToken}`
               }
             })
-            
+
             if (retryResponse.ok) {
               const retryData = await retryResponse.json()
               if (retryData.success && retryData.users) {
@@ -166,7 +166,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
               }
             }
           }
-          
+
           // If refresh failed or retry failed, clear auth data
           console.log('❌ Token refresh failed, clearing auth data')
           localStorage.removeItem('accessToken')
@@ -200,7 +200,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
         toast.error('Authentication required. Please log in again.');
         return;
       }
-      
+
       console.log('🔍 Loading users')
       const response = await fetch('/api/users', {
         method: 'GET',
@@ -209,9 +209,9 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
           'Authorization': `Bearer ${token}`
         }
       })
-      
+
       console.log('🔍 Users response status:', response.status)
-      
+
       if (response.ok) {
         const data = await response.json()
         console.log('Users response:', data)
@@ -237,7 +237,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
       } else {
         const errorData = await response.json().catch(() => ({}))
         console.error('Failed to load users:', response.status, errorData)
-        
+
         // Handle different error types
         if (response.status === 401) {
           console.log('❌ Token expired or invalid, attempting refresh')
@@ -252,7 +252,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
                 'Authorization': `Bearer ${newToken}`
               }
             })
-            
+
             if (retryResponse.ok) {
               const retryData = await retryResponse.json()
               if (retryData.success && retryData.users) {
@@ -271,7 +271,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
               }
             }
           }
-          
+
           // If refresh failed or retry failed, clear auth data
           console.log('❌ Token refresh failed, clearing auth data')
           localStorage.removeItem('accessToken')
@@ -296,20 +296,20 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
 
   const handleAssignUser = async () => {
     if (!targetShop || !selectedUserId || !selectedRole) return
-    
+
     // Find the user being assigned for optimistic update
     const userToAssign = users.find(user => user.id.toString() === selectedUserId)
     if (!userToAssign) {
       toast.error('User not found')
       return
     }
-    
+
     // Store original state for potential rollback
     const originalAssignments = [...assignments]
-    
+
     try {
       setAssigning(true)
-      
+
       // Optimistic update - immediately add to UI
       const newAssignment: UserAssignment = {
         id: userToAssign.id,
@@ -320,9 +320,9 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
         shopRole: selectedRole,
         assignedAt: new Date().toISOString()
       }
-      
+
       setAssignments(prev => [newAssignment, ...prev])
-      
+
       const response = await fetch(`/api/shops/${targetShop.id}/users`, {
         method: 'POST',
         headers: {
@@ -334,7 +334,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
           role: selectedRole
         })
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         console.log('Assignment response:', data)
@@ -362,19 +362,19 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
 
   const handleRemoveUser = async (userId: number) => {
     if (!targetShop || removingUserId === userId) return
-    
+
     console.log('🔍 Removing user:', userId, 'from assignments:', assignments.length)
-    
+
     // Use ref to get current assignments to avoid stale closure
     const currentAssignments = assignmentsRef.current
     const originalAssignments = [...currentAssignments]
     const filteredAssignments = currentAssignments.filter(assignment => assignment.id !== userId)
     console.log('🔍 After filtering:', filteredAssignments.length, 'assignments remaining')
-    
+
     // Optimistic update - immediately remove from UI
     setAssignments(filteredAssignments)
     setRemovingUserId(userId)
-    
+
     try {
       const response = await fetch(`/api/shops/${targetShop.id}/users?userId=${userId}`, {
         method: 'DELETE',
@@ -383,7 +383,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (response.ok) {
         console.log('✅ User removed successfully from API')
         toast.success('User removed successfully')
@@ -411,7 +411,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
       'ADMIN': 'bg-blue-100 text-blue-800',
       'STAFF': 'bg-green-100 text-green-800'
     }
-    
+
     return (
       <Badge className={roleColors[role as keyof typeof roleColors] || 'bg-gray-100 text-gray-800'}>
         {role.replace('_', ' ')}
@@ -442,32 +442,34 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
   console.log('🔍 [UserAssignmentManager] Target shop found:', targetShop);
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Users className="h-5 w-5" />
-          User Assignments - {targetShop.name}
+    <Card className="border-0 shadow-none sm:border sm:shadow-sm">
+      <CardHeader className="px-0 sm:px-6 pt-0 sm:pt-6">
+        <CardTitle className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+          <div className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            <span className="truncate">User Assignments - {targetShop.name}</span>
+          </div>
         </CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="flex justify-between items-center mb-4">
+      <CardContent className="px-0 sm:px-6 pb-0 sm:pb-6">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-3">
           <div className="flex items-center gap-2 text-sm text-gray-600">
             <MapPin className="h-4 w-4" />
             {targetShop.location}
           </div>
-          
+
           <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="flex items-center gap-2">
+              <Button size="sm" className="flex items-center gap-2 w-full sm:w-auto">
                 <Plus className="h-4 w-4" />
                 Assign User
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[425px] w-[95vw] p-4 md:p-6 rounded-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Assign User to Shop</DialogTitle>
               </DialogHeader>
-              
+
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="user">Select User</Label>
@@ -484,7 +486,7 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
                     </SelectContent>
                   </Select>
                 </div>
-                
+
                 <div>
                   <Label htmlFor="role">Shop Role</Label>
                   <Select value={selectedRole} onValueChange={setSelectedRole}>
@@ -498,9 +500,9 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
                     </SelectContent>
                   </Select>
                 </div>
-                
-                <Button 
-                  onClick={handleAssignUser} 
+
+                <Button
+                  onClick={handleAssignUser}
                   disabled={!selectedUserId || !selectedRole || assigning}
                   className="w-full"
                 >
@@ -523,28 +525,27 @@ export function UserAssignmentManager({ shop }: UserAssignmentManagerProps) {
         ) : (
           <div className="space-y-3">
             {assignments.map((assignment) => (
-              <div 
-                key={`${assignment.id}-${assignment.email}`} 
-                className={`flex items-center justify-between p-3 border rounded-lg transition-all duration-200 ${
-                  removingUserId === assignment.id ? 'opacity-50 scale-95' : 'opacity-100 scale-100'
-                }`}
+              <div
+                key={`${assignment.id}-${assignment.email}`}
+                className={`flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-lg transition-all duration-200 gap-3 sm:gap-0 ${removingUserId === assignment.id ? 'opacity-50 scale-95' : 'opacity-100 scale-100'
+                  }`}
               >
-                <div className="flex items-center gap-3">
-                  <User className="h-5 w-5 text-gray-400" />
-                  <div>
-                    <div className="font-medium">{getDisplayName(assignment)}</div>
-                    <div className="text-sm text-gray-500">{assignment.email}</div>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                  <User className="h-5 w-5 text-gray-400 shrink-0" />
+                  <div className="min-w-0 flex-1 overflow-hidden">
+                    <div className="font-medium truncate">{getDisplayName(assignment)}</div>
+                    <div className="text-sm text-gray-500 truncate">{assignment.email}</div>
                   </div>
                 </div>
-                
-                <div className="flex items-center gap-2">
+
+                <div className="flex items-center justify-between sm:justify-end gap-2 w-full sm:w-auto">
                   {getRoleBadge(assignment.shopRole)}
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleRemoveUser(assignment.id)}
                     disabled={removingUserId === assignment.id}
-                    className="text-red-600 hover:text-red-700 disabled:opacity-50"
+                    className="text-red-600 hover:text-red-700 disabled:opacity-50 shrink-0"
                   >
                     {removingUserId === assignment.id ? (
                       <div className="h-4 w-4 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
