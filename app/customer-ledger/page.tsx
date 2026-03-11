@@ -90,7 +90,7 @@ export default function CustomerLedger() {
 
   const [newEntry, setNewEntry] = useState({
     amount: "",
-    type: "debit" as "debit" | "credit",
+    type: "debit" as "debit" | "credit" | "old_balance_due" | "old_balance_adv",
     method: "CASH",
     purpose: "purchase",
     description: "",
@@ -410,16 +410,32 @@ export default function CustomerLedger() {
         });
       }
 
+      let mappedType = newEntry.type;
+      let mappedDescription = newEntry.description;
+
+      if (newEntry.type === 'old_balance_due') {
+        mappedType = 'debit';
+        mappedDescription = newEntry.description || 'Opening Balance (Due)';
+      } else if (newEntry.type === 'old_balance_adv') {
+        mappedType = 'credit';
+        mappedDescription = newEntry.description || 'Opening Balance (Advance)';
+      }
+
+      let mappedMethod = newEntry.method;
+      if (newEntry.type === 'old_balance_due') {
+        mappedMethod = 'LOAN';
+      }
+
       const entryData = {
         customerId: selectedCustomer,
         date: newEntry.date,
         amount: Number(newEntry.amount),
-        type: newEntry.type,
-        paymentMethod: newEntry.method, // Send as paymentMethod for consistency
-        method: newEntry.method, // Keep for backward compatibility
-        purpose: newEntry.purpose,
-        description: newEntry.description,
-        items: newEntry.type === 'debit' ? itemsToSend : newEntry.items,
+        type: mappedType,
+        paymentMethod: mappedMethod, // Send as paymentMethod for consistency
+        method: mappedMethod, // Keep for backward compatibility
+        purpose: (newEntry.type === 'old_balance_due' || newEntry.type === 'old_balance_adv') ? 'opening_balance' : newEntry.purpose,
+        description: mappedDescription,
+        items: mappedType === 'debit' && newEntry.type !== 'old_balance_due' && newEntry.type !== 'old_balance_adv' ? itemsToSend : newEntry.items,
       };
 
       const res = await fetch('/api/ledger', {
@@ -616,34 +632,39 @@ export default function CustomerLedger() {
         {/* Items */}
         <TableCell className="border-r text-xs md:text-sm">
           {entry.type === 'credit'
-            ? <span className="text-green-700 font-semibold">Payment</span>
+            ? <span className="text-green-700 font-semibold">{entry.description && entry.description.includes('Opening Balance') ? entry.description : 'Payment'}</span>
             : entry.items && entry.items.length > 0
-              ? <div className="space-y-1">{entry.items.map((item, index) => (
-                <div key={index} className="flex items-center gap-2">
-                  <span className="font-medium">{item.name}</span>
-                  <span className="text-gray-500">
-                    (
-                    {item.quantity} {item.unit || ""}
-                    {item.price ? ` × ₹${item.price.toLocaleString()}` : ""}
-                    )
-                  </span>
-                  {item.price ? (
-                    <span className="font-semibold text-gray-700">
-                      ₹{(item.quantity * item.price).toLocaleString()}
-                    </span>
-                  ) : null}
-                </div>
-              ))}</div>
+              ? <div className="space-y-1">{entry.items.map((item, index) => {
+                const isOpeningBalance = item.name.toLowerCase().includes('opening balance');
+                return (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="font-medium">{item.name}</span>
+                    {!isOpeningBalance && (
+                      <span className="text-gray-500">
+                        (
+                        {item.quantity} {item.unit || ""}
+                        {item.price ? ` × ₹${item.price.toLocaleString()}` : ""}
+                        )
+                      </span>
+                    )}
+                    {item.price && !isOpeningBalance ? (
+                      <span className="font-semibold text-gray-700">
+                        ₹{(item.quantity * item.price).toLocaleString()}
+                      </span>
+                    ) : null}
+                  </div>
+                );
+              })}</div>
               : <span className="text-gray-400">-</span>
           }
         </TableCell>
         {/* Qty */}
         <TableCell className="border-r text-xs md:text-sm text-center">
-          {entry.type === 'credit' ? <span className="text-gray-400">-</span> : (entry.qty || <span className="text-gray-400">-</span>)}
+          {(entry.type === 'credit' || (entry.items && entry.items[0]?.name.toLowerCase().includes('opening balance'))) ? <span className="text-gray-400">-</span> : (entry.qty || <span className="text-gray-400">-</span>)}
         </TableCell>
         {/* Price */}
         <TableCell className="border-r text-xs md:text-sm text-right">
-          {entry.type === 'credit' ? <span className="text-gray-400">-</span> : (entry.price ? `₹${entry.price.toLocaleString()}` : <span className="text-gray-400">-</span>)}
+          {(entry.type === 'credit' || (entry.items && entry.items[0]?.name.toLowerCase().includes('opening balance'))) ? <span className="text-gray-400">-</span> : (entry.price ? `₹${entry.price.toLocaleString()}` : <span className="text-gray-400">-</span>)}
         </TableCell>
         {/* Total */}
         <TableCell className="border-r text-xs md:text-sm text-right">
@@ -1111,10 +1132,21 @@ export default function CustomerLedger() {
                 <Label>{t("Type", "प्रकार")}</Label>
                 <Select
                   value={newEntry.type}
-                  onValueChange={(value: "debit" | "credit") => {
+                  onValueChange={(value: "debit" | "credit" | "old_balance_due" | "old_balance_adv") => {
+                    let newMethod = newEntry.method;
+                    if (value === 'old_balance_due') {
+                      newMethod = 'LOAN';
+                    } else if (value === 'old_balance_adv') {
+                      newMethod = 'OTHER';
+                    } else if (newMethod === 'LOAN' || newMethod === 'OTHER') {
+                      // Reset if switching back to normal purchase/payment
+                      newMethod = 'CASH';
+                    }
+
                     setNewEntry({
                       ...newEntry,
                       type: value,
+                      method: newMethod,
                       // Clear amounts/items when switching types to avoid confusion
                       amount: "",
                       itemName: "",
@@ -1129,6 +1161,8 @@ export default function CustomerLedger() {
                   <SelectContent>
                     <SelectItem value="debit">{t("Purchase", "खरीदारी")}</SelectItem>
                     <SelectItem value="credit">{t("Payment", "भुगतान")}</SelectItem>
+                    <SelectItem value="old_balance_due">{t("Old Balance (Due)", "पिछला बकाया")}</SelectItem>
+                    <SelectItem value="old_balance_adv">{t("Old Balance (Advance)", "पिछला जमा/एडवांस")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1226,6 +1260,7 @@ export default function CustomerLedger() {
                 <Label>{t("Method", "तरीका")}</Label>
                 <Select
                   value={newEntry.method}
+                  disabled={newEntry.type === 'old_balance_due' || newEntry.type === 'old_balance_adv'}
                   onValueChange={(value) => setNewEntry({ ...newEntry, method: value })}
                 >
                   <SelectTrigger>
