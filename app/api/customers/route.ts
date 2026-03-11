@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // Helper function to serialize BigInt values
 const serializeBigInt = (obj: any): any => {
@@ -307,7 +305,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Create customer with opening balance
+    // Create customer with opening balance using nested write
     const customer = await prisma.customer.create({
       data: {
         name: name.trim(),
@@ -316,7 +314,20 @@ export async function POST(req: NextRequest) {
         address: address ? address.trim() : null,
         shopId: parseInt(shopId),
         isActive: true,
-        currentBalance: openingBalance
+        currentBalance: openingBalance,
+        ...(openingBalance > 0 && {
+          ledgerEntries: {
+            create: {
+              date: new Date(),
+              description: 'Opening Balance',
+              amount: openingBalance,
+              type: 'opening_balance',
+              method: 'CASH',
+              shopId: parseInt(shopId),
+              isActive: true
+            }
+          }
+        })
       },
       include: {
         shop: {
@@ -324,22 +335,6 @@ export async function POST(req: NextRequest) {
         }
       }
     });
-
-    // If opening balance is provided, create a ledger entry
-    if (openingBalance > 0) {
-      await prisma.customerLedgerEntry.create({
-        data: {
-          customerId: customer.id,
-          date: new Date(),
-          description: 'Opening Balance',
-          amount: openingBalance,
-          type: 'opening_balance',
-          method: 'CASH',
-          shopId: parseInt(shopId),
-          isActive: true
-        }
-      });
-    }
 
     return NextResponse.json({
       success: true,
