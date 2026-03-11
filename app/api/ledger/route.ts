@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
-
-const prisma = new PrismaClient();
+import { prisma } from '@/lib/prisma';
 
 // GET - Fetch customer ledger entries (Optimized)
 export async function GET(req: NextRequest) {
@@ -1131,53 +1129,39 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Create ledger entry
-    const ledgerEntry = await prisma.customerLedgerEntry.create({
+    // Determine if it's a debit or credit to calculate running balance
+    const isDebit = type === 'debit';
+    const amountVal = parseFloat(amount);
+    
+    // We update the Customer's balance atomically while creating the ledger entry
+    // A nested update means we only do 1 round trip instead of downloading all entries
+    const customerUpdate = await prisma.customer.update({
+      where: { id: parseInt(customerId) },
       data: {
-        customerId: parseInt(customerId),
-        amount: parseFloat(amount),
-        type: type === 'debit' ? 'sale_payment' : 'loan_clearing',
-        method: dbPaymentMethod || 'CASH',
-        date: new Date(date),
-        description: finalDescription,
-        shopId,
-        isActive: true
-      }
-    });
-
-    // Note: CustomerLedgerItem model doesn't exist in current schema
-    // Items are stored in the description field for now
-
-    // Calculate customer's current balance
-    const allEntries = await prisma.customerLedgerEntry.findMany({
-      where: {
-        customerId: parseInt(customerId),
-        isActive: true
+        currentBalance: {
+          [isDebit ? 'increment' : 'decrement']: amountVal
+        },
+        ledgerEntries: {
+          create: {
+            amount: amountVal,
+            type: isDebit ? 'sale_payment' : 'loan_clearing',
+            method: dbPaymentMethod || 'CASH',
+            date: new Date(date),
+            description: finalDescription,
+            shopId,
+            isActive: true
+          }
+        }
       },
-      orderBy: [
-        { date: 'asc' },
-        { id: 'asc' }
-      ]
+      include: {
+        ledgerEntries: {
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
+      }
     });
 
-    let runningBalance = 0;
-    for (const entry of allEntries) {
-      if (entry.type === 'sale_payment') {
-        runningBalance += Number(entry.amount); // Debit (customer owes)
-      } else if (entry.type === 'loan_clearing') {
-        runningBalance -= Number(entry.amount); // Credit (customer paid)
-      }
-    }
-
-    // Update customer's current balance if the field exists
-    try {
-      await prisma.customer.update({
-        where: { id: parseInt(customerId) },
-        data: { currentBalance: runningBalance }
-      });
-    } catch (error) {
-      console.log('Note: currentBalance field may not exist in Customer model');
-    }
+    const ledgerEntry = customerUpdate.ledgerEntries[0];
 
     // Convert BigInt values to numbers for JSON serialization
     const serializedEntry = {

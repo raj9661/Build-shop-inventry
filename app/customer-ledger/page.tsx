@@ -87,6 +87,7 @@ export default function CustomerLedger() {
   const [editingCustomer, setEditingCustomer] = useState({ name: "", phone: "", address: "" })
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false)
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" })
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
   const [newEntry, setNewEntry] = useState({
     amount: "",
@@ -392,10 +393,14 @@ export default function CustomerLedger() {
   };
 
   const handleAddEntry = async () => {
+    if (isSubmitting) return;
+
     if (!newEntry.amount || !selectedCustomer) {
       toast.error(t("Please enter amount and select customer", "कृपया राशि दर्ज करें और ग्राहक चुनें"))
       return
     }
+
+    setIsSubmitting(true);
 
     try {
       const token = localStorage.getItem('accessToken');
@@ -473,6 +478,8 @@ export default function CustomerLedger() {
     } catch (error) {
       console.error('Error adding entry:', error);
       toast.error(t("Failed to add entry", "एंट्री जोड़ने में विफल"));
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -1294,10 +1301,17 @@ export default function CustomerLedger() {
                 />
               </div>
               <div className="flex gap-2">
-                <Button onClick={handleAddEntry} className="flex-1">
-                  {t("Add Entry", "एंट्री जोड़ें")}
+                <Button onClick={handleAddEntry} className="flex-1" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      {t("Adding...", "जोड़ रहा है...")}
+                    </span>
+                  ) : (
+                    t("Add Entry", "एंट्री जोड़ें")
+                  )}
                 </Button>
-                <Button variant="outline" onClick={() => setIsAddEntryOpen(false)}>
+                <Button variant="outline" onClick={() => setIsAddEntryOpen(false)} disabled={isSubmitting}>
                   {t("Cancel", "रद्द करें")}
                 </Button>
               </div>
