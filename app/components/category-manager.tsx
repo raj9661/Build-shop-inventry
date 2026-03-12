@@ -611,6 +611,17 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
       }
       const url = editingType ? '/api/categories/types' : '/api/categories/types'
       const method = editingType ? 'PUT' : 'POST'
+      
+      // Basic validation
+      if (!typeForm.name.trim()) {
+        toast.error('Product type name is required')
+        return
+      }
+      if (!typeForm.categoryId) {
+        toast.error('Please select a category for this product type')
+        return
+      }
+
       let body: any = editingType
         ? { ...typeForm, id: editingType.id, isActive: true }
         : { ...typeForm }
