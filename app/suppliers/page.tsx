@@ -29,6 +29,13 @@ type WeeklySupply = {
   items?: { productName: string; quantity: number; dateSupplied: string }[]
 }
 
+type PaymentEntry = {
+  amount: number
+  paymentDate: string
+  paymentMethod: string
+  notes?: string
+}
+
 type Supplier = {
   id: number
   name: string
@@ -40,6 +47,7 @@ type Supplier = {
   outstandingPayment: number
   lastSupply: string
   weeklySupplies: WeeklySupply[]
+  paymentHistory: PaymentEntry[]
 }
 
 export default function Suppliers() {
@@ -63,6 +71,7 @@ export default function Suppliers() {
   const [payAmount, setPayAmount] = useState(0);
   const [payMethod, setPayMethod] = useState("CASH");
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
+  const [payNotes, setPayNotes] = useState("");
   const [payLoading, setPayLoading] = useState(false);
   // Add state for per-week payment
   const [payWeek, setPayWeek] = useState<string | null>(null);
@@ -156,7 +165,8 @@ export default function Suppliers() {
             totalSupplied: supplier.totalSupplied ?? 0,
             outstandingPayment: supplier.outstandingPayment ?? 0,
             lastSupply: supplier.lastSupply ? new Date(supplier.lastSupply).toISOString().split('T')[0] : '',
-            weeklySupplies: supplier.weeklySupplies ?? []
+            weeklySupplies: supplier.weeklySupplies ?? [],
+            paymentHistory: supplier.paymentHistory ?? []
           }))
           console.log('🔍 [Suppliers] Converted suppliers:', convertedSuppliers.length);
           setSuppliers(convertedSuppliers)
@@ -372,8 +382,20 @@ export default function Suppliers() {
     );
   };
 
+  const resetPayDialog = () => {
+    setPayAmount(0);
+    setPayMethod("CASH");
+    setPayDate(new Date().toISOString().split("T")[0]);
+    setPayWeek(null);
+    setPayNotes("");
+  };
+
   const handlePaySupplier = async () => {
     if (!viewingSupplier) return;
+    if (payAmount <= 0) {
+      toast.error('Please enter a valid amount');
+      return;
+    }
 
     // Prevent duplicate submissions
     if (isProcessingPaymentRef.current) {
@@ -399,29 +421,58 @@ export default function Suppliers() {
             amount: payAmount,
             paymentMethod: payMethod,
             paymentDate: payDate,
+            notes: payNotes || undefined,
             shopId: currentShop?.id,
             week: payWeek
           })
         });
         const data = await res.json();
         if (data.success) {
-          toast.success('Payment recorded!');
+          toast.success('Payment recorded successfully!');
           setPayDialogOpen(false);
-          setPayAmount(0);
-          setPayMethod("CASH");
-          setPayDate(new Date().toISOString().split("T")[0]);
-          setPayWeek(null);
-          await loadSuppliers(true); // Silent refresh to avoid blocking UI
+          resetPayDialog();
+          await loadSuppliers(true);
         } else {
           toast.error(data.message || 'Failed to record payment');
         }
       } else {
         // Pay off weeks in order (oldest first)
         let remaining = payAmount;
-        for (const supply of viewingSupplier.weeklySupplies) {
-          if (remaining <= 0) break;
-          if (supply.status === "paid") continue;
-          const amountToPay = Math.min(remaining, supply.amount);
+        let anyPaymentMade = false;
+        
+        if (viewingSupplier.weeklySupplies.length > 0) {
+          for (const supply of viewingSupplier.weeklySupplies) {
+            if (remaining <= 0) break;
+            if (supply.status === "paid") continue;
+            const amountToPay = Math.min(remaining, supply.amount);
+            const res = await fetch('/api/supplier-payments', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                supplierId: viewingSupplier.id,
+                amount: amountToPay,
+                paymentMethod: payMethod,
+                paymentDate: payDate,
+                notes: payNotes || undefined,
+                shopId: currentShop?.id,
+                week: supply.week
+              })
+            });
+            const data = await res.json();
+            if (!data.success) {
+              toast.error(data.message || 'Failed to record payment');
+              break;
+            }
+            remaining -= amountToPay;
+            anyPaymentMade = true;
+          }
+        }
+        
+        // If there's still remaining amount (or no weekly supplies), make a generic payment
+        if (remaining > 0) {
           const res = await fetch('/api/supplier-payments', {
             method: 'POST',
             headers: {
@@ -430,26 +481,28 @@ export default function Suppliers() {
             },
             body: JSON.stringify({
               supplierId: viewingSupplier.id,
-              amount: amountToPay,
+              amount: remaining,
               paymentMethod: payMethod,
               paymentDate: payDate,
-              shopId: currentShop?.id,
-              week: supply.week
+              notes: payNotes || undefined,
+              shopId: currentShop?.id
             })
           });
           const data = await res.json();
-          if (!data.success) {
+          if (data.success) {
+            anyPaymentMade = true;
+          } else {
             toast.error(data.message || 'Failed to record payment');
-            break;
           }
-          remaining -= amountToPay;
         }
+
+        if (anyPaymentMade) {
+          toast.success('Payment recorded successfully!');
+        }
+
         setPayDialogOpen(false);
-        setPayAmount(0);
-        setPayMethod("CASH");
-        setPayDate(new Date().toISOString().split("T")[0]);
-        setPayWeek(null);
-        await loadSuppliers(true); // Silent refresh to avoid blocking UI
+        resetPayDialog();
+        await loadSuppliers(true);
       }
     } catch (e) {
       toast.error('Failed to record payment');
@@ -898,13 +951,40 @@ export default function Suppliers() {
                           ))}
                         </div>
                       ) : (
-                        <div className="text-center py-8 text-gray-500">
-                          <Calendar className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                          <p>{t("No supply history available", "कोई आपूर्ति इतिहास उपलब्ध नहीं है")}</p>
+                        <div className="text-center py-4 text-gray-400 text-sm">
+                          {t("No supply history", "कोई आपूर्ति इतिहास नहीं")}
                         </div>
                       )}
                     </CardContent>
                   </Card>
+                  
+                  <Card className="shadow-lg border-0 bg-white">
+                      <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-t-lg">
+                        <CardTitle className="flex items-center gap-2">
+                          <IndianRupee className="h-5 w-5" />
+                          {t("Payment History", "भुगतान इतिहास")}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-6">
+                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.length > 0 ? (
+                          <div className="space-y-4">
+                            {viewingSupplier.paymentHistory.map((payment, index) => (
+                              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                <div>
+                                  <p className="font-semibold text-green-600">₹{payment.amount.toLocaleString()}</p>
+                                  <p className="text-xs text-gray-500">{new Date(payment.paymentDate).toLocaleDateString()} via {payment.paymentMethod}</p>
+                                </div>
+                                {payment.notes && <p className="text-xs text-gray-400 italic">{payment.notes}</p>}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-4 text-gray-400 text-sm">
+                            {t("No payment history", "कोई भुगतान इतिहास नहीं")}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                 </div>
               )}
             </TabsContent>
@@ -913,34 +993,93 @@ export default function Suppliers() {
       </div>
 
       {/* Pay Outstanding Payment Dialog */}
-      <Dialog open={payDialogOpen} onOpenChange={setPayDialogOpen}>
+      <Dialog open={payDialogOpen} onOpenChange={(open) => { if (!payLoading) { setPayDialogOpen(open); if (!open) resetPayDialog(); } }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Pay Outstanding Payment</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <IndianRupee className="h-5 w-5 text-green-600" />
+              {payWeek ? `Pay for ${payWeek}` : 'Pay Outstanding Payment'}
+            </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <Label>Amount</Label>
-            <Input type="number" value={payAmount} onChange={e => setPayAmount(Number(e.target.value))} min={1} />
-            <Label>Payment Method</Label>
-            <select className="w-full border rounded p-2" value={payMethod} onChange={e => setPayMethod(e.target.value)}>
-              <option value="CASH">Cash</option>
-              <option value="CARD">Card</option>
-              <option value="UPI">UPI</option>
-              <option value="BANK_TRANSFER">Bank Transfer</option>
-              <option value="CHEQUE">Cheque</option>
-              <option value="OTHER">Other</option>
-            </select>
-            <Label>Date</Label>
-            <Input type="date" value={payDate} onChange={e => setPayDate(e.target.value)} />
-            {payWeek && (
-              <div>
-                <Label>Week</Label>
-                <Input value={payWeek} disabled />
+          <div className="space-y-4 pt-2">
+            {viewingSupplier && (
+              <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
+                <span className="font-medium">Supplier:</span> {viewingSupplier.name}
+                {viewingSupplier.outstandingPayment > 0 && (
+                  <span className="ml-2 text-red-600 font-semibold">· ₹{viewingSupplier.outstandingPayment.toLocaleString()} outstanding</span>
+                )}
               </div>
             )}
-            <Button className="w-full" onClick={handlePaySupplier} disabled={payLoading}>
-              {payLoading ? 'Paying...' : 'Pay Now'}
-            </Button>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Amount (₹) *</Label>
+              <Input
+                type="number"
+                value={payAmount || ''}
+                onChange={e => setPayAmount(Number(e.target.value))}
+                min={1}
+                placeholder="Enter amount"
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Payment Method</Label>
+              <select
+                className="w-full border border-input rounded-xl h-10 px-3 bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                value={payMethod}
+                onChange={e => setPayMethod(e.target.value)}
+              >
+                <option value="CASH">💵 Cash</option>
+                <option value="UPI">📱 UPI</option>
+                <option value="CARD">💳 Card</option>
+                <option value="BANK_TRANSFER">🏦 Bank Transfer</option>
+                <option value="CHEQUE">🧾 Cheque</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Payment Date</Label>
+              <Input
+                type="date"
+                value={payDate}
+                onChange={e => setPayDate(e.target.value)}
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Notes (optional)</Label>
+              <Input
+                value={payNotes}
+                onChange={e => setPayNotes(e.target.value)}
+                placeholder="e.g. Partial payment, bank ref #..."
+                className="h-10 rounded-xl"
+              />
+            </div>
+            {payWeek && (
+              <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-700">
+                <span className="font-medium">Paying for week:</span> {payWeek}
+              </div>
+            )}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                onClick={() => { setPayDialogOpen(false); resetPayDialog(); }}
+                disabled={payLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 rounded-xl bg-green-600 hover:bg-green-700"
+                onClick={handlePaySupplier}
+                disabled={payLoading || payAmount <= 0}
+              >
+                {payLoading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
+                ) : (
+                  <><IndianRupee className="h-4 w-4 mr-1" /> Pay ₹{payAmount > 0 ? payAmount.toLocaleString() : '0'}</>
+                )}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

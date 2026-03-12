@@ -103,6 +103,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'totalExpenses', title: 'Total Expenses', visible: true, order: 4 },
   { id: 'totalSupplierPayments', title: 'Supplier Payments', visible: true, order: 5 },
   { id: 'totalEmployeePayments', title: 'Employee Payments', visible: true, order: 6 },
+  { id: 'totalCustomerBalance', title: 'Total Customer Balance', visible: true, order: 7 },
 ]
 
 function SuperDuperAdminDashboardContent() {
@@ -177,6 +178,10 @@ function SuperDuperAdminDashboardContent() {
   const [transactionsLoading, setTransactionsLoading] = useState(false)
   const [transactionDays, setTransactionDays] = useState(30)
   const [selectedTransactionShop, setSelectedTransactionShop] = useState<string>('all')
+  const [highestBalanceCustomers, setHighestBalanceCustomers] = useState<Array<{ id: number; name: string; phone: string | null; balance: number; shopName: string }>>([]);
+  const [totalCustomerBalance, setTotalCustomerBalance] = useState<number>(0);
+  const [highestBalancePage, setHighestBalancePage] = useState(1);
+  const BALANCE_PAGE_SIZE = 5;
 
   // Widget management state
   const [widgets, setWidgets] = useState<WidgetConfig[]>(DEFAULT_WIDGETS)
@@ -503,6 +508,13 @@ function SuperDuperAdminDashboardContent() {
             setPaymentMethodBreakdown(data.data.paymentMethodBreakdown)
           } else {
             setPaymentMethodBreakdown([])
+          }
+
+          // Set highest balance customers
+          if (data.data.highestBalanceCustomers) {
+            setHighestBalanceCustomers(data.data.highestBalanceCustomers)
+            setTotalCustomerBalance(data.data.totalCustomerBalance || 0)
+            setHighestBalancePage(1)
           }
 
           // Set logs if present (either activity or login logs)
@@ -1221,6 +1233,47 @@ function SuperDuperAdminDashboardContent() {
                   </Card>
                 )
 
+              case 'totalCustomerBalance':
+                return (
+                  <Card
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all border-red-100 bg-red-50/10 ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1 z-10">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Customer Balance</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-red-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">₹{(totalCustomerBalance ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}</div>
+                      <p className="text-xs text-muted-foreground">
+                        Across active customers
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+
               default:
                 return null
             }
@@ -1434,6 +1487,80 @@ function SuperDuperAdminDashboardContent() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Highest Customer Balances */}
+          <Card className="mt-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Highest Customer Balances
+              </CardTitle>
+              <CardDescription>
+                All customers with outstanding balances, sorted highest first • Shop-isolated
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {highestBalanceCustomers.length === 0 ? (
+                <div className="flex items-center justify-center h-[200px] text-gray-500">
+                  <div className="text-center">
+                    <Users className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                    <p>No customers with outstanding balance</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="space-y-2 min-h-[280px]">
+                    {highestBalanceCustomers
+                      .slice((highestBalancePage - 1) * BALANCE_PAGE_SIZE, highestBalancePage * BALANCE_PAGE_SIZE)
+                      .map((customer) => (
+                        <div key={customer.id} className="flex items-center justify-between p-3 border rounded-lg">
+                          <div>
+                            <p className="font-medium text-sm">{customer.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {customer.shopName}{customer.phone ? ` • ${customer.phone}` : ''}
+                            </p>
+                          </div>
+                          <div className="font-bold text-red-600">
+                            ₹{customer.balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                          </div>
+                        </div>
+                      ))}
+                  </div>
+
+                  <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex justify-between items-center">
+                    <span className="text-sm font-semibold text-red-900">Total Outstanding Balance</span>
+                    <span className="text-lg font-bold text-red-600">
+                      ₹{totalCustomerBalance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {Math.ceil(highestBalanceCustomers.length / BALANCE_PAGE_SIZE) > 1 && (
+                    <div className="flex items-center justify-between pt-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setHighestBalancePage(p => Math.max(1, p - 1))}
+                        disabled={highestBalancePage === 1}
+                      >
+                        Previous
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Page {highestBalancePage} of {Math.ceil(highestBalanceCustomers.length / BALANCE_PAGE_SIZE)} &nbsp;•&nbsp; {highestBalanceCustomers.length} total
+                      </span>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setHighestBalancePage(p => Math.min(Math.ceil(highestBalanceCustomers.length / BALANCE_PAGE_SIZE), p + 1))}
+                        disabled={highestBalancePage === Math.ceil(highestBalanceCustomers.length / BALANCE_PAGE_SIZE)}
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Shops Tab */}

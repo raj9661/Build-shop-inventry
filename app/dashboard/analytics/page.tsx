@@ -67,6 +67,14 @@ interface AnalyticsData {
   roi?: number
   ros?: number
   grossMargin?: number
+  totalCustomerBalance?: number
+  highestBalanceCustomers?: Array<{
+    id: number
+    name: string
+    phone: string | null
+    balance: number
+    shopName: string
+  }>
   revenueByShop: Array<{
     shopName: string
     revenue: number
@@ -160,6 +168,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: 'roi', title: 'ROI', visible: true, order: 8, type: 'metric' },
   { id: 'ros', title: 'ROS', visible: true, order: 9, type: 'metric' },
   { id: 'grossMargin', title: 'Gross Margin', visible: true, order: 10, type: 'metric' },
+  { id: 'totalCustomerBalance', title: 'Total Customer Balance', visible: true, order: 11, type: 'metric' },
 ]
 
 const DEFAULT_CHART_WIDGETS: WidgetConfig[] = [
@@ -173,6 +182,77 @@ const DEFAULT_CHART_WIDGETS: WidgetConfig[] = [
   { id: 'expenseTrend', title: 'Expense Trend', visible: true, order: 7, type: 'chart' },
   { id: 'expensesByCategory', title: 'Expenses by Category', visible: true, order: 8, type: 'chart' },
 ]
+
+function HighestBalanceCustomersList({ customers, totalBalance }: { customers: NonNullable<AnalyticsData['highestBalanceCustomers']>, totalBalance?: number }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(customers.length / itemsPerPage);
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const visibleCustomers = customers.slice(startIndex, startIndex + itemsPerPage);
+
+  if (customers.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[250px] text-gray-500">
+        <div className="text-center">
+          <Users className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+          <p>No customers with outstanding balance</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2 min-h-[300px]">
+        {visibleCustomers.map((customer) => (
+          <div key={customer.id} className="flex items-center justify-between p-3 border rounded-lg">
+            <div>
+              <p className="font-medium text-sm">{customer.name}</p>
+              <p className="text-xs text-muted-foreground">{customer.shopName} {customer.phone ? `• ${customer.phone}` : ''}</p>
+            </div>
+            <div className="font-bold text-red-600">
+              ₹{customer.balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {totalBalance !== undefined && (
+        <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex justify-between items-center">
+          <span className="text-sm font-semibold text-red-900">Total Outstanding Balance</span>
+          <span className="text-lg font-bold text-red-600">
+            ₹{totalBalance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function AnalyticsDashboard() {
   const { t } = useLanguage()
@@ -1327,6 +1407,52 @@ export default function AnalyticsDashboard() {
                   </Card>
                 )
               
+              case 'totalCustomerBalance':
+                return (
+                  <Card 
+                    draggable={isEditMode}
+                    onDragStart={(e) => handleDragStart(e, widget.id)}
+                    onDragOver={(e) => handleDragOver(e, widget.id)}
+                    onDragLeave={handleDragLeave}
+                    onDrop={(e) => handleDrop(e, widget.id)}
+                    onDragEnd={handleDragEnd}
+                    style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
+                    className={`relative transition-all border-red-100 bg-red-50/10 ${
+                      isDragging ? 'opacity-50 scale-95' : '' 
+                    } ${
+                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
+                    } ${
+                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                  >
+                    {isEditMode && (
+                      <div className="absolute top-2 right-2 flex gap-1">
+                        <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => toggleWidgetVisibility(widget.id)}
+                          className="h-6 w-6 p-0"
+                        >
+                          <EyeOff className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    )}
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                      <CardTitle className="text-sm font-medium">Total Customer Balance</CardTitle>
+                      <TrendingUp className="h-4 w-4 text-red-600" />
+                    </CardHeader>
+                    <CardContent>
+                      <div className="text-2xl font-bold text-red-600">
+                        {analyticsData?.totalCustomerBalance !== undefined ? formatCurrency(analyticsData.totalCustomerBalance) : '₹0'}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Across active customers
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+
               default:
                 return null
             }
@@ -1463,6 +1589,34 @@ export default function AnalyticsDashboard() {
                       >
                         Next
                       </Button>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Highest Customer Balances */}
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Users className="h-5 w-5" />
+                  Highest Customer Balances
+                </CardTitle>
+                <CardDescription>
+                  Customers with largest outstanding balances across assigned shops
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {analyticsData?.highestBalanceCustomers ? (
+                  <HighestBalanceCustomersList 
+                    customers={analyticsData.highestBalanceCustomers} 
+                    totalBalance={analyticsData.totalCustomerBalance}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-[250px] text-gray-500">
+                    <div className="text-center">
+                      <Users className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                      <p>No customer balance data available</p>
                     </div>
                   </div>
                 )}

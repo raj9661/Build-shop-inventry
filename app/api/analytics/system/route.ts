@@ -777,6 +777,39 @@ export async function GET(req: NextRequest) {
       topShopsData = [];
     }
 
+    // Highest Balance Customers
+    let highestBalanceCustomersData: Array<{ id: number; name: string; phone: string | null; balance: number; shopName: string }> = [];
+    let totalCustomerBalance = 0;
+    try {
+      console.log('🔍 [System Analytics] Fetching highest balance customers...');
+      const customers = await prisma.customer.findMany({
+        where: {
+          isActive: true,
+          currentBalance: { gt: 0 },
+          ...shopFilter
+        },
+        orderBy: { currentBalance: 'desc' },
+        include: {
+          shop: { select: { name: true } }
+        }
+      });
+      highestBalanceCustomersData = customers.map(c => ({
+        id: Number(c.id),
+        name: c.name,
+        phone: c.phone,
+        balance: Number(c.currentBalance),
+        shopName: c.shop.name
+      }));
+      
+      // Calculate total balance for all customers fetched
+      totalCustomerBalance = highestBalanceCustomersData.reduce((sum, c) => sum + c.balance, 0);
+      
+      console.log('✅ [System Analytics] Highest balance customers and total balance fetched successfully');
+    } catch (error) {
+      console.error('❌ [System Analytics] Highest balance customers error:', error);
+      highestBalanceCustomersData = [];
+    }
+
     // Helper function to serialize BigInt values and Date objects
     const serializeBigInt = (obj: any): any => {
       if (obj === null || obj === undefined) return obj;
@@ -878,6 +911,9 @@ export async function GET(req: NextRequest) {
 
         // Top shops
         topShops: topShopsData,
+
+        highestBalanceCustomers: highestBalanceCustomersData,
+        totalCustomerBalance: totalCustomerBalance,
 
         // Payment methods
         paymentMethodBreakdown: paymentMethodData,

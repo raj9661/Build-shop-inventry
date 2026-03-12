@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/hooks/use-language"
 import { useShop } from "../contexts/ShopContext"
-import { IndianRupee, TrendingUp, ShoppingBag, Wallet, AlertCircle, Building2, Users, Package, ShoppingCart, PieChart as PieChartIcon } from "lucide-react"
+import { IndianRupee, TrendingUp, ShoppingBag, Wallet, AlertCircle, Building2, Users, Package, ShoppingCart, PieChart as PieChartIcon, Loader2 } from "lucide-react"
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range"
 import {
   Bar,
@@ -57,7 +57,87 @@ interface SuperAdminStats {
     category: string
     amount: number
   }>
+  highestBalanceCustomers?: Array<{
+    id: number
+    name: string
+    phone: string | null
+    balance: number
+    shopName: string
+  }>
+  totalCustomerBalance?: number
 }
+
+function HighestBalanceCustomersList({ customers, totalBalance }: { customers: NonNullable<SuperAdminStats['highestBalanceCustomers']>, totalBalance?: number }) {
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+  const totalPages = Math.ceil(customers.length / itemsPerPage);
+
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const visibleCustomers = customers.slice(startIndex, startIndex + itemsPerPage);
+
+  if (customers.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-[250px] text-gray-500">
+        <div className="text-center">
+          <Users className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+          <p>No customers with outstanding balance</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-2 min-h-[300px]">
+        {visibleCustomers.map((customer) => (
+          <div key={customer.id} className="flex items-center justify-between p-3 border rounded-lg">
+            <div>
+              <p className="font-medium text-sm">{customer.name}</p>
+              <p className="text-xs text-muted-foreground">{customer.shopName} {customer.phone ? `• ${customer.phone}` : ''}</p>
+            </div>
+            <div className="font-bold text-red-600">
+              ₹{customer.balance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {totalBalance !== undefined && (
+        <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex justify-between items-center">
+          <span className="text-sm font-semibold text-red-900">Total Outstanding Balance</span>
+          <span className="text-lg font-bold text-red-600">
+            ₹{totalBalance.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+          </span>
+        </div>
+      )}
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+            disabled={currentPage === 1}
+          >
+            Previous
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            Page {currentPage} of {totalPages}
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+            disabled={currentPage === totalPages}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 export default function SuperAdminDashboard() {
   const { t } = useLanguage()
@@ -212,8 +292,14 @@ export default function SuperAdminDashboard() {
     { 
       title: t("Total Expenses", "कुल खर्च"), 
       value: formatCurrency(stats.totalExpenses), 
-      icon: AlertCircle, 
+      icon: TrendingDown, 
       color: "text-red-500" 
+    },
+    { 
+      title: t("Total Customer Balance", "कुल ग्राहक शेष"), 
+      value: stats.totalCustomerBalance !== undefined ? formatCurrency(stats.totalCustomerBalance) : formatCurrency(0), 
+      icon: TrendingUp, 
+      color: "text-red-600" 
     },
   ]
 
@@ -355,7 +441,7 @@ export default function SuperAdminDashboard() {
                           cx="50%"
                           cy="50%"
                           outerRadius={100}
-                          label={({ method, amount }) => `${method}: ₹${amount.toLocaleString()}`}
+                          label={({ method, amount }: any) => `${method}: ₹${amount.toLocaleString()}`}
                         >
                           {paymentMethodBreakdown.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
@@ -395,7 +481,7 @@ export default function SuperAdminDashboard() {
                           cx="50%" 
                           cy="50%" 
                           outerRadius={100} 
-                          label={({ name, revenue }) => `${name}: ${formatCurrency(revenue)}`}
+                          label={({ name, revenue }: any) => `${name}: ${formatCurrency(revenue)}`}
                         >
                           {stats.topProducts.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
@@ -409,6 +495,38 @@ export default function SuperAdminDashboard() {
                       <div className="text-center">
                         <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
                         <p>No product data available</p>
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Highest Customer Balances */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    {t("Highest Customer Balances", "उच्चतम ग्राहक शेष")}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("Customers with outstanding balances across all shops", "सभी दुकानों में बकाया शेष वाले ग्राहक")}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {loading ? (
+                    <div className="flex items-center justify-center h-[250px]">
+                      <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
+                    </div>
+                  ) : stats?.highestBalanceCustomers ? (
+                    <HighestBalanceCustomersList 
+                      customers={stats.highestBalanceCustomers} 
+                      totalBalance={stats.totalCustomerBalance}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-[250px] text-gray-500">
+                      <div className="text-center">
+                        <Users className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                        <p>No customers with outstanding balance</p>
                       </div>
                     </div>
                   )}
@@ -470,7 +588,7 @@ export default function SuperAdminDashboard() {
                           cx="50%"
                           cy="50%"
                           outerRadius={100}
-                          label={({ category, amount }) => `${category}: ₹${amount.toLocaleString()}`}
+                          label={({ category, amount }: any) => `${category}: ₹${amount.toLocaleString()}`}
                         >
                           {stats.expensesByCategory.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />

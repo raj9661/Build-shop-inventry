@@ -35,23 +35,9 @@ function LoginForm() {
     setError('');
 
     try {
-      // Use custom login API to capture IP and user agent
-      const response = await fetch('/api/auth/custom-login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await response.json();
-
-      if (!data.success) {
-        setError(data.message || 'Invalid credentials. Please try again.');
-        return;
-      }
-
-      // If custom login successful, now use NextAuth for session management
+      // Use NextAuth directly for session management
+      // We removed the custom-login API call to avoid slow 2x bcrypt hashing
+      // The NextAuth config handles the IP logging asynchronously.
       const result = await signIn('credentials', {
         email,
         password,

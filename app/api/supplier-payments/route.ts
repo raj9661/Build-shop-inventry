@@ -80,6 +80,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Deduct paid amount from supplier's outstandingPayment (floor at 0)
+    const freshSupplier = await prisma.supplier.findUnique({ where: { id: BigInt(supplierId) } });
+    if (freshSupplier) {
+      const currentOutstanding = Number((freshSupplier as any).outstandingPayment ?? 0);
+      const newOutstanding = Math.max(0, currentOutstanding - Number(amount));
+      await prisma.supplier.update({
+        where: { id: BigInt(supplierId) },
+        data: { outstandingPayment: newOutstanding } as any
+      });
+    }
+
     // Fix BigInt serialization
     function safeBigInt(obj: any): any {
       if (Array.isArray(obj)) return obj.map(safeBigInt);

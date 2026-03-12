@@ -53,6 +53,7 @@ type LedgerEntry = {
   runningBalance: number;
   type?: 'debit' | 'credit';
   purpose?: string; // Added for filtering
+  description?: string; // Added for UI display
 };
 
 interface Customer {
@@ -88,6 +89,7 @@ export default function CustomerLedger() {
   const [isAddCustomerOpen, setIsAddCustomerOpen] = useState(false)
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false)
 
   const [newEntry, setNewEntry] = useState({
     amount: "",
@@ -557,6 +559,7 @@ export default function CustomerLedger() {
       return;
     }
 
+    setIsSubmittingCustomer(true);
     try {
       const token = localStorage.getItem('accessToken');
       const res = await fetch('/api/customers', {
@@ -578,18 +581,20 @@ export default function CustomerLedger() {
         setIsAddCustomerOpen(false);
         setNewCustomer({ name: "", phone: "", address: "" });
 
-        // Clear cache and fetch fresh customers
-        searchCache.current.clear();
-        await fetchCustomers();
-
         setSelectedCustomer(data.data.id);
         setCustomerSearchTerm(data.data.name);
+
+        // Clear cache and fetch fresh customers asynchronously to not block the UI close
+        searchCache.current.clear();
+        fetchCustomers().catch(err => console.error("Error refreshing customers:", err));
       } else {
         toast.error(data.message || t("Failed to add customer", "ग्राहक जोड़ने में विफल"));
       }
     } catch (error) {
       console.error('Error adding customer:', error);
       toast.error(t("Failed to add customer", "ग्राहक जोड़ने में विफल"));
+    } finally {
+      setIsSubmittingCustomer(false);
     }
   };
 
@@ -1408,11 +1413,18 @@ export default function CustomerLedger() {
               </div>
             </div>
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsAddCustomerOpen(false)}>
+              <Button variant="outline" onClick={() => setIsAddCustomerOpen(false)} disabled={isSubmittingCustomer}>
                 {t("Cancel", "रद्द करें")}
               </Button>
-              <Button onClick={handleAddCustomer}>
-                {t("Save Customer", "ग्राहक सहेजें")}
+              <Button onClick={handleAddCustomer} disabled={isSubmittingCustomer}>
+                {isSubmittingCustomer ? (
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    {t("Saving...", "सहेज रहा है...")}
+                  </span>
+                ) : (
+                  t("Save Customer", "ग्राहक सहेजें")
+                )}
               </Button>
             </div>
           </DialogContent>

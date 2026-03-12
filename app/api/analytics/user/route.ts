@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const days = parseInt(searchParams.get('days') || '30');
     const shopIdParam = searchParams.get('shopId');
-    
+
     console.log('🔍 User analytics API called:', { userId: decoded.userId, days, shopIdParam });
 
     // Get shop filter based on user's access
@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     console.log('🏪 User shop filter:', shopFilter);
     console.log('🏪 Shop filter type:', typeof shopFilter);
     console.log('🏪 Shop filter keys:', Object.keys(shopFilter));
-    
+
     // Determine which shops the user can access
     let whereClause: any = {};
     if (shopIdParam) {
@@ -50,9 +50,9 @@ export async function GET(req: NextRequest) {
           Object.assign(whereClause, shopFilter);
         } else {
           // User has no shop assignments
-          return NextResponse.json({ 
-            success: false, 
-            message: 'You do not have access to any shops. Please contact your administrator.' 
+          return NextResponse.json({
+            success: false,
+            message: 'You do not have access to any shops. Please contact your administrator.'
           }, { status: 403 });
         }
       }
@@ -179,7 +179,7 @@ export async function GET(req: NextRequest) {
       // For SUPER_DUPER_ADMIN, use createdBy filter
       shopWhereClause.createdBy = whereClause.createdBy;
     }
-    
+
     const shops = await prisma.shop.findMany({
       where: shopWhereClause,
       select: {
@@ -193,16 +193,16 @@ export async function GET(req: NextRequest) {
     const salesByMonth = [];
     const numMonths = Math.max(1, Math.ceil(days / 30));
     const monthsToShow = Math.min(numMonths, 12); // Cap at 12 months
-    
+
     for (let i = monthsToShow - 1; i >= 0; i--) {
       const now = new Date();
       // Calculate the target month by subtracting i months from now (using UTC)
       const targetYear = now.getUTCFullYear();
       const targetMonth = now.getUTCMonth() - i;
-      
+
       // Create month start (first day of month, 00:00:00 UTC)
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      
+
       // Create month end (last day of month, 23:59:59.999 UTC)
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
@@ -221,7 +221,7 @@ export async function GET(req: NextRequest) {
 
       // Format month as "MMM YYYY"
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       salesByMonth.push({
         month: monthLabel,
         sales: monthSales._count.id || 0,
@@ -235,7 +235,7 @@ export async function GET(req: NextRequest) {
       const now = new Date();
       const targetYear = now.getUTCFullYear();
       const targetMonth = now.getUTCMonth() - i;
-      
+
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
@@ -252,7 +252,7 @@ export async function GET(req: NextRequest) {
       });
 
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      
+
       expensesByMonth.push({
         month: monthLabel,
         expenses: Number(monthExpenses._sum.amount || 0)
@@ -387,6 +387,30 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    // Highest Balance Customers
+    const customers = await prisma.customer.findMany({
+      where: {
+        isActive: true,
+        currentBalance: { gt: 0 },
+        ...whereClause
+      },
+      orderBy: { currentBalance: 'desc' },
+      include: {
+        shop: { select: { name: true } }
+      }
+    });
+
+    const highestBalanceCustomersData = customers.map(c => ({
+      id: Number(c.id),
+      name: c.name,
+      phone: c.phone,
+      balance: Number(c.currentBalance),
+      shopName: c.shop.name
+    }));
+
+    const totalCustomerBalance = highestBalanceCustomersData.reduce((sum, c) => sum + c.balance, 0);
+
+
     // Format the response data
     const analyticsData = {
       totalRevenue: Number(totalRevenue._sum.finalAmount || 0),
@@ -453,6 +477,9 @@ export async function GET(req: NextRequest) {
         amount: Number(payment._sum.finalAmount || 0),
         count: payment._count.id
       })),
+      highestBalanceCustomers: highestBalanceCustomersData,
+      totalCustomerBalance: totalCustomerBalance,
+
       recentActivity: recentActivity.map(log => ({
         id: Number(log.id),
         action: log.action,
@@ -482,9 +509,9 @@ export async function GET(req: NextRequest) {
 
   } catch (error) {
     console.error('User analytics error:', error);
-    return NextResponse.json({ 
-      success: false, 
-      message: 'Failed to fetch analytics data' 
+    return NextResponse.json({
+      success: false,
+      message: 'Failed to fetch analytics data'
     }, { status: 500 });
   }
 }

@@ -371,21 +371,22 @@ model DailyProductPrice {
 }
 
 model Supplier {
-  id             BigInt                 @id @default(sequence())
-  name           String
-  phone          String?
-  email          String?
-  address        String?
-  gstNo          String?
-  isActive       Boolean                @default(true)
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
-  shopId         BigInt
-  stockEntries   StockEntry[]
-  shop           Shop                   @relation(fields: [shopId], references: [id])
-  payments       SupplierPayment[]
-  weeklyReports  SupplierWeeklyReport[]
-  tmtInventories TmtInventory[]
+  id                 BigInt                 @id @default(sequence())
+  name               String
+  phone              String?
+  email              String?
+  address            String?
+  gstNo              String?
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  shopId             BigInt
+  outstandingPayment Decimal                @default(0) @db.Decimal(12, 2)
+  stockEntries       StockEntry[]
+  shop               Shop                   @relation(fields: [shopId], references: [id])
+  payments           SupplierPayment[]
+  weeklyReports      SupplierWeeklyReport[]
+  tmtInventories     TmtInventory[]
 
   @@index([shopId])
   @@index([isActive])

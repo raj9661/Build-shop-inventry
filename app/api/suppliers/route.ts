@@ -118,8 +118,11 @@ export async function GET(req: NextRequest) {
       select: {
         supplierId: true,
         amount: true,
-        paymentDate: true
-      }
+        paymentDate: true,
+        paymentMethod: true,
+        notes: true
+      },
+      orderBy: { paymentDate: 'desc' }
     });
 
     // Group stock entries and payments by supplier
@@ -152,8 +155,9 @@ export async function GET(req: NextRequest) {
       const pays = paymentsBySupplier[supplierId] || [];
       // Total supplied (sum of totalAmount)
       const totalSupplied = entries.reduce((sum, e) => sum + Number(e.totalAmount), 0);
-      // Outstanding payment = sum of all unpaid items
-      const outstandingPayment = entries.filter(e => e.paymentStatus !== 'COMPLETED').reduce((sum, e) => sum + Number(e.totalAmount), 0);
+      // Outstanding payment = use stored value from DB (manually set), fallback to computed from unpaid stock entries
+      const computedOutstanding = entries.filter(e => e.paymentStatus !== 'COMPLETED').reduce((sum, e) => sum + Number(e.totalAmount), 0);
+      const outstandingPayment = Number((supplier as any).outstandingPayment) > 0 ? Number((supplier as any).outstandingPayment) : computedOutstanding;
       // Last supply date
       const lastSupply = entries.length > 0 ? entries.reduce((latest, e) => new Date(e.entryDate) > new Date(latest) ? e.entryDate : latest, entries[0].entryDate) : null;
       // Weekly supply history with product details
@@ -196,7 +200,13 @@ export async function GET(req: NextRequest) {
         totalSupplied,
         outstandingPayment,
         lastSupply,
-        weeklySupplies
+        weeklySupplies,
+        paymentHistory: pays.map(p => ({
+          amount: Number(p.amount),
+          paymentDate: p.paymentDate instanceof Date ? p.paymentDate.toISOString() : p.paymentDate,
+          paymentMethod: (p as any).paymentMethod || 'CASH',
+          notes: (p as any).notes || null
+        }))
       };
     });
 
