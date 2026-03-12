@@ -326,13 +326,19 @@ export async function PUT(req: NextRequest) {
     
     console.log('🔍 Category update request:', { id, name, shopId, shopIdType: typeof shopId });
     
-    if (!id) {
-      return NextResponse.json({ success: false, message: 'Category ID is required' }, { status: 400 });
+    if (!id || !name) {
+      return NextResponse.json({ success: false, message: 'Category ID and name are required' }, { status: 400 });
     }
     
-    // shopId can be null for global categories, so we only check if it's undefined
-    if (shopId === undefined) {
-      return NextResponse.json({ success: false, message: 'shopId is required (can be null for global categories)' }, { status: 400 });
+    // Convert shopId to BigInt safely
+    let targetShopId: bigint | null = null;
+    if (shopId !== null && shopId !== undefined && shopId !== '') {
+      try {
+        targetShopId = BigInt(parseInt(shopId.toString()));
+      } catch (e) {
+        console.error('Invalid shopId format:', shopId);
+        return NextResponse.json({ success: false, message: 'Invalid shopId format' }, { status: 400 });
+      }
     }
 
     // SUPER_DUPER_ADMIN: Verify they own the category and the target shop
@@ -346,9 +352,20 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Category not found' }, { status: 404 });
       }
       
-      // Verify the category's current shop belongs to this SUPER_DUPER_ADMIN
-      if (currentCategory.shopId && currentCategory.shop) {
-        if (currentCategory.shop.createdBy !== BigInt(decoded.userId)) {
+      // Verify the category's ownership
+      const isGlobal = !currentCategory.shopId;
+      
+      if (isGlobal) {
+        // For global categories, verify the creator
+        if (currentCategory.createdBy !== BigInt(decoded.userId)) {
+          return NextResponse.json({ 
+            success: false, 
+            message: 'You can only edit global categories you created' 
+          }, { status: 403 });
+        }
+      } else {
+        // For shop-specific categories, verify the shop's creator
+        if (currentCategory.shop && currentCategory.shop.createdBy !== BigInt(decoded.userId)) {
           return NextResponse.json({ 
             success: false, 
             message: 'You can only edit categories from shops you created' 
@@ -356,11 +373,11 @@ export async function PUT(req: NextRequest) {
         }
       }
       
-      // If updating shopId, verify the new shop belongs to this SUPER_DUPER_ADMIN
-      if (shopId !== null && shopId !== undefined) {
+      // If updating shopId, verify the new shop if it's not global
+      if (targetShopId !== null) {
         const targetShop = await prisma.shop.findFirst({
           where: {
-            id: BigInt(parseInt(shopId)),
+            id: targetShopId,
             createdBy: BigInt(decoded.userId),
             isActive: true
           }
@@ -374,28 +391,31 @@ export async function PUT(req: NextRequest) {
         }
       }
       
-      // No global categories (shopId must not be null)
-      if (shopId === null) {
-        return NextResponse.json({ 
-          success: false, 
-          message: 'Shop ID is required. You cannot create or update global categories.' 
-        }, { status: 400 });
-      }
+      // Allow global categories (shopId: null) for SUPER_DUPER_ADMIN
     }
     
-    // Check if a category with the same name already exists in the target shop
+    // Check if a category with the same name already exists in the target shop/global scope
+    const duplicateCheckWhere: any = {
+      name: { equals: name, mode: 'insensitive' },
+      shopId: targetShopId,
+      id: { not: parseInt(id) },
+      isActive: true
+    };
+
+    // For global categories, also check createdBy to ensure isolation between SUPER_DUPER_ADMINs
+    if (targetShopId === null && decoded.role === 'SUPER_DUPER_ADMIN') {
+      duplicateCheckWhere.createdBy = BigInt(decoded.userId);
+    }
+
     const existingCategory = await prisma.productCategory.findFirst({
-      where: {
-        name: name,
-        shopId: shopId === null ? null : BigInt(parseInt(shopId)),
-        id: { not: parseInt(id) } // Exclude the current category being updated
-      }
+      where: duplicateCheckWhere
     });
 
     if (existingCategory) {
+      const location = targetShopId ? 'in the selected shop' : 'globally';
       return NextResponse.json({ 
         success: false, 
-        message: `A category with the name "${name}" already exists in the selected shop. Please choose a different name or shop.` 
+        message: `A category with the name "${name}" already exists ${location}. Please choose a different name or shop.` 
       }, { status: 400 });
     }
 
@@ -405,7 +425,7 @@ export async function PUT(req: NextRequest) {
         name,
         description,
         isActive,
-        shopId: shopId === null ? null : BigInt(parseInt(shopId))
+        shopId: targetShopId
       }
     });
     
@@ -457,12 +477,14 @@ export async function DELETE(req: NextRequest) {
             message: 'You can only delete categories from shops you created' 
           }, { status: 403 });
         }
-      } else {
-        // Global category - SUPER_DUPER_ADMIN shouldn't have these, but check anyway
-        return NextResponse.json({ 
-          success: false, 
-          message: 'Cannot delete this category' 
-        }, { status: 403 });
+      } else if (!category.shopId) {
+        // Global category - verify the creator
+        if (category.createdBy !== BigInt(decoded.userId)) {
+          return NextResponse.json({ 
+            success: false, 
+            message: 'You can only delete global categories you created' 
+          }, { status: 403 });
+        }
       }
     }
     

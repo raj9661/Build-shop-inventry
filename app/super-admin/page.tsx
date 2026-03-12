@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useLanguage } from "@/hooks/use-language"
 import { useShop } from "../contexts/ShopContext"
-import { IndianRupee, TrendingUp, ShoppingBag, Wallet, AlertCircle, Building2, Users, Package, ShoppingCart, PieChart as PieChartIcon, Loader2 } from "lucide-react"
+import { IndianRupee, TrendingUp, TrendingDown, ShoppingBag, Wallet, AlertCircle, Building2, Users, Package, ShoppingCart, PieChart as PieChartIcon, Loader2 } from "lucide-react"
 import { DatePickerWithRange } from "@/components/ui/date-picker-with-range"
 import {
   Bar,

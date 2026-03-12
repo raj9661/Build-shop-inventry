@@ -225,6 +225,17 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Type ID, name, and category are required' }, { status: 400 });
     }
 
+    // Convert shopId to BigInt safely
+    let targetShopId: bigint | null = null;
+    if (shopId !== null && shopId !== undefined && shopId !== '') {
+      try {
+        targetShopId = BigInt(parseInt(shopId.toString()));
+      } catch (e) {
+        console.error('Invalid shopId format:', shopId);
+        return NextResponse.json({ success: false, message: 'Invalid shopId format' }, { status: 400 });
+      }
+    }
+
     // SUPER_DUPER_ADMIN: Verify they own the type and the target shop
     if (decoded.role === 'SUPER_DUPER_ADMIN') {
       const currentType = await prisma.productType.findUnique({
@@ -236,9 +247,20 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Product type not found' }, { status: 404 });
       }
       
-      // Verify the type's current shop belongs to this SUPER_DUPER_ADMIN
-      if (currentType.shopId && currentType.shop) {
-        if (currentType.shop.createdBy !== BigInt(decoded.userId)) {
+      // Verify the type's ownership
+      const isGlobal = !currentType.shopId;
+      
+      if (isGlobal) {
+        // For global types, verify the creator
+        if (currentType.createdBy !== BigInt(decoded.userId)) {
+          return NextResponse.json({ 
+            success: false, 
+            message: 'You can only edit global product types you created' 
+          }, { status: 403 });
+        }
+      } else {
+        // For shop-specific types, verify the shop's creator
+        if (currentType.shop && currentType.shop.createdBy !== BigInt(decoded.userId)) {
           return NextResponse.json({ 
             success: false, 
             message: 'You can only edit product types from shops you created' 
@@ -246,11 +268,11 @@ export async function PUT(req: NextRequest) {
         }
       }
       
-      // If updating shopId, verify the new shop belongs to this SUPER_DUPER_ADMIN
-      if (shopId !== null && shopId !== undefined) {
+      // If updating shopId, verify the new shop if it's not global
+      if (targetShopId !== null) {
         const targetShop = await prisma.shop.findFirst({
           where: {
-            id: BigInt(parseInt(shopId)),
+            id: targetShopId,
             createdBy: BigInt(decoded.userId),
             isActive: true
           }
@@ -264,25 +286,24 @@ export async function PUT(req: NextRequest) {
         }
       }
       
-      // No global types (shopId must not be null)
-      if (shopId === null) {
-        return NextResponse.json({ 
-          success: false, 
-          message: 'Shop ID is required. You cannot create or update global product types.' 
-        }, { status: 400 });
-      }
+      // Allow global types (shopId: null) for SUPER_DUPER_ADMIN
     }
     
-    // Determine the target shopId
-    let targetShopId = shopId ? BigInt(parseInt(shopId)) : null;
-    
-    // Check if a product type with the same name already exists in the target shop
+    // Check if a product type with the same name already exists in the target shop/global scope
+    const duplicateCheckWhere: any = {
+      name: { equals: name, mode: 'insensitive' },
+      shopId: targetShopId,
+      id: { not: parseInt(id) },
+      isActive: true
+    };
+
+    // For global types, also check createdBy to ensure isolation between SUPER_DUPER_ADMINs
+    if (targetShopId === null && decoded.role === 'SUPER_DUPER_ADMIN') {
+      duplicateCheckWhere.createdBy = BigInt(decoded.userId);
+    }
+
     const existingType = await prisma.productType.findFirst({
-      where: {
-        name: { equals: name, mode: 'insensitive' },
-        shopId: targetShopId,
-        id: { not: parseInt(id) } // Exclude the current type being updated
-      }
+      where: duplicateCheckWhere
     });
 
     if (existingType) {
@@ -293,17 +314,15 @@ export async function PUT(req: NextRequest) {
       }, { status: 400 });
     }
 
-    const updateData: any = {
-      name,
-      description,
-      isActive,
-      categoryId: BigInt(parseInt(categoryId)),
-      shopId: targetShopId
-    };
-    
     const productType = await prisma.productType.update({
       where: { id: parseInt(id) },
-      data: updateData
+      data: {
+        name,
+        description,
+        isActive,
+        categoryId: BigInt(parseInt(categoryId)),
+        shopId: targetShopId
+      }
     });
     
     // Convert BigInt fields to numbers for JSON serialization
@@ -365,12 +384,14 @@ export async function DELETE(req: NextRequest) {
             message: 'You can only delete product types from shops you created' 
           }, { status: 403 });
         }
-      } else {
-        // Global type - SUPER_DUPER_ADMIN shouldn't have these, but check anyway
-        return NextResponse.json({ 
-          success: false, 
-          message: 'Cannot delete this product type' 
-        }, { status: 403 });
+      } else if (!productType.shopId) {
+        // Global type - verify the creator
+        if (productType.createdBy !== BigInt(decoded.userId)) {
+          return NextResponse.json({ 
+            success: false, 
+            message: 'You can only delete global product types you created' 
+          }, { status: 403 });
+        }
       }
     }
     
