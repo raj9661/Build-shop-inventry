@@ -22,24 +22,24 @@ export async function GET(req: NextRequest) {
     // Get shop filter based on user's access
     const shopFilter = await getShopFilter(token);
     console.log('🔍 [Stock API] Shop filter for user:', decoded.userId, 'role:', decoded.role, 'filter:', shopFilter);
-    
+
     // Check if specific shopId is requested in query params
     const { searchParams } = new URL(req.url);
     const requestedShopId = searchParams.get('shopId');
     console.log('🔍 [Stock API] Requested shopId from query params:', requestedShopId);
-    
+
     // Build where clause with shop filter
     const whereClause: any = { isActive: true };
-    
+
     // If specific shopId is requested, use it (but still respect user access)
     if (requestedShopId) {
       const shopIdNum = parseInt(requestedShopId);
       console.log('🔍 [Stock API] Using requested shopId:', shopIdNum);
-      
+
       // Check if user has access to this specific shop
-      const hasAccess = shopFilter.shopId?.in?.includes(shopIdNum) || 
-                       (shopFilter.shopId && shopFilter.shopId === shopIdNum);
-      
+      const hasAccess = shopFilter.shopId?.in?.includes(shopIdNum) ||
+        (shopFilter.shopId && shopFilter.shopId === shopIdNum);
+
       if (hasAccess) {
         whereClause.shopId = shopIdNum;
         console.log('🔍 [Stock API] User has access to requested shop, filtering by shopId:', shopIdNum);
@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       // Use the general shop filter if no specific shopId requested
       Object.assign(whereClause, shopFilter);
     }
-    
+
     console.log('🔍 [Stock API] Final where clause:', whereClause);
 
     const stockEntries = await prisma.stockEntry.findMany({
@@ -99,16 +99,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { 
-      productName, 
-      categoryId, 
-      typeId, 
-      supplierName, 
-      supplierPhone, 
-      quantity, 
-      unitPrice, 
-      unit, 
-      entryDate, 
+    const {
+      productName,
+      categoryId,
+      typeId,
+      supplierName,
+      supplierPhone,
+      quantity,
+      unitPrice,
+      unit,
+      entryDate,
       notes,
       sku,
       price,
@@ -119,9 +119,9 @@ export async function POST(req: NextRequest) {
     } = body;
 
     if (!productName || !categoryId || !typeId || !supplierName || !quantity || !unitPrice) {
-      return NextResponse.json({ 
-        success: false, 
-        message: 'Missing required fields: productName, categoryId, typeId, supplierName, quantity, unitPrice' 
+      return NextResponse.json({
+        success: false,
+        message: 'Missing required fields: productName, categoryId, typeId, supplierName, quantity, unitPrice'
       }, { status: 400 });
     }
 
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         shopId = shopFilter.shopId;
       }
     }
-    
+
     if (!shopId) {
       return NextResponse.json({ success: false, message: 'No valid shop found' }, { status: 403 });
     }
@@ -257,7 +257,7 @@ export async function POST(req: NextRequest) {
           notes: notes,
           shopId: shopId,
           isActive: true,
-          paymentStatus: paymentStatus && ["PENDING","COMPLETED","FAILED","CANCELLED"].includes(paymentStatus) ? paymentStatus : 'PENDING'
+          paymentStatus: paymentStatus && ["PENDING", "COMPLETED", "FAILED", "CANCELLED"].includes(paymentStatus) ? paymentStatus : 'PENDING'
         }
       });
 
@@ -267,7 +267,7 @@ export async function POST(req: NextRequest) {
         rawStockQuantityType: typeof product.stockQuantity,
         rawStockQuantityConstructor: product.stockQuantity?.constructor?.name
       });
-      
+
       const currentStock = Number(product.stockQuantity);
       const addingQuantity = parseInt(quantity);
       const newStockQuantity = currentStock + addingQuantity;
@@ -282,32 +282,32 @@ export async function POST(req: NextRequest) {
         newStockQuantityType: typeof newStockQuantity,
         calculation: `${currentStock} + ${addingQuantity} = ${newStockQuantity}`
       });
-      
+
       // Check if this is a new product or existing product
       console.log('🔍 [Stock Entry] Product details:', {
         isNewProduct: currentStock === 0,
         productCreatedAt: product.createdAt,
         productUpdatedAt: product.updatedAt
       });
-      
+
       // Check existing stock entries for this product
       const existingStockEntries = await tx.stockEntry.findMany({
         where: { productId: product.id },
         select: { id: true, quantity: true, entryDate: true, notes: true }
       });
       console.log('🔍 [Stock Entry] Existing stock entries for this product:', existingStockEntries);
-      
+
       // Calculate total stock from all entries
       const totalStockFromEntries = existingStockEntries.reduce((sum, entry) => sum + entry.quantity, 0);
       console.log('🔍 [Stock Entry] Total stock from all entries:', totalStockFromEntries);
-      
+
       await tx.product.update({
         where: { id: product.id },
         data: {
           stockQuantity: newStockQuantity
         }
       });
-      
+
       console.log('🔍 [Stock Entry] Product stock updated successfully');
 
       return { stockEntry, product, supplier };
@@ -322,8 +322,8 @@ export async function POST(req: NextRequest) {
       supplier: serializeBigInt(result.supplier)
     };
 
-    return NextResponse.json({ 
-      success: true, 
+    return NextResponse.json({
+      success: true,
       data: serializedResult,
       message: 'Stock entry created successfully'
     });
@@ -331,7 +331,7 @@ export async function POST(req: NextRequest) {
     console.error('Create stock entry error:', error);
     return NextResponse.json({ success: false, message: 'Failed to create stock entry' }, { status: 500 });
   }
-} 
+}
 
 // PATCH - Update paymentStatus for a stock entry
 export async function PATCH(req: NextRequest) {
@@ -347,7 +347,7 @@ export async function PATCH(req: NextRequest) {
     }
     const body = await req.json();
     const { id, paymentStatus } = body;
-    if (!id || !paymentStatus || !["PENDING","COMPLETED","FAILED","CANCELLED"].includes(paymentStatus)) {
+    if (!id || !paymentStatus || !["PENDING", "COMPLETED", "FAILED", "CANCELLED"].includes(paymentStatus)) {
       return NextResponse.json({ success: false, message: 'Missing or invalid id/paymentStatus' }, { status: 400 });
     }
     const updated = await prisma.stockEntry.update({
