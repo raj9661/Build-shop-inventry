@@ -363,6 +363,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Update supplier outstanding payment
+    if (supplierId && calculatedTotalAmount) {
+      try {
+        const supplier = await prisma.supplier.findUnique({
+          where: { id: BigInt(parseInt(supplierId)) }
+        });
+        
+        if (supplier) {
+          const currentOutstanding = Number(supplier.outstandingPayment || 0);
+          const newOutstanding = currentOutstanding + Number(calculatedTotalAmount);
+          
+          await prisma.supplier.update({
+            where: { id: supplier.id },
+            data: { outstandingPayment: newOutstanding }
+          });
+          
+          console.log('🔍 [TMT Stock] Supplier outstanding payment updated:', {
+            supplierId: supplier.id,
+            previousOutstanding: currentOutstanding,
+            newOutstanding: newOutstanding
+          });
+        }
+      } catch (supplierUpdateError) {
+        console.error('Error updating supplier balance for TMT stock:', supplierUpdateError);
+      }
+    }
+
     // If invoice details are provided, optionally create a purchase record
     // This is optional - the inventory update is the main operation
     if (invoiceNumber && supplierId) {

@@ -92,141 +92,66 @@ export async function GET(req: NextRequest) {
       orderBy: { name: 'asc' }
     });
 
-    // For each supplier, aggregate supply and payment info
     const supplierIds = suppliers.map(s => s.id);
-    // Fetch all stock entries for these suppliers
-    const stockEntries = await prisma.stockEntry.findMany({
+    console.log(`🔍 [Suppliers API] Found ${suppliers.length} suppliers. Ids:`, supplierIds.map(id => id.toString()));
+
+    // FETCH TOTAL SUPPLIED IN ONE GO
+    const totalSuppliedGroups = await prisma.stockEntry.groupBy({
+      by: ['supplierId'],
       where: {
         supplierId: { in: supplierIds },
         isActive: true
       },
-      select: {
-        supplierId: true,
-        quantity: true,
-        totalAmount: true,
-        entryDate: true,
-        product: { select: { name: true, unit: true } },
-        paymentStatus: true // <-- include paymentStatus
+      _sum: {
+        totalAmount: true
       }
     });
-    // Fetch all payments for these suppliers
-    const payments = await prisma.supplierPayment.findMany({
-      where: {
-        supplierId: { in: supplierIds },
-        isActive: true
-      },
-      select: {
-        supplierId: true,
-        amount: true,
-        paymentDate: true,
-        paymentMethod: true,
-        notes: true
-      },
-      orderBy: { paymentDate: 'desc' }
+
+    const totalSuppliedMap: { [id: string]: number } = {};
+    totalSuppliedGroups.forEach(group => {
+      totalSuppliedMap[group.supplierId.toString()] = Number(group._sum.totalAmount || 0);
     });
 
-    // Group stock entries and payments by supplier
-    const stockBySupplier: { [supplierId: number]: typeof stockEntries } = {};
-    const paymentsBySupplier: { [supplierId: number]: typeof payments } = {};
-    for (const entry of stockEntries) {
-      const supplierId = Number(entry.supplierId);
-      if (!stockBySupplier[supplierId]) stockBySupplier[supplierId] = [];
-      stockBySupplier[supplierId].push(entry);
-    }
-    for (const pay of payments) {
-      const supplierId = Number(pay.supplierId);
-      if (!paymentsBySupplier[supplierId]) paymentsBySupplier[supplierId] = [];
-      paymentsBySupplier[supplierId].push(pay);
-    }
+    // Build response - LIGHT VERSION
+    const serializedSuppliers = suppliers.map((supplier) => {
+      const idStr = supplier.id.toString();
+      const totalSupplied = totalSuppliedMap[idStr] || 0;
+      const outstandingPayment = Number(supplier.outstandingPayment || 0);
 
-    // Helper: get week string (e.g. 2024-W29)
-    function getWeekString(date: string | Date): string {
-      const d = new Date(date);
-      const year = d.getFullYear();
-      const onejan = new Date(d.getFullYear(),0,1);
-      const week = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay()+1)/7);
-      return `${year}-W${week}`;
-    }
-
-    // Build response
-    const enrichedSuppliers = suppliers.map(supplier => {
-      const supplierId = Number(supplier.id);
-      const entries = stockBySupplier[supplierId] || [];
-      const pays = paymentsBySupplier[supplierId] || [];
-      // Total supplied (sum of totalAmount)
-      const totalSupplied = entries.reduce((sum, e) => sum + Number(e.totalAmount), 0);
-      // Outstanding payment = use stored value from DB (manually set), fallback to computed from unpaid stock entries
-      const computedOutstanding = entries.filter(e => e.paymentStatus !== 'COMPLETED').reduce((sum, e) => sum + Number(e.totalAmount), 0);
-      const outstandingPayment = Number((supplier as any).outstandingPayment) > 0 ? Number((supplier as any).outstandingPayment) : computedOutstanding;
-      // Last supply date
-      const lastSupply = entries.length > 0 ? entries.reduce((latest, e) => new Date(e.entryDate) > new Date(latest) ? e.entryDate : latest, entries[0].entryDate) : null;
-      // Weekly supply history with product details
-      const weeklyMap: { [week: string]: { week: string; quantity: number; amount: number; items: { productName: string; quantity: number; unit: string; dateSupplied: string; paymentStatus: string }[] } } = {};
-      for (const e of entries) {
-        const week = getWeekString(e.entryDate);
-        if (!weeklyMap[week]) weeklyMap[week] = { week, quantity: 0, amount: 0, items: [] };
-        weeklyMap[week].quantity += Number(e.quantity);
-        weeklyMap[week].amount += Number(e.totalAmount);
-        weeklyMap[week].items.push({
-          productName: e.product?.name || '',
-          quantity: Number(e.quantity),
-          unit: e.product?.unit || '',
-          dateSupplied: typeof e.entryDate === 'string' ? e.entryDate : e.entryDate.toISOString(),
-          paymentStatus: e.paymentStatus // <-- store paymentStatus per item
-        });
+      // Log specific supplier if it's the one the user is concerned about (e.g. ID 11)
+      if (idStr === '11') {
+        console.log(`🔍 [Suppliers API] Supplier 11 Stats: TotalSupplied=${totalSupplied}, Outstanding=${outstandingPayment}`);
       }
-      // Sort weeks chronologically
-      const sortedWeeks = Object.keys(weeklyMap).sort();
-      // Sort payments by date
-      const sortedPayments = pays.slice().sort((a, b) => new Date(a.paymentDate).getTime() - new Date(b.paymentDate).getTime());
-      let paymentCursor = 0;
-      let cumulativePaid = 0;
-      let cumulativeSupplied = 0;
-      // Calculate total supply for all weeks
-      const totalWeeklySupply = sortedWeeks.reduce((sum, week) => sum + weeklyMap[week].amount, 0);
-      // Calculate total paid
-      const totalPaidForSupplier = sortedPayments.reduce((sum, p) => sum + Number(p.amount), 0);
-      const allPaid = totalPaidForSupplier >= totalWeeklySupply;
-      // Build weeklySupplies with correct status logic
-      const weeklySupplies = sortedWeeks.map(week => {
-        const weekData = weeklyMap[week];
-        // If all items are paid, mark as paid; else unpaid
-        const allPaid = weekData.items.length > 0 && weekData.items.every(item => item.paymentStatus === 'COMPLETED');
-        const status = allPaid ? 'paid' : 'unpaid';
-        return { ...weekData, status };
-      });
+
       return {
-        ...supplier,
+        id: idStr,
+        name: supplier.name,
+        phone: supplier.phone || '',
+        email: supplier.email || '',
+        address: supplier.address || '',
+        gstNo: (supplier as any).gstNo || '',
+        isActive: supplier.isActive,
+        createdAt: supplier.createdAt,
+        updatedAt: supplier.updatedAt,
+        shopId: supplier.shopId.toString(),
         totalSupplied,
         outstandingPayment,
-        lastSupply,
-        weeklySupplies,
-        paymentHistory: pays.map(p => ({
-          amount: Number(p.amount),
-          paymentDate: p.paymentDate instanceof Date ? p.paymentDate.toISOString() : p.paymentDate,
-          paymentMethod: (p as any).paymentMethod || 'CASH',
-          notes: (p as any).notes || null
-        }))
+        lastSupply: null,
+        weeklySupplies: [],
+        paymentHistory: [],
+        shop: (supplier as any).shop ? {
+          ...(supplier as any).shop,
+          id: (supplier as any).shop.id.toString()
+        } : null
       };
     });
-
-    // Convert BigInt values to strings for JSON serialization
-    const serializedSuppliers = enrichedSuppliers.map(supplier => ({
-      ...supplier,
-      id: supplier.id.toString(),
-      shopId: supplier.shopId.toString(),
-      shop: (supplier as any).shop ? {
-        ...(supplier as any).shop,
-        id: (supplier as any).shop.id.toString()
-      } : null
-    }));
 
     return NextResponse.json({ 
       success: true, 
       data: { suppliers: serializedSuppliers } 
     });
   } catch (error) {
-    console.error('Get suppliers error:', error);
+    console.error('🔍 [Suppliers API] GET Exception:', error);
     return NextResponse.json({ success: false, message: 'Failed to fetch suppliers' }, { status: 500 });
   }
 }

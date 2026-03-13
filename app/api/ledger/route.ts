@@ -173,7 +173,7 @@ export async function GET(req: NextRequest) {
       const sales = await prisma.sale.findMany({
         where: {
           id: { in: regularSaleIds },
-          paymentStatus: 'COMPLETED' // Only include completed sales
+          paymentStatus: { in: ['COMPLETED', 'PENDING'] } // Include both completed and active sales
         },
         select: {
           id: true,
@@ -226,9 +226,22 @@ export async function GET(req: NextRequest) {
             // Format: "Partial Payment: ₹4000 via UPI, Due: ₹500"
             // Try exact format first (with Rupee symbol) - match the exact format from POST route
             // The format is: "Partial Payment: ₹{amount} via {method}, Due: ₹{due}"
+            const loanMatch = sale.notes.match(/Loan\/Credit Sale: Full amount due \(₹(\d+(?:\.\d+)?)\)/i);
             const partialMatch = sale.notes.match(/Partial Payment:\s*₹(\d+(?:\.\d+)?)\s+via\s+(\w+),?\s+Due:\s*₹(\d+(?:\.\d+)?)/i) ||
               sale.notes.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/i);
-            if (partialMatch && partialMatch[1] && partialMatch[3]) {
+
+            if (loanMatch && loanMatch[1]) {
+              paidAmount = 0;
+              dueAmount = Number(loanMatch[1]);
+              paymentType = 'loan';
+              console.log('🔍 [Ledger] ✅ Detected loan/credit sale from notes:', {
+                saleId: sale.id,
+                paidAmount,
+                dueAmount,
+                paymentType,
+                notes: sale.notes
+              });
+            } else if (partialMatch && partialMatch[1] && partialMatch[3]) {
               paidAmount = Number(partialMatch[1]);
               dueAmount = Number(partialMatch[3]);
               paymentType = 'partial';
@@ -303,26 +316,30 @@ export async function GET(req: NextRequest) {
             }
           }
 
-          // For COMPLETED sales, check notes FIRST to detect partial payments
-          // This is critical - notes contain the actual partial payment information
-          // Only if notes don't indicate partial payment, then check paymentMethod
-          if (sale.paymentStatus === 'COMPLETED') {
-            // If we already parsed partial payment from notes, keep it
+          // For COMPLETED or PENDING sales, check notes FIRST to detect partial payments or loans
+          // This is critical - notes contain the actual payment information
+          // Only if notes don't indicate partial payment or loan, then check paymentMethod
+          if (sale.paymentStatus === 'COMPLETED' || sale.paymentStatus === 'PENDING') {
+            // If we already parsed partial payment or loan from notes, keep it
             // Otherwise, check if amounts indicate partial payment
             if (paidAmount === 0 && dueAmount === 0) {
-              // No amounts parsed yet - check notes first for partial payment
-              // Notes parsing already happened above, so if no partial found, determine from paymentMethod
-              paidAmount = finalAmount;
-              dueAmount = 0;
-              // Use paymentMethod to determine payment type (same as active sales dashboard)
-              if (sale.paymentMethod === 'CASH') {
-                paymentType = 'cash';
-              } else if (sale.paymentMethod === 'CARD') {
-                paymentType = 'online';
-              } else if (sale.paymentMethod === 'UPI' || sale.paymentMethod === 'BANK_TRANSFER' || sale.paymentMethod === 'CHEQUE') {
-                paymentType = 'online'; // Treat as online payment
+              if (paymentType === 'loan') {
+                // Keep loan status if already detected from notes
+                dueAmount = finalAmount;
               } else {
-                paymentType = 'cash'; // Default
+                // No amounts or loan parsed yet - determine from paymentMethod
+                paidAmount = finalAmount;
+                dueAmount = 0;
+                // Use paymentMethod to determine payment type (same as active sales dashboard)
+                if (sale.paymentMethod === 'CASH') {
+                  paymentType = 'cash';
+                } else if (sale.paymentMethod === 'CARD') {
+                  paymentType = 'online';
+                } else if (sale.paymentMethod === 'UPI' || sale.paymentMethod === 'BANK_TRANSFER' || sale.paymentMethod === 'CHEQUE') {
+                  paymentType = 'online'; // Treat as online payment
+                } else {
+                  paymentType = 'cash'; // Default
+                }
               }
             } else if (paidAmount > 0 && paidAmount < finalAmount) {
               // Amounts indicate partial payment - ensure paymentType is set correctly
@@ -951,6 +968,25 @@ export async function GET(req: NextRequest) {
       });
       completedTmt.forEach(s => completedSaleIdsSet.add(`tmt-${s.id}`));
     }
+
+    // Include PENDING (Active) sales in the set too, so they are not filtered out of the ledger
+    const activeRegular = await prisma.sale.findMany({
+      where: {
+        id: { in: regularSaleIds },
+        paymentStatus: 'PENDING'
+      },
+      select: { id: true }
+    });
+    activeRegular.forEach(s => completedSaleIdsSet.add(`regular-${s.id}`));
+
+    const activeTmt = await prisma.tmtSale.findMany({
+      where: {
+        id: { in: tmtSaleIds.map(id => BigInt(id)) },
+        status: { not: 'COMPLETED' } // Simplified for TMT
+      },
+      select: { id: true }
+    });
+    activeTmt.forEach(s => completedSaleIdsSet.add(`tmt-${s.id}`));
 
     // Count entries linked to completed sales plus all loan_clearing entries
     const filteredTotal = allLedgerEntries.filter(entry => {

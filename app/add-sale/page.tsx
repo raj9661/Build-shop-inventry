@@ -769,7 +769,9 @@ function AddSalePage() {
       if (product) {
         // For sand and chips category or TMT bars, don't auto-set unit, let user choose
         const isSandChipsCategory = product.category?.name?.toLowerCase().includes("sand") ||
-          product.category?.name?.toLowerCase().includes("chips")
+          product.category?.name?.toLowerCase().includes("chips") ||
+          product.category?.name?.toLowerCase().includes("bricks") ||
+          product.category?.name?.toLowerCase().includes("aggregates")
         const isTMTBarCategory = product.category?.name?.toLowerCase().includes("tmt") ||
           product.category?.name?.toLowerCase().includes("steel")
         // Use dailyRate if available, else fallback to static price
@@ -1836,7 +1838,8 @@ function AddSalePage() {
                             <div>
                               <Label>
                                 {t("Unit", "इकाई")}
-                                {((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips")) ||
+                                {((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
+                                  item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) ||
                                   (item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel"))) && (
                                     <span className="text-red-500 ml-1">*</span>
                                   )}
@@ -1880,7 +1883,8 @@ function AddSalePage() {
                                   disabled={productsLoading}
                                 >
                                   <SelectTrigger className={
-                                    ((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips")) ||
+                                    ((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
+                                      item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) ||
                                       (item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel"))) && !item.unit
                                       ? "border-red-500"
                                       : ""
@@ -1900,9 +1904,10 @@ function AddSalePage() {
                                   </SelectContent>
                                 </Select>
                               )}
-                              {(item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips")) && !item.unit && (
+                              {(item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
+                                item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) && !item.unit && (
                                 <div className="text-xs text-red-600 mt-1">
-                                  {t("Unit is required for sand and chips", "रेत और चिप्स के लिए इकाई आवश्यक है")}
+                                  {t("Unit is required for this category", "इस श्रेणी के लिए इकाई आवश्यक है")}
                                 </div>
                               )}
                               {(item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel")) && !item.unit && (

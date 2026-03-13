@@ -310,6 +310,23 @@ export async function POST(req: NextRequest) {
 
       console.log('🔍 [Stock Entry] Product stock updated successfully');
 
+      // 5. Update supplier outstanding payment if not paid
+      if (stockEntry.paymentStatus === 'PENDING') {
+        const currentOutstanding = Number(supplier.outstandingPayment || 0);
+        const newOutstanding = currentOutstanding + Number(stockEntry.totalAmount);
+        
+        await tx.supplier.update({
+          where: { id: supplier.id },
+          data: { outstandingPayment: newOutstanding }
+        });
+        
+        console.log('🔍 [Stock Entry] Supplier outstanding payment updated:', {
+          supplierId: supplier.id,
+          previousOutstanding: currentOutstanding,
+          newOutstanding: newOutstanding
+        });
+      }
+
       return { stockEntry, product, supplier };
     });
 

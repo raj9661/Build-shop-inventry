@@ -73,8 +73,8 @@ export default function Suppliers() {
   const [payDate, setPayDate] = useState(new Date().toISOString().split("T")[0]);
   const [payNotes, setPayNotes] = useState("");
   const [payLoading, setPayLoading] = useState(false);
-  // Add state for per-week payment
   const [payWeek, setPayWeek] = useState<string | null>(null);
+  const [syncLoading, setSyncLoading] = useState(false);
   const isProcessingPaymentRef = useRef(false);
 
   // Load suppliers and available items from API
@@ -89,15 +89,7 @@ export default function Suppliers() {
     console.log('🔍 [Suppliers] Component mounted - currentShop:', currentShop?.id, currentShop?.name);
   }, [])
 
-  // Update viewingSupplier when suppliers list changes
-  useEffect(() => {
-    if (viewingSupplier && suppliers.length > 0) {
-      const updatedSupplier = suppliers.find(s => s.id === viewingSupplier.id);
-      if (updatedSupplier) {
-        setViewingSupplier(updatedSupplier);
-      }
-    }
-  }, [suppliers]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Removed the useEffect that was overwriting detailed supplier data with summary data
 
   const loadAvailableItems = async () => {
     if (!currentShop) return
@@ -147,36 +139,46 @@ export default function Suppliers() {
         }
       })
 
-      console.log('🔍 [Suppliers] API response status:', response.status);
-
       if (response.ok) {
         const data = await response.json()
-        console.log('🔍 [Suppliers] API response data:', data);
-
         if (data.success && data.data && data.data.suppliers) {
-          // Use backend-calculated fields directly
           const convertedSuppliers = data.data.suppliers.map((supplier: any) => ({
-            id: supplier.id,
+            id: Number(supplier.id),
             name: supplier.name,
             phone: supplier.phone || '',
             address: supplier.address || '',
-            suppliedItems: [], // Optionally populate if needed
+            suppliedItems: [],
             notes: '',
-            totalSupplied: supplier.totalSupplied ?? 0,
-            outstandingPayment: supplier.outstandingPayment ?? 0,
+            totalSupplied: Number(supplier.totalSupplied || 0),
+            outstandingPayment: Number(supplier.outstandingPayment || 0),
             lastSupply: supplier.lastSupply ? new Date(supplier.lastSupply).toISOString().split('T')[0] : '',
-            weeklySupplies: supplier.weeklySupplies ?? [],
-            paymentHistory: supplier.paymentHistory ?? []
+            weeklySupplies: supplier.weeklySupplies || [],
+            paymentHistory: supplier.paymentHistory || []
           }))
-          console.log('🔍 [Suppliers] Converted suppliers:', convertedSuppliers.length);
           setSuppliers(convertedSuppliers)
+          console.log('🔍 [Frontend] Suppliers list updated. Count:', convertedSuppliers.length);
+          
+          // Refresh viewingSupplier if active
+          if (viewingSupplier) {
+            console.log('🔍 [Frontend] Refreshing active viewingSupplier:', viewingSupplier.id);
+            const updated = convertedSuppliers.find(s => s.id === viewingSupplier.id);
+            if (updated) {
+              setViewingSupplier(prev => {
+                if (!prev) return null;
+                console.log('🔍 [Frontend] Merging summary data into viewingSupplier');
+                return { 
+                  ...prev, 
+                  outstandingPayment: updated.outstandingPayment,
+                  totalSupplied: updated.totalSupplied 
+                };
+              });
+            }
+          }
         } else {
-          console.log('🔍 [Suppliers] No suppliers data in response');
           setSuppliers([])
         }
       } else {
         const errorData = await response.json().catch(() => ({}));
-        console.error('🔍 [Suppliers] Failed to load suppliers:', response.status, errorData);
         toast.error(errorData.message || 'Failed to load suppliers')
         setSuppliers([])
       }
@@ -186,6 +188,77 @@ export default function Suppliers() {
       setSuppliers([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const loadSupplierDetails = async (id: number) => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return null
+
+      console.log(`🔍 [Frontend] Fetching details for supplier ID: ${id}`)
+      const response = await fetch(`/api/suppliers/${id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log(`🔍 [Frontend] API response for ID ${id}:`, data)
+        if (data.success && data.data && data.data.supplier) {
+          const s = data.data.supplier
+          console.log(`🔍 [Frontend] Detailed weeklySupplies count:`, s.weeklySupplies?.length)
+          const detailedSupplier: Supplier = {
+            id: Number(s.id),
+            name: s.name || 'N/A',
+            phone: s.phone || '',
+            address: s.address || '',
+            suppliedItems: s.suppliedItems || [],
+            notes: s.notes || '',
+            totalSupplied: Number(s.totalSupplied || 0),
+            outstandingPayment: Number(s.outstandingPayment || 0),
+            lastSupply: s.lastSupply ? new Date(s.lastSupply).toISOString().split('T')[0] : '',
+            weeklySupplies: s.weeklySupplies || [],
+            paymentHistory: s.paymentHistory || []
+          }
+          
+          setViewingSupplier(detailedSupplier)
+          // Also update it in the main list so if the user goes back, it's already "half-hydrated"
+          setSuppliers(prev => prev.map(item => item.id === detailedSupplier.id ? detailedSupplier : item))
+          return detailedSupplier
+        }
+      }
+    } catch (error) {
+      console.error('Error loading supplier details:', error)
+    }
+    return null
+  }
+
+  const syncBalances = async () => {
+    if (!currentShop) return
+    
+    setSyncLoading(true)
+    try {
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch('/api/suppliers/sync-balances', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ shopId: currentShop.id })
+      })
+
+      if (response.ok) {
+        toast.success("Balances refreshed successfully!")
+        await loadSuppliers(true)
+      } else {
+        toast.error("Failed to refresh balances")
+      }
+    } catch (error) {
+      console.error('Error syncing balances:', error)
+      toast.error("Error syncing balances")
+    } finally {
+      setSyncLoading(false)
     }
   }
 
@@ -699,13 +772,24 @@ export default function Suppliers() {
                     className="pl-12 h-12 text-base rounded-xl"
                   />
                 </div>
-                <Button
-                  onClick={() => setActiveTab("add")}
-                  className="bg-green-600 hover:bg-green-700 h-12 px-6 rounded-xl"
-                >
-                  <Plus className="h-5 w-5 mr-2" />
-                  {t("Add New Supplier", "नया सप्लायर जोड़ें")}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={syncBalances}
+                    disabled={syncLoading}
+                    className="h-12 px-6 rounded-xl border-blue-200 text-blue-600 hover:bg-blue-50"
+                  >
+                    {syncLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Loader2 className="h-5 w-5" />}
+                    <span className="ml-2 hidden sm:inline">{t("Refresh Balances", "बैलेंस रिफ्रेश करें")}</span>
+                  </Button>
+                  <Button
+                    onClick={() => setActiveTab("add")}
+                    className="bg-green-600 hover:bg-green-700 h-12 px-6 rounded-xl"
+                  >
+                    <Plus className="h-5 w-5 mr-2" />
+                    {t("Add New Supplier", "नया सप्लायर जोड़ें")}
+                  </Button>
+                </div>
               </div>
 
               {loading ? (
@@ -765,8 +849,16 @@ export default function Suppliers() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => {
+                                  // Set viewing supplier immediately to show basic info
                                   setViewingSupplier(supplier)
                                   setActiveTab("view")
+                                  
+                                  // Fetch full history in background
+                                  toast.promise(loadSupplierDetails(supplier.id), {
+                                    loading: 'Fetching history...',
+                                    success: 'History loaded',
+                                    error: 'Failed to load history'
+                                  })
                                 }}
                                 className="h-8 w-8 p-0"
                               >
@@ -866,21 +958,21 @@ export default function Suppliers() {
                       <CardContent className="p-6 space-y-4">
                         <div>
                           <Label className="text-sm font-medium text-gray-600">{t("Total Supplied", "कुल आपूर्ति")}</Label>
-                          <p className="text-2xl font-bold text-green-600">₹{viewingSupplier.totalSupplied.toLocaleString()}</p>
+                          <p className="text-2xl font-bold text-green-600">₹{(viewingSupplier.totalSupplied || 0).toLocaleString()}</p>
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-600">{t("Outstanding Payment", "बकाया भुगतान")}</Label>
-                          {viewingSupplier.outstandingPayment <= 0 ? (
+                          {(viewingSupplier.outstandingPayment || 0) <= 0 ? (
                             <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 text-base font-semibold">
                               ₹0 Paid (भुगतान किया गया)
                             </span>
                           ) : (
                             <>
                               <span className="inline-block px-2 py-1 rounded bg-red-100 text-red-800 text-base font-semibold">
-                                ₹{viewingSupplier.outstandingPayment.toLocaleString()} Due (बकाया)
+                                ₹{(viewingSupplier.outstandingPayment || 0).toLocaleString()} Due (बकाया)
                               </span>
                               <Button className="mt-2 ml-2" variant="default" onClick={() => {
-                                setPayAmount(viewingSupplier.outstandingPayment);
+                                setPayAmount(Number(viewingSupplier.outstandingPayment || 0));
                                 setPayWeek(null);
                                 setPayDialogOpen(true);
                               }}>
@@ -905,17 +997,18 @@ export default function Suppliers() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-6">
-                      {viewingSupplier.weeklySupplies.length > 0 ? (
-                        <div className="space-y-4">
-                          {viewingSupplier.weeklySupplies.map((supply, index) => (
-                            <div key={index} className="p-4 bg-gray-50 rounded-lg">
+                    {viewingSupplier.weeklySupplies && viewingSupplier.weeklySupplies.length > 0 ? (
+                      <div className="space-y-6">
+                        {viewingSupplier.weeklySupplies.map((supply, index) => (
+                          <Card key={`${supply.week}-${index}`} className="overflow-hidden border-none shadow-sm bg-white hover:shadow-md transition-shadow">
+                            <div className="p-4 bg-gray-50 rounded-lg">
                               <div className="flex items-center justify-between">
                                 <div>
                                   <p className="font-semibold">{supply.week}</p>
                                   <p className="text-sm text-gray-600">Total Qty: {supply.quantity}</p>
                                 </div>
                                 <div className="text-right">
-                                  <p className="font-bold text-lg">₹{supply.amount.toLocaleString()}</p>
+                                  <p className="font-bold text-lg">₹{(supply.amount || 0).toLocaleString()}</p>
                                   <Badge className={supply.status === "paid" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
                                     {supply.status === "paid" ? t("Paid", "भुगतान किया गया") : t("Unpaid", "अभुगतान")}
                                   </Badge>
@@ -932,15 +1025,17 @@ export default function Suppliers() {
                               </div>
                               {/* List all products supplied this week */}
                               {Array.isArray(supply.items) && supply.items.length > 0 && (
-                                <div className="mt-2 ml-2">
-                                  <ul className="list-disc text-sm text-gray-700">
+                                <div className="mt-2 ml-2 border-t pt-2">
+                                  <ul className="space-y-1">
                                     {(supply.items ?? []).map((item: any, idx: number) => (
-                                      <li key={idx} className="flex items-center gap-2">
-                                        <span className="font-medium">{item.productName}</span> — Qty: {item.quantity} {getUnitLabel(item.unit, language)}, Date: {new Date(item.dateSupplied).toLocaleDateString()}
+                                      <li key={idx} className="flex items-center justify-between text-sm text-gray-700">
+                                        <span>
+                                          <span className="font-medium">{item.productName}</span> — Qty: {item.quantity} {getUnitLabel(item.unit, language)}
+                                        </span>
                                         {item.paymentStatus === 'COMPLETED' ? (
-                                          <span className="inline-block px-2 py-0.5 rounded bg-green-100 text-green-800 text-xs font-semibold ml-2">Paid</span>
+                                          <Badge variant="outline" className="text-[10px] h-4 bg-green-50 text-green-600 border-green-200">Paid</Badge>
                                         ) : (
-                                          <span className="inline-block px-2 py-0.5 rounded bg-red-100 text-red-800 text-xs font-semibold ml-2">Unpaid</span>
+                                          <Badge variant="outline" className="text-[10px] h-4 bg-red-50 text-red-600 border-red-200">Unpaid</Badge>
                                         )}
                                       </li>
                                     ))}
@@ -948,13 +1043,14 @@ export default function Suppliers() {
                                 </div>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4 text-gray-400 text-sm">
-                          {t("No supply history", "कोई आपूर्ति इतिहास नहीं")}
-                        </div>
-                      )}
+                          </Card>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-100 italic">
+                        {t("No supply history", "कोई आपूर्ति इतिहास नहीं")}
+                      </div>
+                    )}
                     </CardContent>
                   </Card>
                   
@@ -968,15 +1064,15 @@ export default function Suppliers() {
                       <CardContent className="p-6">
                         {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.length > 0 ? (
                           <div className="space-y-4">
-                            {viewingSupplier.paymentHistory.map((payment, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                <div>
-                                  <p className="font-semibold text-green-600">₹{payment.amount.toLocaleString()}</p>
-                                  <p className="text-xs text-gray-500">{new Date(payment.paymentDate).toLocaleDateString()} via {payment.paymentMethod}</p>
-                                </div>
-                                {payment.notes && <p className="text-xs text-gray-400 italic">{payment.notes}</p>}
-                              </div>
-                            ))}
+                             {viewingSupplier.paymentHistory.map((payment, index) => (
+                               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                 <div>
+                                   <p className="font-semibold text-green-600">₹{(payment.amount || 0).toLocaleString()}</p>
+                                   <p className="text-xs text-gray-500">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString() : 'N/A'} via {payment.paymentMethod || 'CASH'}</p>
+                                 </div>
+                                 {payment.notes && <p className="text-xs text-gray-400 italic">{payment.notes}</p>}
+                               </div>
+                             ))}
                           </div>
                         ) : (
                           <div className="text-center py-4 text-gray-400 text-sm">
