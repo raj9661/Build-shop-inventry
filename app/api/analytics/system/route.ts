@@ -81,32 +81,28 @@ export async function GET(req: NextRequest) {
 
     if (days === 1) {
       // For "today", set to start and end of current calendar day
-      startDate.setHours(0, 0, 0, 0); // Start of today (00:00:00)
-      endDate.setHours(23, 59, 59, 999); // End of today (23:59:59)
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
     } else {
       // For other ranges, use rolling period from now
       startDate.setDate(endDate.getDate() - days);
-      startDate.setHours(0, 0, 0, 0); // Start of day
-      endDate.setHours(23, 59, 59, 999); // End of day
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setHours(23, 59, 59, 999);
     }
 
     // Helper function to build shop filter for entities (sales, products, etc.)
     const getShopFilter = async () => {
       if (shopId && shopId !== ALL_SHOPS_ID) {
         // For SUPER_DUPER_ADMIN: Verify the specific shop was created by this user
-        // For SUPER_ADMIN: Allow access to any shop
         if (decoded.role === 'SUPER_DUPER_ADMIN') {
           const shop = await prisma.shop.findFirst({
             where: {
-              id: shopId,
+              id: BigInt(shopId),
               createdBy: BigInt(decoded.userId),
               isActive: true
             }
           });
-          if (!shop) {
-            // Shop not found or not created by this user
-            return { id: { in: [] } };
-          }
+          if (!shop) return { id: { in: [] } };
         }
         return { shopId };
       } else {
@@ -570,8 +566,7 @@ export async function GET(req: NextRequest) {
     try {
       console.log('🔍 [System Analytics] Fetching payment breakdown from sales...');
       console.log('🔍 Date range for payment breakdown:', { startDate, endDate, days });
-      const paymentBreakdown = await prisma.sale.groupBy({
-        by: ['paymentMethod'],
+      const sales = await prisma.sale.findMany({
         where: {
           isActive: true,
           saleDate: {
@@ -580,17 +575,62 @@ export async function GET(req: NextRequest) {
           },
           ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
         },
-        _sum: { finalAmount: true },
-        _count: { id: true }
+        select: {
+          finalAmount: true,
+          paymentMethod: true,
+          paymentStatus: true,
+          notes: true
+        }
       });
 
-      paymentMethodData = paymentBreakdown.map(item => ({
-        method: item.paymentMethod,
-        amount: Number(item._sum.finalAmount || 0),
-        count: item._count.id
+      const breakdownMap = new Map<string, { amount: number, count: number }>();
+      
+      sales.forEach(sale => {
+        const amount = Number(sale.finalAmount || 0);
+        let method = sale.paymentMethod as string;
+        
+        // Check for partial payments or loans in notes
+        const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
+        const isLoan = sale.notes?.includes('Loan/Credit Sale') || (sale.paymentStatus === 'PENDING' && !partialMatch && amount > 0);
+
+        if (partialMatch) {
+          // Partial payment: Split between the payment method used and LOAN
+          const paid = parseFloat(partialMatch[1]);
+          const due = parseFloat(partialMatch[3]);
+          const partialMethod = partialMatch[2].toUpperCase();
+          
+          // Add paid part
+          const pMethod = breakdownMap.get(partialMethod) || { amount: 0, count: 0 };
+          pMethod.amount += paid;
+          pMethod.count += 1;
+          breakdownMap.set(partialMethod, pMethod);
+          
+          // Add due part to LOAN
+          const loanMethod = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
+          loanMethod.amount += due;
+          loanMethod.count += 1;
+          breakdownMap.set('LOAN', loanMethod);
+        } else if (isLoan) {
+          // Full loan/credit
+          const m = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
+          m.amount += amount;
+          m.count += 1;
+          breakdownMap.set('LOAN', m);
+        } else {
+          // Regular payment
+          const m = breakdownMap.get(method) || { amount: 0, count: 0 };
+          m.amount += amount;
+          m.count += 1;
+          breakdownMap.set(method, m);
+        }
+      });
+
+      paymentMethodData = Array.from(breakdownMap.entries()).map(([method, data]) => ({
+        method,
+        amount: data.amount,
+        count: data.count
       }));
       console.log('✅ [System Analytics] Payment breakdown fetched successfully');
-      console.log('🔍 Raw breakdown from DB:', paymentBreakdown);
       console.log('🔍 Payment breakdown data:', paymentMethodData);
     } catch (error) {
       console.error('❌ [System Analytics] Payment breakdown error:', error);
@@ -810,22 +850,16 @@ export async function GET(req: NextRequest) {
       highestBalanceCustomersData = [];
     }
 
-    // Helper function to serialize BigInt values and Date objects
-    const serializeBigInt = (obj: any): any => {
-      if (obj === null || obj === undefined) return obj;
-      if (typeof obj === 'bigint') return Number(obj);
-      if (obj instanceof Date) return obj.toISOString();
-      if (Array.isArray(obj)) return obj.map(serializeBigInt);
-      if (typeof obj === 'object') {
-        const serialized: any = {};
-        for (const [key, value] of Object.entries(obj)) {
-          serialized[key] = serializeBigInt(value);
-        }
-        return serialized;
-      }
-      return obj;
-    };
+// Helper function to safely serialize BigInt values for JSON response
+function serializeBigInt(obj: any): string {
+  return JSON.stringify(obj, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
 
+    // We also need to map individual sales if they are ever needed in system analytics
+    // (currently it seems to focus on aggregates, but let's ensure the logic is there or robust)
+    
     // Calculate business metrics
     const revenue = Number(totalRevenue._sum.finalAmount || 0);
     const expenses = Number(totalExpenses._sum.amount || 0);
@@ -995,7 +1029,10 @@ export async function GET(req: NextRequest) {
       shopFilter: shopId ? `Shop ${shopId}` : 'All shops'
     });
 
-    return NextResponse.json(serializeBigInt(responseData));
+    return new NextResponse(serializeBigInt(responseData), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    });
 
   } catch (error) {
     console.error('System analytics error:', error);

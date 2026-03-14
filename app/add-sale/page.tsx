@@ -326,7 +326,7 @@ function AddSalePage() {
           soldQuantity: parseFloat(tmtQuantity),
           unitType: tmtUnit,
           pricePerUnit: parseFloat(tmtPricePerUnit),
-          saleDate: new Date().toISOString(),
+          saleDate: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString(),
           customerName: customerType === 'new' ? newCustomer.name : selectedCustomer?.name,
           shopId: currentShopId,
           paymentMethod: paymentMethod,
@@ -1039,7 +1039,9 @@ function AddSalePage() {
 
     setIsSubmitting(true)
     try {
-      const saleDate = new Date().toISOString()
+    const now = new Date();
+    // Record saleDate as midnight of the local day in UTC to prevent timezone shifts
+    const saleDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString();
       const saleData: any = {
         customerId: selectedCustomer?.id,
         shopId: currentShopId,

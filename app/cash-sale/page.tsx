@@ -346,7 +346,7 @@ export default function CashSale() {
             phone: customerInfo.phone,
             address: customerInfo.address || "Walk-in customer"
           },
-          saleDate: now.toISOString(),
+          saleDate: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString(),
           totalAmount: regularItems.reduce((acc, i) => acc + (i.price * i.quantity), 0),
           finalAmount: regularItems.reduce((acc, i) => acc + (i.price * i.quantity), 0),
           discount: 0,
@@ -374,7 +374,7 @@ export default function CashSale() {
         // Prepare Payload with multiple items
         const tmtPayload = {
           shopId: currentShopId.toString(),
-          saleDate: now.toISOString(),
+          saleDate: new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString(),
           customerName: `Walk-in Customer (${customerInfo.phone})`,
           customerPhone: customerInfo.phone,
           customerAddress: customerInfo.address || "Walk-in customer",

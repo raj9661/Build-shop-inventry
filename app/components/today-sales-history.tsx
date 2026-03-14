@@ -39,7 +39,10 @@ export function TodaySalesHistory({ className, hideCard = false }: TodaySalesHis
     
     setLoading(true)
     try {
-      const dateString = selectedDate.toISOString().split('T')[0]
+      const year = selectedDate.getFullYear()
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0')
+      const day = String(selectedDate.getDate()).padStart(2, '0')
+      const dateString = `${year}-${month}-${day}`
       // Only pass shopId if it's valid, otherwise let the API use user's assigned shops
       const result = await analyticsService.fetchTodaySales(currentShopId && currentShopId > 0 ? currentShopId : undefined, dateString)
       
@@ -183,14 +186,15 @@ export function TodaySalesHistory({ className, hideCard = false }: TodaySalesHis
         ) : (
           <div className="space-y-4">
             {sales.map((sale, idx) => {
-              const isCashCompleted = sale.payment_type?.toLowerCase() === "cash" && sale.paymentStatus === "COMPLETED";
-              const amountPaid = isCashCompleted ? (sale.final_amount || 0) : (sale.paid_amount || 0);
-              const dueAmount = isCashCompleted ? 0 : (sale.due_amount || 0);
+              // Use saleDate for primary categorization
+              const amountPaid = sale.paid_amount !== undefined ? sale.paid_amount : (sale.payment_type?.toLowerCase() === "cash" && sale.paymentStatus === "COMPLETED" ? sale.final_amount : 0);
+              const dueAmount = sale.due_amount !== undefined ? sale.due_amount : (sale.payment_type?.toLowerCase() === "cash" && sale.paymentStatus === "COMPLETED" ? 0 : sale.final_amount);
 
               let saleDateObj = null;
               let saleTimeStr = "--";
               let saleDateStr = "--";
-
+              
+              // ... (rest of date logic)
               if (sale.date && sale.time) {
                 const isoString = `${sale.date}T${sale.time}`;
                 const parsed = new Date(isoString);
@@ -199,7 +203,6 @@ export function TodaySalesHistory({ className, hideCard = false }: TodaySalesHis
                   saleTimeStr = parsed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true });
                   saleDateStr = parsed.toLocaleDateString("en-CA");
                 } else {
-                  // fallback: show raw time and date if parsing fails
                   saleTimeStr = sale.time;
                   saleDateStr = sale.date;
                 }
@@ -211,9 +214,7 @@ export function TodaySalesHistory({ className, hideCard = false }: TodaySalesHis
                 } else {
                   saleDateStr = sale.date;
                 }
-                if (sale.time) {
-                  saleTimeStr = sale.time;
-                }
+                if (sale.time) saleTimeStr = sale.time;
               } else if (sale.time) {
                 saleTimeStr = sale.time;
               }
@@ -245,7 +246,7 @@ export function TodaySalesHistory({ className, hideCard = false }: TodaySalesHis
                         {sale.items.map((item, i) => (
                           <li key={i} className="flex justify-between">
                             <span>
-                              {item.name} × {formatTmtQuantity(item.quantity, item.unit, item.name)}
+                              {item.name} × {item.quantity} {item.unit || item.sku || 'pcs'}
                             </span>
                             <span>₹{item.total_price}</span>
                           </li>

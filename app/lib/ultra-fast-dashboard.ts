@@ -216,9 +216,17 @@ class UltraFastDashboard {
         }),
         this.prisma.sale.findMany({
           where: { shopId: shopId, isActive: true },
-          include: {
+          select: {
+            id: true,
             customer: { select: { name: true, phone: true, address: true } },
-            items: { include: { product: { select: { name: true } } } }
+            items: { include: { product: { select: { name: true } } } },
+            finalAmount: true,
+            paymentStatus: true,
+            paymentMethod: true,
+            notes: true,
+            createdAt: true,
+            updatedAt: true,
+            saleDate: true
           },
           orderBy: { createdAt: 'desc' }
         }),
@@ -347,6 +355,8 @@ class UltraFastDashboard {
           due_amount: due,
           payment_type: paymentType,
           createdAt: sale.createdAt,
+          updatedAt: sale.updatedAt,
+          saleDate: sale.saleDate,
           paymentStatus: sale.paymentStatus,
           isCompleted: sale.paymentStatus === 'COMPLETED',
           isCancelled: sale.paymentStatus === 'CANCELLED',
@@ -387,6 +397,8 @@ class UltraFastDashboard {
           due_amount: due,
           payment_type: paymentType,
           createdAt: tmtSale.createdAt || tmtSale.saleDate,
+          updatedAt: tmtSale.updatedAt || tmtSale.createdAt || tmtSale.saleDate,
+          saleDate: tmtSale.saleDate,
           paymentStatus: isCancelled ? 'CANCELLED' : (isCompleted ? 'COMPLETED' : 'PENDING'),
           isCompleted,
           isCancelled,

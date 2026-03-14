@@ -31,16 +31,17 @@ export function SalesTabs({ shopId }: { shopId: number }) {
   const isToday = (d: any) => {
     if (!d) return false;
     const dt = new Date(d);
-    const start = new Date(); start.setHours(0, 0, 0, 0);
-    const end = new Date(); end.setHours(23, 59, 59, 999);
-    return dt >= start && dt <= end;
+    const today = new Date();
+    return dt.getFullYear() === today.getFullYear() &&
+           dt.getMonth() === today.getMonth() &&
+           dt.getDate() === today.getDate();
   };
 
   // Show only sales that are not cancelled and not completed as active (unchanged)
   const activeSales = sales?.filter((s: any) => !s.isCancelled && !s.isCompleted) || [];
   // Completed/Cancelled should disappear after midnight => show only today's
-  const completedSales = sales?.filter((s: any) => s.isCompleted && isToday(s.updatedAt || s.createdAt || s.saleDate)) || [];
-  const cancelledSales = sales?.filter((s: any) => s.isCancelled && isToday(s.updatedAt || s.createdAt || s.saleDate)) || [];
+  const completedSales = sales?.filter((s: any) => s.isCompleted && isToday(s.saleDate || s.updatedAt || s.createdAt)) || [];
+  const cancelledSales = sales?.filter((s: any) => s.isCancelled && isToday(s.saleDate || s.updatedAt || s.createdAt)) || [];
   // Pagination state for active sales
   const [activeSalesPage, setActiveSalesPage] = useState(1);
   const SALES_PER_PAGE = 10;

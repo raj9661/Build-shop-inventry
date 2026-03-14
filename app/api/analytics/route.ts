@@ -5,6 +5,13 @@ import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
 const prisma = new PrismaClient();
 
+// Helper function to safely serialize BigInt values for JSON response
+function serializeBigInt(obj: any): string {
+  return JSON.stringify(obj, (key, value) =>
+    typeof value === 'bigint' ? value.toString() : value
+  );
+}
+
 // GET - Get today's sales summary and history
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +27,11 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const shopIdParam = searchParams.get('shopId');
-    const dateParam = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const now = new Date();
+    const localDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    const dateParam = searchParams.get('date') || localDate;
+    const fromDateParam = searchParams.get('from_date');
+    const toDateParam = searchParams.get('to_date');
 
     // Get shop filter based on user's access
     const shopFilter = await getShopFilter(token);
@@ -30,59 +41,88 @@ export async function GET(req: NextRequest) {
       const shopId = parseInt(shopIdParam);
       if (!isNaN(shopId)) {
         // Check if user can access this shop
-        if (Object.keys(shopFilter).length === 0 || ((shopFilter as any).shopId && (shopFilter as any).shopId.in.includes(shopId))) {
-          // Prisma expects BigInt for shopId
+        let hasAccess = false;
+        if (Object.keys(shopFilter).length === 0) {
+          hasAccess = true;
+        } else if ((shopFilter as any).shopId && (shopFilter as any).shopId.in.includes(shopId)) {
+          hasAccess = true;
+        }
+
+        if (hasAccess) {
           whereClause.shopId = BigInt(shopId);
         } else {
           return NextResponse.json({ success: false, message: 'You do not have access to this shop' }, { status: 403 });
         }
       }
     } else {
-      // No specific shopId provided, use user's assigned shops
       if (Object.keys(shopFilter).length > 0) {
-        // Check if user has any valid shop assignments
         if ((shopFilter as any).shopId && (shopFilter as any).shopId.in && (shopFilter as any).shopId.in.length > 0) {
           Object.assign(whereClause, shopFilter);
         } else {
-          // User has no shop assignments
           return NextResponse.json({ 
             success: false, 
             message: 'You do not have access to any shops. Please contact your administrator.' 
           }, { status: 403 });
         }
       }
-      // If no shop filter (SUPER_DUPER_ADMIN), allow access to all shops
     }
 
-    // Get today's sales
-    const startOfDay = new Date(dateParam);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(dateParam);
-    endOfDay.setHours(23, 59, 59, 999);
+    // 1. Get Sales for Summary (Strictly for the selected date)
+    const summaryStart = new Date(dateParam);
+    summaryStart.setHours(0, 0, 0, 0);
+    const summaryEnd = new Date(dateParam);
+    summaryEnd.setHours(23, 59, 59, 999);
 
-    const todaySales = await prisma.sale.findMany({
+    const summarySales = await prisma.sale.findMany({
       where: {
         ...whereClause,
         isActive: true,
-        OR: [
-          { saleDate: { gte: startOfDay, lte: endOfDay } },
-          { createdAt: { gte: startOfDay, lte: endOfDay } }
-        ]
+        saleDate: { gte: summaryStart, lte: summaryEnd }
+      }
+    });
+
+    // 2. Get Sales for History (Range based or fallback to today)
+    let historyStart = summaryStart;
+    let historyEnd = summaryEnd;
+
+    if (fromDateParam || toDateParam) {
+      if (fromDateParam) {
+        historyStart = new Date(fromDateParam);
+        historyStart.setHours(0, 0, 0, 0);
+      } else {
+        historyStart = new Date(historyEnd);
+        historyStart.setDate(historyStart.getDate() - 30);
+      }
+      
+      if (toDateParam) {
+        historyEnd = new Date(toDateParam);
+        historyEnd.setHours(23, 59, 59, 999);
+      }
+    } else {
+      // Narrow history to the selected date if no range is provided
+      historyStart = summaryStart;
+      historyEnd = summaryEnd;
+    }
+
+    const historySales = await prisma.sale.findMany({
+      where: {
+        ...whereClause,
+        isActive: true,
+        saleDate: { gte: historyStart, lte: historyEnd }
       },
       include: {
         customer: { select: { name: true, phone: true } },
         shop: { select: { name: true, location: true } },
         items: {
           include: {
-            product: { select: { name: true, sku: true } }
+            product: { select: { name: true, sku: true, unit: true } }
           }
         }
       },
       orderBy: { saleDate: 'desc' }
     });
 
-    // Calculate summary statistics
-    const totalSales = todaySales.length;
+    // Calculate summary statistics using summarySales
     const parseDecimal = (value: any): number => {
       if (value === null || value === undefined) return 0;
       if (typeof value === 'object' && value.toString) {
@@ -91,20 +131,28 @@ export async function GET(req: NextRequest) {
       return Number(value) || 0;
     };
 
-    // Compute totals using paymentStatus/paymentMethod/notes
-    const amounts = todaySales.map((sale) => {
+    const amounts = summarySales.map((sale) => {
       const total = parseDecimal(sale.finalAmount);
       let paid = 0;
       let due = 0;
-      if (sale.paymentStatus === 'COMPLETED') {
+      
+      const isExplicitLoan = sale.notes?.includes('Loan/Credit Sale');
+      const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
+
+      if (isExplicitLoan) {
+        paid = 0; due = total;
+      } else if (partialMatch) {
+        paid = parseFloat(partialMatch[1]);
+        due = parseFloat(partialMatch[3]);
+      } else if (sale.paymentStatus === 'COMPLETED') {
         paid = total; due = 0;
       } else if (sale.paymentStatus === 'PENDING') {
-        const m = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
-        if (m) { paid = parseFloat(m[1]); due = parseFloat(m[3]); }
-        else { paid = 0; due = total; }
+        paid = 0; due = total;
       }
       return { total, paid, due };
     });
+    
+    const totalSales = summarySales.length;
     const totalAmount = amounts.reduce((s, a) => s + a.total, 0);
     const totalPaid = amounts.reduce((s, a) => s + a.paid, 0);
     const totalDue = amounts.reduce((s, a) => s + a.due, 0);
@@ -116,73 +164,70 @@ export async function GET(req: NextRequest) {
       upi: 0,
       bank_transfer: 0,
       cheque: 0,
+      loan: 0,
       other: 0
     };
 
-    // Build breakdown from inferred payment source and paid amount
-    todaySales.forEach((sale) => {
+    summarySales.forEach((sale) => {
       const total = parseDecimal(sale.finalAmount);
-      let method = 'other';
-      let paid = 0;
-      if (sale.paymentStatus === 'COMPLETED') {
-        paid = total;
-        method = (sale.paymentMethod || 'CASH').toString().toLowerCase();
-        if (method === 'card' || method === 'upi' || method === 'bank_transfer' || method === 'cheque' || method === 'cash') {
-          paymentBreakdown[method as keyof typeof paymentBreakdown] += paid;
+      let method = (sale.paymentMethod || 'CASH').toString().toLowerCase();
+      
+      const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
+      const isLoan = sale.notes?.includes('Loan/Credit Sale') || (sale.paymentStatus === 'PENDING' && !partialMatch && total > 0);
+
+      if (partialMatch) {
+        const paid = parseFloat(partialMatch[1]);
+        const due = parseFloat(partialMatch[3]);
+        let partialMethod = partialMatch[2].toLowerCase();
+        if (partialMethod === 'online') partialMethod = 'card';
+        
+        if (partialMethod in paymentBreakdown) {
+          paymentBreakdown[partialMethod as keyof typeof paymentBreakdown] += paid;
         } else {
           paymentBreakdown.other += paid;
         }
-      } else if (sale.paymentStatus === 'PENDING') {
-        const m = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
-        if (m) {
-          paid = parseFloat(m[1]);
-          method = m[2].toLowerCase();
-          if (method === 'cash' || method === 'card' || method === 'upi' || method === 'bank_transfer' || method === 'cheque' || method === 'online') {
-            const key = method === 'online' || method === 'card' ? 'card' : method;
-            paymentBreakdown[key as keyof typeof paymentBreakdown] += paid;
-          } else {
-            paymentBreakdown.other += paid;
-          }
+        paymentBreakdown.loan += due;
+      } else if (isLoan) {
+        paymentBreakdown.loan += total;
+      } else {
+        if (method === 'online') method = 'card';
+        if (method in paymentBreakdown) {
+          paymentBreakdown[method as keyof typeof paymentBreakdown] += total;
+        } else {
+          paymentBreakdown.other += total;
         }
       }
     });
 
-    // Get or create analytics summary for today
-    const today = new Date(dateParam);
-    today.setHours(0, 0, 0, 0);
+    const summaryDay = new Date(dateParam);
+    summaryDay.setHours(0, 0, 0, 0);
 
     let analyticsSummary = await prisma.analyticsSummary.findFirst({
       where: {
         ...whereClause,
-        date: today
+        date: summaryDay
       }
     });
 
     if (!analyticsSummary) {
-      // Get the first available shop for this user
       let defaultShopId = 1;
       if (Object.keys(shopFilter).length > 0 && (shopFilter as any).shopId && (shopFilter as any).shopId.in && (shopFilter as any).shopId.in.length > 0) {
         defaultShopId = (shopFilter as any).shopId.in[0];
       } else if (Object.keys(shopFilter).length === 0) {
-        // SUPER_DUPER_ADMIN - get first active shop
         const firstShop = await prisma.shop.findFirst({
           where: { isActive: true },
           select: { id: true }
         });
-        if (firstShop) {
-          defaultShopId = Number(firstShop.id);
-        }
+        if (firstShop) defaultShopId = Number(firstShop.id);
       }
 
-      // Create or update summary atomically to avoid unique constraint conflicts
       analyticsSummary = await prisma.analyticsSummary.upsert({
         where: {
-          // Prisma generates a compound unique name as `${field1}_${field2}`
-          date_shopId: { date: today, shopId: BigInt(defaultShopId) }
+          date_shopId: { date: summaryDay, shopId: BigInt(defaultShopId) }
         },
         create: {
           shopId: BigInt(defaultShopId),
-          date: today,
+          date: summaryDay,
           totalSales: totalAmount,
           totalExpenses: 0,
           netProfit: totalAmount,
@@ -191,11 +236,10 @@ export async function GET(req: NextRequest) {
         },
         update: {
           totalSales: totalAmount,
-          netProfit: totalAmount // expenses handled in separate endpoint
+          netProfit: totalAmount
         }
       });
     } else {
-      // Update existing summary
       analyticsSummary = await prisma.analyticsSummary.update({
         where: { id: analyticsSummary.id },
         data: {
@@ -205,7 +249,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Map sales for frontend
     const mapPaymentMethodToFrontend = (method: string) => {
       switch (method) {
         case 'CASH': return 'cash';
@@ -217,26 +260,32 @@ export async function GET(req: NextRequest) {
       }
     };
 
-    const mappedSales = todaySales.map(sale => {
+    const mappedSales = historySales.map(sale => {
       const finalAmount = parseDecimal(sale.finalAmount);
       let paidAmount = 0;
       let dueAmount = 0;
       let paymentType = 'cash';
       let partialPaymentMethod: string | null = null;
-      if (sale.paymentStatus === 'COMPLETED') {
+
+      const isExplicitLoan = sale.notes?.includes('Loan/Credit Sale');
+      const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
+
+      if (isExplicitLoan) {
+        paidAmount = 0;
+        dueAmount = finalAmount;
+        paymentType = 'loan';
+      } else if (partialMatch) {
+        paidAmount = parseFloat(partialMatch[1]);
+        dueAmount = parseFloat(partialMatch[3]);
+        paymentType = 'partial';
+        partialPaymentMethod = mapPaymentMethodToFrontend(partialMatch[2].toUpperCase());
+      } else if (sale.paymentStatus === 'COMPLETED') {
         paidAmount = finalAmount; dueAmount = 0;
         paymentType = mapPaymentMethodToFrontend(String(sale.paymentMethod));
       } else if (sale.paymentStatus === 'PENDING') {
-        const m = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
-        if (m) {
-          paidAmount = parseFloat(m[1]);
-          dueAmount = parseFloat(m[3]);
-          paymentType = 'partial';
-          partialPaymentMethod = mapPaymentMethodToFrontend(m[2].toUpperCase());
-        } else {
-          paidAmount = 0; dueAmount = finalAmount; paymentType = 'loan';
-        }
+        paidAmount = 0; dueAmount = finalAmount; paymentType = 'loan';
       }
+
       return {
         id: Number(sale.id),
         date: sale.saleDate.toISOString().slice(0, 10),
@@ -262,6 +311,7 @@ export async function GET(req: NextRequest) {
           id: Number(item.id),
           name: item.product?.name || '',
           sku: item.product?.sku || '',
+          unit: item.unit || item.product?.unit || 'pcs',
           quantity: Number(item.quantity),
           price_per_unit: parseDecimal(item.unitPrice),
           total_price: parseDecimal(item.totalPrice)
@@ -269,37 +319,37 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    // Convert BigInt values in analyticsSummary to numbers
-    const serializedAnalyticsSummary = {
-      id: Number(analyticsSummary.id),
-      shopId: Number(analyticsSummary.shopId),
-      date: analyticsSummary.date,
-      totalSales: parseDecimal(analyticsSummary.totalSales),
-      totalExpenses: parseDecimal(analyticsSummary.totalExpenses),
-      netProfit: parseDecimal(analyticsSummary.netProfit),
-      totalProducts: Number(analyticsSummary.totalProducts),
-      totalCustomers: Number(analyticsSummary.totalCustomers),
-      createdAt: analyticsSummary.createdAt,
-      updatedAt: analyticsSummary.updatedAt
-    };
-
-    return NextResponse.json({
+    const responseData = {
       success: true,
       data: {
         sales: mappedSales,
         summary: {
-        totalSales,
+          totalSales,
           totalAmount,
           totalPaid,
           totalDue,
           paymentBreakdown,
-          analyticsSummary: serializedAnalyticsSummary
+          analyticsSummary: {
+            ...analyticsSummary,
+            id: Number(analyticsSummary.id),
+            shopId: Number(analyticsSummary.shopId),
+            totalSales: parseDecimal(analyticsSummary.totalSales),
+            totalExpenses: parseDecimal(analyticsSummary.totalExpenses),
+            netProfit: parseDecimal(analyticsSummary.netProfit),
+            totalProducts: Number(analyticsSummary.totalProducts),
+            totalCustomers: Number(analyticsSummary.totalCustomers)
+          }
         }
       }
+    };
+
+    return new NextResponse(serializeBigInt(responseData), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (error) {
-    console.error('Get today sales error:', error);
-    return NextResponse.json({ success: false, message: 'Failed to fetch today sales' }, { status: 500 });
+    console.error('Get analytics error:', error);
+    return NextResponse.json({ success: false, message: 'Failed to fetch analytics data' }, { status: 500 });
   }
 }
 
