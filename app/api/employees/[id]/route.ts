@@ -100,7 +100,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const body = await req.json();
-    const { name, phone, email, address, salary, position, joinDate } = body;
+    const { name, phone, email, address, salary, positions, joinDate, salaryType, notes } = body;
 
     // Get user's accessible shops
     const shopFilter = await getShopFilter(token);
@@ -127,8 +127,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(email !== undefined && { email }),
         ...(address !== undefined && { address }),
         ...(salary !== undefined && { salary }),
-        ...(position !== undefined && { position }),
-        ...(joinDate && { joinDate: new Date(joinDate) })
+        ...(positions !== undefined && Array.isArray(positions) && { position: positions.join(',') }),
+        ...(joinDate && { joinDate: new Date(joinDate) }),
+        ...(salaryType !== undefined && { salaryType }),
+        ...(notes !== undefined && { notes })
       },
       include: {
         shop: {

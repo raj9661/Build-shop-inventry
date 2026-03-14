@@ -142,6 +142,10 @@ export default function Employees() {
           salary: Number(formData.salaryAmount),
           shopId: currentShop.id,
           positions: formData.roles,
+          address: formData.address,
+          notes: formData.notes,
+          salaryType: formData.salaryType,
+          joinDate: formData.joinDate,
         })
       })
 
@@ -187,13 +191,15 @@ export default function Employees() {
             name: employee.name,
             phone: employee.phone || '',
             address: employee.address || '',
-            roles: employee.position ? [employee.position] : ['Helper'], // Convert position (string) to roles array
-            notes: '',
+            roles: employee.position ? employee.position.split(',') : ['Helper'], // Split joined position string into roles array
+            notes: employee.notes || '',
             salaryType: 'monthly' as SalaryType, // Default to monthly
             salaryAmount: employee.salary ? Number(employee.salary) : 0,
             salaryPaid: employee.hasPaidThisMonth || false, // Use hasPaidThisMonth from API
             hourlyRate: employee.salary ? Number(employee.salary) / 160 : 100, // Assuming 160 hours per month
             joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split('T')[0] : (employee.createdAt ? new Date(employee.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+            salaryType: employee.salaryType || 'monthly',
+            notes: employee.notes || '',
             totalEarnings: employee.totalPaid || 0, // Use totalPaid from API
             weeklySalaries: [] // Will be populated from salary records
           }))
@@ -220,11 +226,11 @@ export default function Employees() {
     setFormData({
       name: employee.name,
       phone: employee.phone,
-      email: '',
-      address: employee.address,
-      roles: employee.roles,
-      notes: employee.notes,
-      salaryType: employee.salaryType,
+      email: '', // Add email if available in employee object or keep as empty if not
+      address: employee.address || '',
+      roles: employee.roles || ['Helper'],
+      notes: employee.notes || '',
+      salaryType: employee.salaryType || 'monthly',
       salaryAmount: Number(employee.salaryAmount),
       joinDate: employee.joinDate || new Date().toISOString().split('T')[0],
     })
@@ -252,7 +258,12 @@ export default function Employees() {
           phone: formData.phone,
           email: formData.email,
           salary: Number(formData.salaryAmount),
-          position: formData.roles[0] || 'Helper',
+          positions: formData.roles,
+          address: formData.address,
+          notes: formData.notes,
+          salaryType: formData.salaryType,
+          joinDate: formData.joinDate,
+          email: formData.email,
         })
       })
 

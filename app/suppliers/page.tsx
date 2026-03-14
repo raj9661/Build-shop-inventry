@@ -45,6 +45,7 @@ type Supplier = {
   notes: string
   totalSupplied: number
   outstandingPayment: number
+  openingBalance: number
   lastSupply: string
   weeklySupplies: WeeklySupply[]
   paymentHistory: PaymentEntry[]
@@ -66,6 +67,7 @@ export default function Suppliers() {
     address: "",
     suppliedItems: [] as string[],
     notes: "",
+    openingBalance: 0,
   })
   const [payDialogOpen, setPayDialogOpen] = useState(false);
   const [payAmount, setPayAmount] = useState(0);
@@ -142,7 +144,7 @@ export default function Suppliers() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.data && data.data.suppliers) {
-          const convertedSuppliers = data.data.suppliers.map((supplier: any) => ({
+          const convertedSuppliers: Supplier[] = data.data.suppliers.map((supplier: any) => ({
             id: Number(supplier.id),
             name: supplier.name,
             phone: supplier.phone || '',
@@ -151,6 +153,7 @@ export default function Suppliers() {
             notes: '',
             totalSupplied: Number(supplier.totalSupplied || 0),
             outstandingPayment: Number(supplier.outstandingPayment || 0),
+            openingBalance: Number(supplier.openingBalance || 0),
             lastSupply: supplier.lastSupply ? new Date(supplier.lastSupply).toISOString().split('T')[0] : '',
             weeklySupplies: supplier.weeklySupplies || [],
             paymentHistory: supplier.paymentHistory || []
@@ -216,6 +219,7 @@ export default function Suppliers() {
             notes: s.notes || '',
             totalSupplied: Number(s.totalSupplied || 0),
             outstandingPayment: Number(s.outstandingPayment || 0),
+            openingBalance: Number(s.openingBalance || 0),
             lastSupply: s.lastSupply ? new Date(s.lastSupply).toISOString().split('T')[0] : '',
             weeklySupplies: s.weeklySupplies || [],
             paymentHistory: s.paymentHistory || []
@@ -301,6 +305,7 @@ export default function Suppliers() {
           name: formData.name,
           phone: formData.phone,
           address: formData.address,
+          openingBalance: Number(formData.openingBalance || 0),
           shopId: currentShop.id
         })
       })
@@ -333,6 +338,7 @@ export default function Suppliers() {
       address: supplier.address,
       suppliedItems: supplier.suppliedItems,
       notes: supplier.notes,
+      openingBalance: supplier.openingBalance || 0,
     })
     setActiveTab("add")
   }
@@ -359,7 +365,8 @@ export default function Suppliers() {
         body: JSON.stringify({
           name: formData.name,
           phone: formData.phone,
-          address: formData.address
+          address: formData.address,
+          openingBalance: Number(formData.openingBalance || 0)
         })
       })
 
@@ -423,7 +430,7 @@ export default function Suppliers() {
   }
 
   const resetForm = () => {
-    setFormData({ name: "", phone: "", address: "", suppliedItems: [], notes: "" })
+    setFormData({ name: "", phone: "", address: "", suppliedItems: [], notes: "", openingBalance: 0 })
     setEditingSupplier(null)
   }
 
@@ -444,7 +451,7 @@ export default function Suppliers() {
     if (outstandingPayment <= 0) {
       return (
         <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 text-xs font-semibold">
-          ₹0 Paid (भुगतान किया गया)
+           {t("Paid", "भुगतान किया गया")}
         </span>
       );
     }
@@ -470,112 +477,38 @@ export default function Suppliers() {
       return;
     }
 
-    // Prevent duplicate submissions
-    if (isProcessingPaymentRef.current) {
-      toast.error('Payment is already being processed');
-      return;
-    }
-
-    isProcessingPaymentRef.current = true;
     setPayLoading(true);
     try {
       const token = localStorage.getItem('accessToken');
       if (!token) throw new Error('Authentication required');
-      if (payWeek) {
-        // Pay for a specific week
-        const res = await fetch('/api/supplier-payments', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({
-            supplierId: viewingSupplier.id,
-            amount: payAmount,
-            paymentMethod: payMethod,
-            paymentDate: payDate,
-            notes: payNotes || undefined,
-            shopId: currentShop?.id,
-            week: payWeek
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          toast.success('Payment recorded successfully!');
-          setPayDialogOpen(false);
-          resetPayDialog();
-          await loadSuppliers(true);
-        } else {
-          toast.error(data.message || 'Failed to record payment');
-        }
-      } else {
-        // Pay off weeks in order (oldest first)
-        let remaining = payAmount;
-        let anyPaymentMade = false;
-        
-        if (viewingSupplier.weeklySupplies.length > 0) {
-          for (const supply of viewingSupplier.weeklySupplies) {
-            if (remaining <= 0) break;
-            if (supply.status === "paid") continue;
-            const amountToPay = Math.min(remaining, supply.amount);
-            const res = await fetch('/api/supplier-payments', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-              },
-              body: JSON.stringify({
-                supplierId: viewingSupplier.id,
-                amount: amountToPay,
-                paymentMethod: payMethod,
-                paymentDate: payDate,
-                notes: payNotes || undefined,
-                shopId: currentShop?.id,
-                week: supply.week
-              })
-            });
-            const data = await res.json();
-            if (!data.success) {
-              toast.error(data.message || 'Failed to record payment');
-              break;
-            }
-            remaining -= amountToPay;
-            anyPaymentMade = true;
-          }
-        }
-        
-        // If there's still remaining amount (or no weekly supplies), make a generic payment
-        if (remaining > 0) {
-          const res = await fetch('/api/supplier-payments', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              supplierId: viewingSupplier.id,
-              amount: remaining,
-              paymentMethod: payMethod,
-              paymentDate: payDate,
-              notes: payNotes || undefined,
-              shopId: currentShop?.id
-            })
-          });
-          const data = await res.json();
-          if (data.success) {
-            anyPaymentMade = true;
-          } else {
-            toast.error(data.message || 'Failed to record payment');
-          }
-        }
+      const res = await fetch('/api/supplier-payments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          supplierId: viewingSupplier.id,
+          amount: payAmount,
+          paymentMethod: payMethod,
+          paymentDate: payDate,
+          notes: payNotes || undefined,
+          shopId: currentShop?.id,
+          week: payWeek || undefined
+        })
+      });
 
-        if (anyPaymentMade) {
-          toast.success('Payment recorded successfully!');
-        }
-
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Payment recorded successfully!');
         setPayDialogOpen(false);
         resetPayDialog();
         await loadSuppliers(true);
+        if (viewingSupplier) {
+          await loadSupplierDetails(viewingSupplier.id);
+        }
+      } else {
+        toast.error(data.message || 'Failed to record payment');
       }
     } catch (e) {
       toast.error('Failed to record payment');
@@ -736,6 +669,23 @@ export default function Suppliers() {
                       placeholder={t("Enter any additional notes", "कोई अतिरिक्त टिप्पणी दर्ज करें")}
                       className="min-h-[100px] text-base rounded-xl"
                     />
+                  </div>
+
+                  <div>
+                    <Label htmlFor="openingBalance" className="text-base font-medium">
+                      {t("Opening Balance (Notebook)", "प्रारंभिक शेष (डायरी/नोटबुक)")}
+                    </Label>
+                    <Input
+                      id="openingBalance"
+                      type="number"
+                      value={formData.openingBalance}
+                      onChange={(e) => setFormData({ ...formData, openingBalance: Number(e.target.value) })}
+                      placeholder="0"
+                      className="h-12 text-base rounded-xl font-bold text-red-600"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {t("Previous balance from your notebook", "आपकी नोटबुक से पिछला पुराना बकाया")}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -929,6 +879,10 @@ export default function Suppliers() {
                           <Label className="text-sm font-medium text-gray-600">{t("Address", "पता")}</Label>
                           <p className="text-lg">{viewingSupplier.address || t("Not provided", "प्रदान नहीं किया गया")}</p>
                         </div>
+                        <div>
+                          <Label className="text-sm font-medium text-gray-600">{t("Opening Balance", "प्रारंभिक शेष")}</Label>
+                          <p className="text-lg font-semibold text-red-600">₹{(viewingSupplier.openingBalance || 0).toLocaleString()}</p>
+                        </div>
                         {Array.isArray(viewingSupplier.suppliedItems) && viewingSupplier.suppliedItems.length > 0 && (
                           <div>
                             <Label className="text-sm font-medium text-gray-600">{t("Supplied Items", "आपूर्ति की गई वस्तुएं")}</Label>
@@ -964,7 +918,7 @@ export default function Suppliers() {
                           <Label className="text-sm font-medium text-gray-600">{t("Outstanding Payment", "बकाया भुगतान")}</Label>
                           {(viewingSupplier.outstandingPayment || 0) <= 0 ? (
                             <span className="inline-block px-2 py-1 rounded bg-green-100 text-green-800 text-base font-semibold">
-                              ₹0 Paid (भुगतान किया गया)
+                               {t("Paid", "भुगतान किया गया")}
                             </span>
                           ) : (
                             <>
@@ -1101,8 +1055,8 @@ export default function Suppliers() {
             {viewingSupplier && (
               <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
                 <span className="font-medium">Supplier:</span> {viewingSupplier.name}
-                {viewingSupplier.outstandingPayment > 0 && (
-                  <span className="ml-2 text-red-600 font-semibold">· ₹{viewingSupplier.outstandingPayment.toLocaleString()} outstanding</span>
+                {(viewingSupplier?.outstandingPayment || 0) > 0 && (
+                  <span className="ml-2 text-red-600 font-semibold">· ₹{(viewingSupplier?.outstandingPayment || 0).toLocaleString()} outstanding</span>
                 )}
               </div>
             )}

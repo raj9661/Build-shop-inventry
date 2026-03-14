@@ -143,6 +143,8 @@ export async function GET(req: NextRequest) {
         salary: employee.salary,
         joinDate: employee.joinDate,
         isActive: employee.isActive,
+        salaryType: employee.salaryType,
+        notes: employee.notes,
         shopId: employee.shopId ? Number(employee.shopId) : null,
         createdAt: employee.createdAt,
         updatedAt: employee.updatedAt,
@@ -172,7 +174,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
     }
     const body = await req.json();
-    const { name, salary, shopId, phone, email, positions } = body;
+    const { name, salary, shopId, phone, email, address, notes, salaryType, positions, joinDate } = body;
     if (!name || !salary || !shopId) {
       return NextResponse.json({ success: false, message: 'Missing required fields: name, salary, shopId' }, { status: 400 });
     }
@@ -212,7 +214,11 @@ export async function POST(req: NextRequest) {
         shopId: BigInt(shopId),
         phone,
         email,
-        position: positions[0] || null,
+        address,
+        notes,
+        salaryType: salaryType || 'monthly',
+        position: positions.join(','),
+        joinDate: joinDate ? new Date(joinDate) : new Date(),
         isActive: true
       }
     });
@@ -227,6 +233,8 @@ export async function POST(req: NextRequest) {
       position: employee.position,
       salary: employee.salary,
       joinDate: employee.joinDate,
+      salaryType: employee.salaryType,
+      notes: employee.notes,
       isActive: employee.isActive,
       shopId: employee.shopId ? Number(employee.shopId) : null,
       createdAt: employee.createdAt,

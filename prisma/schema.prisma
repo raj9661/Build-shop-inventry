@@ -382,6 +382,7 @@ model Supplier {
   updatedAt          DateTime               @updatedAt
   shopId             BigInt
   outstandingPayment Decimal                @default(0) @db.Decimal(12, 2)
+  openingBalance     Decimal                @default(0) @db.Decimal(12, 2)
   stockEntries       StockEntry[]
   shop               Shop                   @relation(fields: [shopId], references: [id])
   payments           SupplierPayment[]
@@ -471,6 +472,8 @@ model Employee {
   salary     Decimal?            @db.Decimal(10, 2)
   joinDate   DateTime?
   isActive   Boolean             @default(true)
+  salaryType String              @default("monthly")
+  notes      String?
   createdAt  DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
   shopId     BigInt

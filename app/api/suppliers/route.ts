@@ -136,6 +136,7 @@ export async function GET(req: NextRequest) {
         shopId: supplier.shopId.toString(),
         totalSupplied,
         outstandingPayment,
+        openingBalance: Number(supplier.openingBalance || 0),
         lastSupply: null,
         weeklySupplies: [],
         paymentHistory: [],
@@ -177,7 +178,8 @@ export async function POST(req: NextRequest) {
       email, 
       address, 
       shopIds, // Array of shop IDs for multi-shop suppliers
-      shopId // Single shop ID for backward compatibility
+      shopId, // Single shop ID for backward compatibility
+      openingBalance
     } = body;
 
     console.log('🔍 [Suppliers API] POST request - name:', name, 'shopId:', shopId, 'shopIds:', shopIds, 'userRole:', decoded.role);
@@ -234,7 +236,8 @@ export async function POST(req: NextRequest) {
           data: {
             phone,
             email,
-            address
+            address,
+            openingBalance: openingBalance !== undefined ? Number(openingBalance) : existingSupplier.openingBalance
           },
           include: {
             shop: {
@@ -255,6 +258,7 @@ export async function POST(req: NextRequest) {
             email,
             address,
             shopId: BigInt(shopId),
+            openingBalance: openingBalance !== undefined ? Number(openingBalance) : 0,
             isActive: true
           },
           include: {

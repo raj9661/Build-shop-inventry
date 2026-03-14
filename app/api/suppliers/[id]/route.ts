@@ -126,6 +126,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       isActive: supplier.isActive,
       shopId: supplier.shopId.toString(),
       outstandingPayment: Number(supplier.outstandingPayment || 0),
+      openingBalance: Number(supplier.openingBalance || 0),
       totalSupplied,
       lastSupply: lastSupply instanceof Date ? lastSupply.toISOString() : lastSupply,
       weeklySupplies,
@@ -219,7 +220,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(name && { name }),
         ...(phone !== undefined && { phone }),
         ...(email !== undefined && { email }),
-        ...(address !== undefined && { address })
+        ...(address !== undefined && { address }),
+        ...(body.openingBalance !== undefined && { openingBalance: Number(body.openingBalance) })
       },
       include: {
         shop: {

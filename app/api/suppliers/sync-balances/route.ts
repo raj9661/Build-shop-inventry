@@ -4,6 +4,16 @@ import { validateToken } from '@/app/lib/tokenUtils';
 
 const prisma = new PrismaClient();
 
+interface SyncResult {
+  id: string;
+  name: string;
+  oldBalance: number;
+  newBalance: number;
+  openingBalance: number;
+  totalStock: number;
+  totalPaid: number;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get('authorization');
@@ -27,36 +37,58 @@ export async function POST(req: NextRequest) {
       where: { shopId: BigInt(shopId), isActive: true }
     });
 
-    const results = [];
+    const results: SyncResult[] = [];
 
-    for (const supplier of suppliers) {
-      // Calculate real outstanding balance from StockEntries
-      const stockAggregate = await prisma.stockEntry.aggregate({
-        where: {
-          supplierId: supplier.id,
-          paymentStatus: 'PENDING',
-          isActive: true
-        },
-        _sum: {
-          totalAmount: true
-        }
-      });
+    // Use a transaction to ensure atomicity for balance updates
+    await prisma.$transaction(async (tx) => {
+      for (const supplier of suppliers) {
+        // Calculate real outstanding balance: Opening Balance + Total Stock - Total Payments
+        
+        const stockAggregate = await tx.stockEntry.aggregate({
+          where: {
+            supplierId: supplier.id,
+            isActive: true
+          },
+          _sum: {
+            totalAmount: true
+          }
+        });
 
-      const realBalance = Number(stockAggregate._sum.totalAmount || 0);
+        const paymentAggregate = await tx.supplierPayment.aggregate({
+          where: {
+            supplierId: supplier.id,
+            isActive: true
+          },
+          _sum: {
+            amount: true
+          }
+        });
 
-      // Update the supplier's outstandingPayment field
-      await prisma.supplier.update({
-        where: { id: supplier.id },
-        data: { outstandingPayment: realBalance }
-      });
+        const openingBalance = Number(supplier.openingBalance || 0);
+        const totalStock = Number(stockAggregate._sum.totalAmount || 0);
+        const totalPaid = Number(paymentAggregate._sum.amount || 0);
+        
+        const realBalance = openingBalance + totalStock - totalPaid;
 
-      results.push({
-        id: supplier.id.toString(),
-        name: supplier.name,
-        oldBalance: Number(supplier.outstandingPayment),
-        newBalance: realBalance
-      });
-    }
+        // Update the supplier's outstandingPayment field (floor at 0)
+        const finalBalance = Math.max(0, realBalance);
+
+        await tx.supplier.update({
+          where: { id: supplier.id },
+          data: { outstandingPayment: finalBalance }
+        });
+
+        results.push({
+          id: supplier.id.toString(),
+          name: supplier.name,
+          oldBalance: Number(supplier.outstandingPayment),
+          newBalance: finalBalance,
+          openingBalance,
+          totalStock,
+          totalPaid
+        });
+      }
+    });
 
     return NextResponse.json({ 
       success: true, 

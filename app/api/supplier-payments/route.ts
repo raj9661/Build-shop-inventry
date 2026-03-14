@@ -23,73 +23,102 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Missing required fields' }, { status: 400 });
     }
 
-    // Validate supplier exists
-    const supplier = await prisma.supplier.findUnique({ where: { id: BigInt(supplierId) } });
-    if (!supplier) {
-      return NextResponse.json({ success: false, message: 'Supplier not found' }, { status: 404 });
-    }
-
-    // Create payment
-    const payment = await prisma.supplierPayment.create({
-      data: {
-        supplierId: BigInt(supplierId),
-        amount,
-        paymentMethod: paymentMethod as PaymentMethod,
-        paymentDate: new Date(paymentDate),
-        shopId: BigInt(shopId),
-        notes: notes || null,
-        isActive: true
-      }
-    });
-
-    // If week is provided, mark stock entries for that supplier, shop, and week as paid
-    if (week) {
-      // Helper function to get week string from date
-      function getWeekString(date: Date): string {
-        const d = new Date(date);
-        const year = d.getFullYear();
-        const onejan = new Date(d.getFullYear(), 0, 1);
-        const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
-        return `${year}-W${weekNum}`;
+    const result = await prisma.$transaction(async (tx) => {
+      // Validate supplier exists
+      const supplier = await tx.supplier.findUnique({ where: { id: BigInt(supplierId) } });
+      if (!supplier) {
+        throw new Error('Supplier not found');
       }
 
-      // Find all stock entries for this supplier and shop
-      const stockEntries = await prisma.stockEntry.findMany({
-        where: {
+      // Create a single consolidated payment record
+      const payment = await tx.supplierPayment.create({
+        data: {
           supplierId: BigInt(supplierId),
+          amount: Number(amount),
+          paymentMethod: paymentMethod as PaymentMethod,
+          paymentDate: new Date(paymentDate),
           shopId: BigInt(shopId),
-          isActive: true,
-          paymentStatus: 'PENDING'
-        },
-        orderBy: { entryDate: 'asc' }
+          notes: notes || null,
+          isActive: true
+        }
       });
 
-      // Filter entries matching the specified week
-      const entriesToUpdate = stockEntries.filter(e => getWeekString(e.entryDate) === week);
+      // Distribution Logic
+      let remainingAmount = Number(amount);
 
-      // Update payment status for matching entries
-      if (entriesToUpdate.length > 0) {
-        await prisma.stockEntry.updateMany({
+      if (week) {
+        // Specific week payment logic
+        function getWeekString(date: Date): string {
+          const d = new Date(date);
+          const year = d.getFullYear();
+          const onejan = new Date(d.getFullYear(), 0, 1);
+          const weekNum = Math.ceil((((d.getTime() - onejan.getTime()) / 86400000) + onejan.getDay() + 1) / 7);
+          return `${year}-W${weekNum}`;
+        }
+
+        const stockEntries = await tx.stockEntry.findMany({
           where: {
-            id: { in: entriesToUpdate.map(e => BigInt(e.id)) }
+            supplierId: BigInt(supplierId),
+            shopId: BigInt(shopId),
+            isActive: true,
+            paymentStatus: 'PENDING'
           },
-          data: {
-            paymentStatus: 'COMPLETED'
-          }
+          orderBy: { entryDate: 'asc' }
         });
-      }
-    }
 
-    // Deduct paid amount from supplier's outstandingPayment (floor at 0)
-    const freshSupplier = await prisma.supplier.findUnique({ where: { id: BigInt(supplierId) } });
-    if (freshSupplier) {
-      const currentOutstanding = Number((freshSupplier as any).outstandingPayment ?? 0);
+        const entriesToUpdate = stockEntries.filter(e => getWeekString(e.entryDate) === week);
+
+        if (entriesToUpdate.length > 0) {
+          await tx.stockEntry.updateMany({
+            where: { id: { in: entriesToUpdate.map(e => e.id) } },
+            data: { paymentStatus: 'COMPLETED' }
+          });
+        }
+      } else {
+        // Automatic distribution logic (Oldest first)
+        const pendingEntries = await tx.stockEntry.findMany({
+          where: {
+            supplierId: BigInt(supplierId),
+            shopId: BigInt(shopId),
+            isActive: true,
+            paymentStatus: 'PENDING'
+          },
+          orderBy: { entryDate: 'asc' }
+        });
+
+        for (const entry of pendingEntries) {
+          if (remainingAmount <= 0) break;
+          const entryAmount = Number(entry.totalAmount);
+          
+          if (remainingAmount >= entryAmount) {
+            await tx.stockEntry.update({
+              where: { id: entry.id },
+              data: { paymentStatus: 'COMPLETED' }
+            });
+            remainingAmount -= entryAmount;
+          } else {
+            // Partial payment for a single entry? 
+            // In the current schema, we don't have partial payment status per entry.
+            // For now, we only mark as COMPLETED if fully paid, or we could just leave it PENDING.
+            // Decision: If we can't fully cover the entry, we stop distribution. 
+            // The balance will still be deducted from the supplier's total outstanding.
+            break;
+          }
+        }
+      }
+
+      // Deduct paid amount from supplier's outstandingPayment (floor at 0)
+      const freshSupplier = await tx.supplier.findUnique({ where: { id: BigInt(supplierId) } });
+      const currentOutstanding = Number(freshSupplier?.outstandingPayment ?? 0);
       const newOutstanding = Math.max(0, currentOutstanding - Number(amount));
-      await prisma.supplier.update({
+      
+      await tx.supplier.update({
         where: { id: BigInt(supplierId) },
-        data: { outstandingPayment: newOutstanding } as any
+        data: { outstandingPayment: newOutstanding }
       });
-    }
+
+      return payment;
+    });
 
     // Fix BigInt serialization
     function safeBigInt(obj: any): any {
@@ -105,9 +134,10 @@ export async function POST(req: NextRequest) {
       return obj;
     }
 
-    return NextResponse.json({ success: true, data: { payment: safeBigInt(payment) }, message: 'Payment recorded successfully' });
-  } catch (error) {
+    return NextResponse.json({ success: true, data: { payment: safeBigInt(result) }, message: 'Payment recorded successfully' });
+  } catch (error: any) {
     console.error('Supplier payment error:', error);
-    return NextResponse.json({ success: false, message: 'Failed to record payment' }, { status: 500 });
+    return NextResponse.json({ success: false, message: error.message || 'Failed to record payment' }, { status: 500 });
   }
-} 
+}
+ 
