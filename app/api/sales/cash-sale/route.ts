@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const {
       customerInfo, shopId, saleDate, totalAmount, finalAmount, discount, taxAmount, notes,
-      items, payment_type, paid_amount
+      items, payment_type, paid_amount, transportFare, vehicleNumber, driverName
     } = body;
 
     // Validate required fields
@@ -50,8 +50,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Final amount must be greater than 0' }, { status: 400 });
     }
 
-    if (!items || items.length === 0) {
-      return NextResponse.json({ success: false, message: 'At least one item is required' }, { status: 400 });
+    const hasItems = items && Array.isArray(items) && items.length > 0;
+    const hasTransport = Number(transportFare || 0) > 0;
+
+    if (!hasItems && !hasTransport) {
+      return NextResponse.json({ success: false, message: 'Missing items or transport fare' }, { status: 400 });
     }
 
     // Validate customer info for cash sales
@@ -166,6 +169,9 @@ export async function POST(req: NextRequest) {
           totalAmount: totalAmount,
           finalAmount: finalAmount,
           discount: discount || 0,
+          transportFare: Number(transportFare || 0),
+          vehicleNumber: vehicleNumber || null,
+          driverName: driverName || null,
           paymentStatus: salePaymentStatus,
           paymentMethod: mapPaymentMethodToPrisma(payment_type) as any,
           notes: notes || '',
@@ -174,10 +180,11 @@ export async function POST(req: NextRequest) {
       });
       console.log('Created sale with ID:', createdSale.id);
 
-      // 3. Create sale items and handle stock updates
+      // 3. Create sale items and handle stock updates if items exist
       console.log('Processing sale items...');
-      await Promise.all(items.map(async (item: any, index: number) => {
-        console.log(`Processing item ${index + 1}:`, item);
+      if (hasItems) {
+        await Promise.all(items.map(async (item: any, index: number) => {
+          console.log(`Processing item ${index + 1}:`, item);
 
         if (!item.productId) {
           throw new Error(`Missing productId for item ${index + 1}`);
@@ -285,6 +292,7 @@ export async function POST(req: NextRequest) {
           }
         }
       }));
+    }
 
       // 4. Payment information is already stored in the Sale record
       // No separate Payment record needed
@@ -292,6 +300,13 @@ export async function POST(req: NextRequest) {
       // 5. Create ledger entries
       // Now that we are linking to specific customers, we SHOULD create ledger entries
       // This logic ensures history tracking for recurring walk-in customers
+      const itemsList = hasItems ? items.map((item: any) => ({
+        name: item.name || '',
+        quantity: item.quantity,
+        price_per_unit: item.price_per_unit || item.price || 0,
+        unit: item.unit || 'units'
+      })) : [];
+
       if (finalCustomerId) {
         console.log('Creating ledger entries for cash sale');
         // Purchase Entry
@@ -299,9 +314,10 @@ export async function POST(req: NextRequest) {
           customerId: BigInt(finalCustomerId),
           amount: totalAmount,
           date: new Date(saleDate),
-          description: `Cash Sale #${createdSale.id}`,
+          description: notes ? `${notes} (Cash Sale #${createdSale.id})` : `Cash Sale #${createdSale.id}`,
           saleId: createdSale.id,
-          shopId: BigInt(parseInt(shopId))
+          shopId: BigInt(parseInt(shopId)),
+          items: itemsList
         });
 
         // Payment Entry (since it's a cash sale, it's paid immediately)

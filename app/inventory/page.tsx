@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Loader2, Package, Pencil, RefreshCw } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { useRouter } from "next/navigation";
 
 function exportToCSV(rows: any[], headers: string[], filename: string) {
   const csv = [headers.join(","), ...rows.map(row => headers.map(h => row[h] ?? "").join(","))].join("\n");
@@ -21,7 +22,7 @@ function exportToCSV(rows: any[], headers: string[], filename: string) {
 }
 
 // Helper to format TMT bar quantity as bundles and pieces
-function formatTmtStockDisplay(prod: any) {
+function formatTmtStockDisplay(prod: any & { latestConversionCft?: number }) {
   if (!prod || !prod.name?.toLowerCase().includes('tmt')) return prod.stockQuantity;
   const bundleSize = prod.type?.bundleSize || 0;
   if (!bundleSize) return prod.stockQuantity;
@@ -31,6 +32,7 @@ function formatTmtStockDisplay(prod: any) {
 }
 
 export default function InventoryPage() {
+  const router = useRouter();
   const { currentShopId } = useShop();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -219,7 +221,15 @@ export default function InventoryPage() {
   // Summary calculations
   const totalProducts = filtered.length;
   const totalStockQty = filtered.reduce((sum, prod) => sum + (prod.stockQuantity || 0), 0);
-  const totalValue = filtered.reduce((sum, prod) => sum + ((prod.price || 0) * (prod.stockQuantity || 0)), 0);
+  const totalValue = filtered.reduce((sum, prod) => {
+    // Determine the cost basis. Use costPrice, fallback to price.
+    const costBasis = prod.costPrice > 0 ? prod.costPrice : (prod.price || 0);
+    // If the product was entered via bulk conversion (e.g. 1 Highwa = 600 CFT), 
+    // the value of 1 CFT is the costBasis divided by the conversion factor.
+    const conversionFactor = prod.latestConversionCft && prod.latestConversionCft > 0 ? prod.latestConversionCft : 1;
+    const valuePerUnit = costBasis / conversionFactor;
+    return sum + (valuePerUnit * (prod.stockQuantity || 0));
+  }, 0);
 
   // CSV export
   const handleExport = () => {
@@ -337,11 +347,17 @@ export default function InventoryPage() {
                   onChange={e => setSearch(e.target.value)}
                   className="w-full md:w-1/2 lg:w-1/3 border-gray-300 shadow-sm focus:ring-primary focus:border-primary"
                 />
-                <Button onClick={handleExport} variant="outline" className="border-primary text-primary hover:bg-primary/10">Export CSV</Button>
-                <Button onClick={handleRefresh} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={refreshLoading}>
-                  {refreshLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
-                  Refresh
-                </Button>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <Button onClick={() => router.push('/dashboard/analytics')} variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                    <Package className="h-4 w-4 mr-2" />
+                    Insights
+                  </Button>
+                  <Button onClick={handleExport} variant="outline" className="border-primary text-primary hover:bg-primary/10">Export CSV</Button>
+                  <Button onClick={handleRefresh} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={refreshLoading}>
+                    {refreshLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
+                    Refresh
+                  </Button>
+                </div>
               </div>
               {loading ? (
                 <div className="flex justify-center items-center py-12">

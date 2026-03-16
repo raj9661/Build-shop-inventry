@@ -45,6 +45,9 @@ export interface Sale {
     name: string
   }
   updatedAt?: string
+  transportFare?: number
+  vehicleNumber?: string
+  driverName?: string
 }
 
 export interface CreateSaleData {
@@ -61,6 +64,9 @@ export interface CreateSaleData {
   finalAmount?: number;
   discount?: number;
   taxAmount?: number;
+  transportFare?: number;
+  vehicleNumber?: string;
+  driverName?: string;
   notes?: string;
   items: {
     name: string
@@ -197,7 +203,10 @@ class SalesService {
               price_per_unit: parseAmount(item.price_per_unit),
               total_price: parseAmount(item.total_price)
             }
-          })
+          }),
+          transportFare: parseAmount(sale.transportFare),
+          vehicleNumber: sale.vehicleNumber,
+          driverName: sale.driverName
         }
         
         return transformedSale
@@ -226,7 +235,7 @@ class SalesService {
   async createSale(saleData: CreateSaleData): Promise<Sale | null> {
     try {
       // Determine if this is a cash sale (walk-in customer with customerInfo)
-      const isCashSale = saleData.customerInfo && !saleData.customerId;
+      const isCashSale = saleData.customerInfo && !saleData.customerId && !(saleData as any).isDirectSale;
       const endpoint = isCashSale ? `${API_BASE_URL}/sales/cash-sale` : `${API_BASE_URL}/sales`;
       
       const response = await fetch(endpoint, {

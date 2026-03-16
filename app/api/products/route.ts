@@ -116,7 +116,13 @@ export async function GET(req: NextRequest) {
         damagedQuantity: true, // <-- Added this line
         category: { select: { id: true, name: true } },
         type: { select: { id: true, name: true, bundleSize: true } } as any,
-        shop: { select: { name: true, location: true } }
+        shop: { select: { name: true, location: true } },
+        stockEntries: {
+          select: { conversionCft: true },
+          where: { conversionCft: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
       }
     });
     
@@ -175,11 +181,15 @@ export async function GET(req: NextRequest) {
 
     // Use shared serialization utility
 
-    // Attach dailyRate to each product and serialize BigInt fields
-    const productsWithDailyRate = products.map(product => ({
-      ...product,
-      dailyRate: dailyRateMap.has(product.id) ? dailyRateMap.get(product.id) : null
-    }));
+    // Attach dailyRate and the latest conversion CFT to each product and serialize BigInt fields
+    const productsWithDailyRate = products.map(product => {
+      const latestStockEntry = product.stockEntries?.[0];
+      return {
+        ...product,
+        dailyRate: dailyRateMap.has(product.id) ? dailyRateMap.get(product.id) : null,
+        latestConversionCft: latestStockEntry?.conversionCft ? Number(latestStockEntry.conversionCft) : 1
+      };
+    });
 
     // Debug: Log stock quantities before serialization
     console.log('🔍 [Products API] Stock quantities before serialization:', 

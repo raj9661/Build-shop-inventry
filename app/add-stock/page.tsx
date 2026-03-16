@@ -13,7 +13,7 @@ import { MobileNav } from "@/components/mobile-nav"
 import { toast } from "sonner"
 import { Calendar, Loader2, RotateCcw, CheckCircle } from "lucide-react"
 import { useShop } from "../contexts/ShopContext"
-import { getAvailableTmtUnits, getAvailableChipSizes } from "../lib/tmtUtils"
+import { getAvailableTmtUnits, getAvailableChipSizes, getAvailableUnits } from "../lib/tmtUtils"
 import TmtBarForm from "../components/tmt-bar-form"
 
 // Suppliers will be loaded from API
@@ -50,6 +50,7 @@ type StockEntry = {
   date: string
   minStockLevel?: number
   maxStockLevel?: number
+  conversionCft?: string
 }
 
 // Sync function for offline entries
@@ -106,6 +107,7 @@ export default function AddStock() {
   const [types, setTypes] = useState<any[]>([])
   const [suppliers, setSuppliers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [productConversions, setProductConversions] = useState<any[]>([])
 
   // TMT-specific state
   const [isTmtMode, setIsTmtMode] = useState(false)
@@ -395,6 +397,8 @@ export default function AddStock() {
           sku: stock.sku,
           price: stock.sellingPrice,
           costPrice: stock.purchasePrice,
+          conversionCft: stock.conversionCft,
+          sellingPrice: stock.sellingPrice,
         })
       })
 
@@ -426,6 +430,7 @@ export default function AddStock() {
     date: new Date().toLocaleDateString("en-CA"),
     minStockLevel: "",
     maxStockLevel: "",
+    conversionCft: "",
   })
 
   // Batch API requests for categories, types, suppliers with sessionStorage cache for categories
@@ -497,6 +502,37 @@ export default function AddStock() {
     loadCategoriesAndTypes()
     loadTmtProducts()
   }, [currentShopId])
+
+  // Effect to load conversions for selected product
+  useEffect(() => {
+    const fetchConversions = async () => {
+      if (formData.productType && currentShopId) {
+        // Find the product type ID
+        const selectedType = types.find((t: any) => t.name === formData.productType)
+        if (selectedType) {
+          try {
+            const token = localStorage.getItem('accessToken')
+            const res = await fetch(`/api/unit-conversion?productId=${selectedType.id}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+            if (res.ok) {
+              const data = await res.json()
+              setProductConversions(data.data || [])
+              
+              // Auto-fill conversion if unit matches
+              const match = (data.data || []).find((c: any) => c.unitName === formData.unit)
+              if (match) {
+                setFormData(prev => ({ ...prev, conversionCft: match.cftValue.toString() }))
+              }
+            }
+          } catch (e) {
+            console.error('Error fetching conversions:', e)
+          }
+        }
+      }
+    }
+    fetchConversions()
+  }, [formData.productType, formData.unit, types, currentShopId])
 
   // Update bundleSize when TMT type is selected
   useEffect(() => {
@@ -584,6 +620,12 @@ export default function AddStock() {
       newErrors.size = "Size is required for chips"
     }
 
+    // Conversion factor for uncountable units
+    if (['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'bag'].includes(formData.unit) && (!formData.conversionCft || Number(formData.conversionCft) <= 0)) {
+      newErrors.conversionCft = "Valid conversion factor is required"
+    }
+
+
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
   }, [formData, categories])
@@ -605,6 +647,7 @@ export default function AddStock() {
       date: new Date().toLocaleDateString("en-CA"),
       minStockLevel: "",
       maxStockLevel: "",
+      conversionCft: "",
     })
     setErrors({})
   }, [])
@@ -641,6 +684,7 @@ export default function AddStock() {
         date: formData.date,
         minStockLevel: formData.minStockLevel ? Number(formData.minStockLevel) : undefined,
         maxStockLevel: formData.maxStockLevel ? Number(formData.maxStockLevel) : undefined,
+        conversionCft: formData.conversionCft,
       }
 
       if (isOnline) {
@@ -1220,6 +1264,8 @@ export default function AddStock() {
                               unitType: 'bundle',
                               pricePerUnit: '',
                               sellingPrice: '',
+                              pricePerKg: '',
+                              sellingPricePerKg: '',
                               rodsPerBundle: '',
                               weightPerRod: '',
                               minStock: '',
@@ -1417,17 +1463,18 @@ export default function AddStock() {
                     <div className="text-xs text-gray-600 mt-1">1 bundle = {tmtBundleSize} pieces</div>
                   </div>
                 ) : (
-                  // Quantity and Unit fields for other products
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-3">
                       <Label className="text-lg font-medium text-gray-800">मात्रा / Quantity</Label>
                       <Input
                         type="number"
-                        step="0.01"
+                        min="0"
                         value={formData.quantity}
                         onChange={(e) => setFormData((prev) => ({ ...prev, quantity: e.target.value }))}
                         placeholder="100"
-                        className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.quantity ? "border-red-500" : ""}`}
+                        className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${
+                          errors.quantity ? "border-red-500" : ""
+                        }`}
                       />
                     </div>
                     <div className="space-y-3">
@@ -1437,19 +1484,43 @@ export default function AddStock() {
                         onValueChange={(value) => setFormData((prev) => ({ ...prev, unit: value }))}
                       >
                         <SelectTrigger className="h-14 text-base rounded-2xl border-gray-200 bg-gray-50">
-                          <SelectValue />
+                          <SelectValue placeholder="Select unit" />
                         </SelectTrigger>
                         <SelectContent>
-                          {units.map((unit) => (
+                          {formData.categoryId ? getAvailableUnits(categories.find((c: any) => c.id.toString() === formData.categoryId)?.name || '').map((unit: any) => (
                             <SelectItem key={unit.value} value={unit.value} className="text-base py-3">
                               {unit.label}
                             </SelectItem>
-                          ))}
+                          )) : (
+                            <SelectItem value="placeholder" disabled>Select category first</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                     </div>
                   </div>
                 )}
+
+                {/* Conversion Factor (Visible for uncountable units or if manual adjustment needed) */}
+                {['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(formData.unit) && (
+                  <div className="space-y-3">
+                    <Label className="text-lg font-medium text-blue-800">कन्वर्जन (CFT per Unit) / Conversion Factor</Label>
+                    <Input
+                      type="number"
+                      step="0.001"
+                      value={formData.conversionCft}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, conversionCft: e.target.value }))}
+                      placeholder="e.g. 100 for Small Hiwa"
+                      className={`h-14 text-base rounded-2xl border-blue-200 bg-blue-50 ${errors.conversionCft ? "border-red-500" : ""}`}
+                    />
+                    <div className="text-xs text-blue-600">
+                      Amount of Cubic Feet (CFT) per single {formData.unit}. 
+                      {formData.quantity && formData.conversionCft && (
+                        <span className="font-bold ml-1">Total: {(Number(formData.quantity) * Number(formData.conversionCft)).toFixed(2)} CFT</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
 
                 {/* Size selection for chips */}
                 {formData.categoryId && categories.find((c: any) => c.id.toString() === formData.categoryId)?.name?.toLowerCase().includes("chips") && (
@@ -1479,33 +1550,32 @@ export default function AddStock() {
                   </div>
                 )}
 
-                {/* Add Min/Max Stock fields in the form UI, after Quantity/Unit */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-3">
-                    <Label className="text-lg font-medium text-gray-800">न्यूनतम स्टॉक / Min Stock</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={formData.minStockLevel}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, minStockLevel: e.target.value }))}
-                      placeholder="10"
-                      className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.minStockLevel ? "border-red-500" : ""}`}
-                    />
-                    {errors.minStockLevel && <div className="text-red-500 text-xs">{errors.minStockLevel}</div>}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <Label className="text-lg font-medium text-gray-800">न्यूनतम स्टॉक / Min Stock</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.minStockLevel}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, minStockLevel: e.target.value }))}
+                        placeholder="10"
+                        className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.minStockLevel ? "border-red-500" : ""}`}
+                      />
+                      {errors.minStockLevel && <div className="text-red-500 text-xs">{errors.minStockLevel}</div>}
+                    </div>
+                    <div className="space-y-3">
+                      <Label className="text-lg font-medium text-gray-800">अधिकतम स्टॉक / Max Stock</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.maxStockLevel}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, maxStockLevel: e.target.value }))}
+                        placeholder="100"
+                        className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.maxStockLevel ? "border-red-500" : ""}`}
+                      />
+                      {errors.maxStockLevel && <div className="text-red-500 text-xs">{errors.maxStockLevel}</div>}
+                    </div>
                   </div>
-                  <div className="space-y-3">
-                    <Label className="text-lg font-medium text-gray-800">अधिकतम स्टॉक / Max Stock</Label>
-                    <Input
-                      type="number"
-                      min="0"
-                      value={formData.maxStockLevel}
-                      onChange={(e) => setFormData((prev) => ({ ...prev, maxStockLevel: e.target.value }))}
-                      placeholder="100"
-                      className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.maxStockLevel ? "border-red-500" : ""}`}
-                    />
-                    {errors.maxStockLevel && <div className="text-red-500 text-xs">{errors.maxStockLevel}</div>}
-                  </div>
-                </div>
 
                 {/* Purchase Price */}
                 <div className="space-y-3">
@@ -1522,17 +1592,16 @@ export default function AddStock() {
                   />
                 </div>
 
-                {/* Add SKU and Selling Price fields in the form UI, after Purchase Price */}
-                <div className="space-y-3">
-                  <Label className="text-lg font-medium text-gray-800">एसकेयू / SKU</Label>
-                  <Input
-                    value={formData.sku}
-                    onChange={(e) => setFormData((prev) => ({ ...prev, sku: e.target.value }))}
-                    placeholder="CEM-ACC-50KG"
-                    className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.sku ? "border-red-500" : ""}`}
-                  />
-                  {errors.sku && <div className="text-red-500 text-xs">{errors.sku}</div>}
-                </div>
+                  <div className="space-y-3">
+                    <Label className="text-lg font-medium text-gray-800">एसकेयू / SKU</Label>
+                    <Input
+                      value={formData.sku}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, sku: e.target.value }))}
+                      placeholder="CEM-ACC-50KG"
+                      className={`h-14 text-base rounded-2xl border-gray-200 bg-gray-50 ${errors.sku ? "border-red-500" : ""}`}
+                    />
+                    {errors.sku && <div className="text-red-500 text-xs">{errors.sku}</div>}
+                  </div>
 
                 {/* Selling Price */}
                 <div className="space-y-3">

@@ -40,7 +40,13 @@ export async function calculateInventoryAnalytics(shopId: bigint) {
         id: true,
         name: true,
         stockQuantity: true,
-        costPrice: true
+        costPrice: true,
+        stockEntries: {
+          select: { conversionCft: true },
+          where: { conversionCft: { not: null } },
+          orderBy: { createdAt: 'desc' },
+          take: 1
+        }
       }
     });
 
@@ -90,8 +96,15 @@ export async function calculateInventoryAnalytics(shopId: bigint) {
         const totalQtySold = Number(totalSales._sum.quantity || 0);
         const totalSalesAmount = Number(totalSales._sum.totalPrice || 0);
         
-        // Calculate COGS (Cost of Goods Sold) = total quantity sold * cost price
-        const cogs = totalQtySold * Number(product.costPrice || 0);
+        // Calculate true COGS. If product is sold in fractional units (e.g. CFTs from a Highwa)
+        // calculate the per-CFT cost before multiplying by sold fractional quantity.
+        const conversionFactor = product.stockEntries?.[0]?.conversionCft 
+          ? Number(product.stockEntries[0].conversionCft) 
+          : 1;
+        const normalizedUnitCost = Number(product.costPrice || 0) / (conversionFactor > 0 ? conversionFactor : 1);
+        
+        // COGS = true cost of single fractional unit * total fractional units sold
+        const cogs = totalQtySold * normalizedUnitCost;
 
         // Calculate turnover ratio = total quantity sold / average stock
         const turnoverRatio = avgStock > 0 ? totalQtySold / avgStock : 0;

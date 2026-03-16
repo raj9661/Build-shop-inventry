@@ -33,7 +33,8 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
     window.print()
   }
   const handleWhatsApp = () => {
-    const text = `*${shopInfo.name}*\nGST: ${shopInfo.gstNo || "-"}\n${shopInfo.address}\nPhone: ${shopInfo.phone || "-"}\n\nBill No: ${sale.billNo}   Date: ${billDate}\n\n${sale.items.map((item: any) => { const price = item.price_per_unit || item.pricePerUnit || 0; return `${item.name}  x${item.quantity} ${item.unit || '-'}  ₹${price}  ₹${item.quantity * price}`; }).join("\n")}\n-----------------------------\nSubtotal: ₹${sale.totalAmount}\nDiscount: -₹${sale.discount || 0}\nCGST: ₹${sale.cgst || 0}\nSGST: ₹${sale.sgst || 0}\nTotal: ₹${sale.finalAmount}\n-----------------------------\nThank you!`
+    const transportInfo = sale.transportFare > 0 ? `\nTransport: ₹${sale.transportFare}${sale.vehicleNumber ? ` (${sale.vehicleNumber})` : ''}` : '';
+    const text = `*${shopInfo.name}*\nGST: ${shopInfo.gstNo || "-"}\n${shopInfo.address}\nPhone: ${shopInfo.phone || "-"}\n\nBill No: ${sale.billNo}   Date: ${billDate}\n\n${sale.items.map((item: any) => { const price = item.price_per_unit || item.pricePerUnit || 0; return `${item.name}  x${item.quantity} ${item.unit || '-'}  ₹${price}  ₹${item.quantity * price}`; }).join("\n")}${transportInfo}\n-----------------------------\nSubtotal: ₹${sale.totalAmount}\nDiscount: -₹${sale.discount || 0}\nCGST: ₹${sale.cgst || 0}\nSGST: ₹${sale.sgst || 0}\nTotal: ₹${sale.finalAmount}\n-----------------------------\nThank you!`
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`)
   }
   return (
@@ -84,7 +85,8 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
         </tbody>
       </table>
       <div className="text-right text-xs" style={{ fontSize: 12 }}>
-        <div>Subtotal: ₹{Number(sale.totalAmount).toFixed(2)}</div>
+        <div>Subtotal: ₹{Number(sale.totalAmount - (sale.transportFare || 0)).toFixed(2)}</div>
+        {sale.transportFare > 0 && <div>Transport: ₹{Number(sale.transportFare).toFixed(2)}</div>}
         <div>Discount: -₹{Number(sale.discount || 0).toFixed(2)}</div>
         <div>CGST: ₹{Number(sale.cgst || 0).toFixed(2)}</div>
         <div>SGST: ₹{Number(sale.sgst || 0).toFixed(2)}</div>
@@ -96,6 +98,7 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
           </>
         )}
       </div>
+      {sale.vehicleNumber && <div className="text-center text-xs mt-1 italic">Vehicle: {sale.vehicleNumber} {sale.driverName ? `(${sale.driverName})` : ''}</div>}
       <div className="text-center mt-2" style={{ fontSize: 12 }}>
         <div>Thank you!</div>
       </div>

@@ -23,7 +23,15 @@ import ProperBillPrint from "./ProperBillPrint"
 import NormalBillPrint from "./NormalBillPrint"
 import { getAvailableTmtUnits, formatTmtQuantity, getWeightPerPiece, getBundleConfig, convertToKg, getAvailableChipSizes, getAvailableUnits } from "../lib/tmtUtils"
 
-type SaleItem = { categoryId: number; categoryName: string; typeId: number; typeName: string; productId: number; name: string; quantity: number; price: number; unit: string; size: string; stockType?: 'normal' | 'damaged' }
+type SaleItem = { categoryId: number; categoryName: string; typeId: number; typeName: string; productId: number; name: string; quantity: number; price: number; purchasePrice?: number; unit: string; size: string; stockType?: 'normal' | 'damaged'; conversionCft?: number }
+
+type Supplier = {
+  id: number
+  name: string
+  phone: string
+  address: string
+  isActive?: boolean
+}
 
 type Customer = {
   id: number
@@ -101,6 +109,7 @@ function AddSalePage() {
 
   // State for categories and types
   const [categories, setCategories] = useState<any[]>([])
+  const [allTypes, setAllTypes] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
   // State for sale
@@ -113,9 +122,11 @@ function AddSalePage() {
     name: "",
     quantity: 1,
     price: 0,
+    purchasePrice: 0,
     unit: "",
     size: "",
-    stockType: undefined
+    stockType: undefined,
+    conversionCft: 0
   }])
   // TMT-specific state
   const [isTmtMode, setIsTmtMode] = useState(false)
@@ -163,6 +174,23 @@ function AddSalePage() {
   const [partialPaymentMethod, setPartialPaymentMethod] = useState("cash")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState("cash")
+  const [isDirectSale, setIsDirectSale] = useState(false)
+  const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
+  const [supplierSearchTerm, setSupplierSearchTerm] = useState("")
+  const [supplierSearchLoading, setSupplierSearchLoading] = useState(false)
+  const [isNewSupplierDialogOpen, setIsNewSupplierDialogOpen] = useState(false)
+  const [newSupplier, setNewSupplier] = useState({
+    name: "",
+    phone: "",
+    address: ""
+  })
+  
+  // Transport-related state
+  const [transportFare, setTransportFare] = useState<number>(0)
+  const [vehicleNumber, setVehicleNumber] = useState("")
+  const [driverName, setDriverName] = useState("")
+
   // Load TMT products from inventory (only products with stock)
   const loadTmtProducts = async () => {
     try {
@@ -589,7 +617,31 @@ function AddSalePage() {
       }
     }
 
+    const fetchAllTypes = async () => {
+      try {
+        const token = localStorage.getItem('accessToken')
+        if (!token || !currentShopId) return
+
+        const response = await fetch(`/api/categories/types?shopId=${currentShopId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success) {
+            setAllTypes(data.data || [])
+            console.log('🔍 [AddSale] All types fetched:', data.data?.length)
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching all types:', error)
+      }
+    }
+
     fetchCategories()
+    fetchAllTypes()
     loadTmtProducts()
   }, [currentShopId])
 
@@ -609,6 +661,14 @@ function AddSalePage() {
     ).values()
   )
 
+  // Helper to get types for a given category ID
+  const getTypesForCategory = (categoryId: number) => {
+    if (!categoryId || allTypes.length === 0) return []
+    const types = allTypes.filter((t: any) => Number(t.categoryId) === Number(categoryId))
+    console.log('🔍 [AddSale] getTypesForCategory (from allTypes) - returning types:', types.length, types.map(t => t.name));
+    return types
+  }
+
   // Debug categories
   console.log('🔍 [AddSale] Categories from products:', categoriesFromProducts.length, categoriesFromProducts.map(c => c.name));
   console.log('🔍 [AddSale] Products loaded:', products.length, 'products');
@@ -627,37 +687,6 @@ function AddSalePage() {
     typeName: p.type?.name
   })));
 
-  const getTypesForCategory = (categoryId: number) => {
-    // Build types from products data since categories API doesn't include types
-    console.log('🔍 [AddSale] getTypesForCategory called with categoryId:', categoryId, 'type:', typeof categoryId);
-
-    // Return empty array if categoryId is invalid (0 or undefined)
-    if (!categoryId || categoryId === 0) {
-      console.log('🔍 [AddSale] getTypesForCategory - invalid categoryId, returning empty array');
-      return [];
-    }
-
-    const categoryProducts = products.filter((p: any) => Number(p.category?.id) === Number(categoryId))
-    console.log('🔍 [AddSale] getTypesForCategory - categoryProducts found:', categoryProducts.length);
-    console.log('🔍 [AddSale] getTypesForCategory - categoryProducts:', categoryProducts.map(p => ({
-      id: p.id,
-      name: p.name,
-      categoryId: p.category?.id,
-      typeId: p.type?.id,
-      typeName: p.type?.name
-    })));
-
-    const typesMap = new Map()
-    categoryProducts.forEach((product: any) => {
-      if (product.type && product.type.id) {
-        typesMap.set(product.type.id, product.type)
-      }
-    })
-    const types = Array.from(typesMap.values())
-    console.log('🔍 [AddSale] getTypesForCategory - returning types:', types.length, types.map(t => t.name));
-    return types
-  }
-
   const handleAddItem = () => {
     setSaleItems([...saleItems, {
       categoryId: 0,
@@ -668,9 +697,11 @@ function AddSalePage() {
       name: "",
       quantity: 1,
       price: 0,
+      purchasePrice: 0,
       unit: "",
       size: "",
-      stockType: undefined
+      stockType: undefined,
+      conversionCft: 0
     }])
   }
 
@@ -782,6 +813,7 @@ function AddSalePage() {
           productId: Number(product.id),
           name: product.name,
           price: defaultPrice,
+          purchasePrice: Number(product.costPrice || 0), // Set purchase price from product costPrice
           unit: (isSandChipsCategory || isTMTBarCategory) ? newItems[index].unit || "" : (product.unit || newItems[index].unit || ""), // auto-set unit if not already set
           categoryId: Number(product.category?.id),
           categoryName: product.category?.name,
@@ -794,8 +826,8 @@ function AddSalePage() {
       // If TMT and unit is piece, just update quantity
       const quantityValue = value === "" ? 0 : Number.parseInt(value) || 0
 
-      // Check stock availability
-      if (newItems[index].productId) {
+      // Check stock availability (ONLY if not direct sale)
+      if (!isDirectSale && newItems[index].productId) {
         const product = products.find((p: any) => Number(p.id) === Number(newItems[index].productId))
         if (product && product.stockQuantity !== null && product.stockQuantity !== undefined) {
           const availableStock = Number(product.stockQuantity) || 0
@@ -809,6 +841,8 @@ function AddSalePage() {
       newItems[index].quantity = quantityValue
     } else if (field === "price") {
       newItems[index].price = value === "" ? 0 : Number.parseFloat(value) || 0
+    } else if (field === "purchasePrice") {
+      newItems[index].purchasePrice = value === "" ? 0 : Number.parseFloat(value) || 0
     } else if (field === "stockType") {
       newItems[index].stockType = value as 'normal' | 'damaged'
     } else {
@@ -938,6 +972,11 @@ function AddSalePage() {
     // Reset form validation
     setIsSubmitting(false)
 
+    // Reset transport fields
+    setTransportFare(0)
+    setVehicleNumber("")
+    setDriverName("")
+
     console.log('🔄 [AddSale] Form reset completed')
   }
 
@@ -950,7 +989,7 @@ function AddSalePage() {
   const sgstPercent = tax / 2
   const cgstAmount = ((subtotal - discountAmount) * cgstPercent) / 100
   const sgstAmount = ((subtotal - discountAmount) * sgstPercent) / 100
-  const finalAmount = subtotal - discountAmount + cgstAmount + sgstAmount
+  const finalAmount = subtotal - discountAmount + cgstAmount + sgstAmount + Number(transportFare || 0)
 
   // Use finalAmount for payment calculations
   const amountPaid = paymentMethod === "partial" ? partialAmount :
@@ -966,10 +1005,24 @@ function AddSalePage() {
     : saleItems.reduce((sum, item) => {
       const product = products.find((p: any) => Number(p.id) === Number(item.productId))
       const itemQty = Number(item.quantity) || 0
-      const itemCost = Number(product?.costPrice ?? 0)
+      const rawCost = Number(item.purchasePrice ?? product?.costPrice ?? 0)
+      
+      // Normalize cost if selling in fractional units
+      const convFactor = (item.conversionCft && Number(item.conversionCft) > 0) ? Number(item.conversionCft) : null
+      
+      let itemCost = rawCost
+      if (convFactor) {
+        // If the product cost is per bulk unit (e.g. ₹30,000 per Tempo),
+        // and the user is selling in base unit (e.g. CFT), the cost per CFT is rawCost / convFactor.
+        if (item.unit === 'cft' || item.unit === 'kg' || item.unit === 'pieces') {
+          itemCost = rawCost / convFactor
+        }
+        // If the user is selling in the bulk unit (e.g. Tempo), the cost is just rawCost.
+      }
+      
       return sum + (itemQty * itemCost)
     }, 0)
-  const profit = (subtotal - discountAmount) - totalCost
+  const profit = (subtotal + Number(transportFare || 0) - discountAmount) - totalCost
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -977,8 +1030,26 @@ function AddSalePage() {
       toast.error(t("Please select or create a customer", "कृपया ग्राहक चुनें या बनाएं"))
       return
     }
-    if (saleItems.length === 0 || saleItems.every(item => !item.categoryId || !item.typeId || !item.productId)) {
-      toast.error(t("Please add at least one item with category, type, and product", "कृपया कम से कम एक आइटम श्रेणी, प्रकार और नाम के साथ जोड़ें"))
+    
+    const validItems = saleItems.filter(item => {
+      if (isDirectSale) {
+        return item.categoryId && item.typeId && item.name;
+      }
+      return item.categoryId && item.typeId && item.productId;
+    });
+
+    const hasIncompleteItems = saleItems.length > validItems.length;
+
+    if (hasIncompleteItems) {
+      toast.error(t("Please complete all added items before creating the sale. Ensure Product Name/Brand is selected.", "कृपया बिक्री बनाने से पहले सभी जोड़े गए आइटम पूरे करें। सुनिश्चित करें कि उत्पाद का नाम/ब्रांड चुना गया है।"));
+      return;
+    }
+
+    const hasItems = validItems.length > 0;
+    const hasTransport = Number(transportFare || 0) > 0
+
+    if (!hasItems && !hasTransport) {
+      toast.error(t("Please add at least one item or transport fare", "कृपया कम से कम एक आइटम या परिवहन शुल्क जोड़ें"))
       return
     }
 
@@ -1018,21 +1089,45 @@ function AddSalePage() {
       return
     }
 
+    if (isDirectSale && !selectedSupplier) {
+      toast.error(t("Please select or create a supplier for direct sale", "कृपया डायरेक्ट सेल के लिए सप्लायर चुनें या बनाएं"))
+      return
+    }
+
     if (paymentMethod === "partial" && partialAmount >= finalAmount) {
       toast.error(t("Partial amount should be less than total amount", "आंशिक राशि कुल राशि से कम होनी चाहिए"))
       return
     }
 
-    // Check stock availability for all items
-    for (const item of saleItems.filter(item => item.categoryId && item.typeId && item.productId)) {
-      const product = products.find((p: any) => Number(p.id) === Number(item.productId))
-      if (product && product.stockQuantity !== null && product.stockQuantity !== undefined) {
-        const availableStock = Number(product.stockQuantity) || 0
-        const requestedQty = Number(item.quantity) || 0
-        if (requestedQty > availableStock) {
-          toast.error(`Insufficient stock for ${item.name}! Available: ${availableStock} ${product.unit || ''}, Requested: ${requestedQty}`)
-          setIsSubmitting(false)
-          return
+    // Check stock availability for all items (SKIP for direct sale)
+    if (!isDirectSale) {
+      for (const item of validItems) {
+        const product = products.find((p: any) => Number(p.id) === Number(item.productId))
+        if (product && Number(product.stockQuantity) !== null && Number(product.stockQuantity) !== undefined) {
+          const availableStockInBaseUnit = Number(product.stockQuantity) || 0
+          
+          // Convert requested quantity to the product's base unit (highwa/truck)
+          // If selling in CFT, convert CFT → base unit using conversionCft
+          // If selling in Tempo/Tractor etc., also convert via conversionCft to get base CFT then to base unit
+          // For simplicity: if product unit matches item unit → compare directly
+          // Otherwise, if user is selling in a different vehicle unit, block if available is 0
+          
+          const isProductSoldByVehicle = ['highwa', 'tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa'].includes(product.unit)
+          const requestedQty = Number(item.quantity) || 0
+          
+          // If product has 0 stock, block regardless of unit
+          if (availableStockInBaseUnit <= 0) {
+            toast.error(`${product.name} is out of stock! Cannot create sale without Direct Truck Sale.`)
+            setIsSubmitting(false)
+            return
+          }
+          
+          // If selling in same base unit as stored, compare directly
+          if (item.unit === product.unit && requestedQty > availableStockInBaseUnit) {
+            toast.error(`Insufficient stock for ${product.name}! Available: ${availableStockInBaseUnit} ${product.unit}, Requested: ${requestedQty} ${item.unit}`)
+            setIsSubmitting(false)
+            return
+          }
         }
       }
     }
@@ -1046,12 +1141,15 @@ function AddSalePage() {
         customerId: selectedCustomer?.id,
         shopId: currentShopId,
         saleDate,
-        totalAmount: subtotal,
+        totalAmount: subtotal + Number(transportFare || 0),
         finalAmount,
         discount: discountAmount,
         cgst: cgstAmount,
         sgst: sgstAmount,
-        items: saleItems.filter(item => item.categoryId && item.typeId && item.productId).map(item => {
+        transportFare: Number(transportFare || 0),
+        vehicleNumber: vehicleNumber || null,
+        driverName: driverName || null,
+        items: saleItems.filter(item => item.categoryId && item.typeId && (isDirectSale ? item.name : item.productId)).map(item => {
           console.log('🔍 [AddSale] Mapping item for sale:', { productId: item.productId, name: item.name, quantity: item.quantity });
           if (item.name && item.name.toLowerCase().includes("cement") && item.unit === "kg") {
             return {
@@ -1071,7 +1169,14 @@ function AddSalePage() {
         }),
         payment_type: paymentMethod as "cash" | "online" | "loan" | "partial",
         paid_amount: amountPaid,
-        partial_payment_method: paymentMethod === "partial" ? partialPaymentMethod : null
+        partial_payment_method: paymentMethod === "partial" ? partialPaymentMethod : null,
+        isDirectSale,
+        supplierId: selectedSupplier?.id !== 0 ? selectedSupplier?.id : undefined,
+        supplierInfo: selectedSupplier?.id === 0 ? {
+          name: selectedSupplier.name,
+          phone: selectedSupplier.phone,
+          address: selectedSupplier.address
+        } : undefined
       }
 
       console.log('🔍 [AddSale] Final sale data being sent:', saleData);
@@ -1196,6 +1301,50 @@ function AddSalePage() {
       fetchCustomers(searchTerm);
     }
   }, [searchTerm, currentShopId]);
+
+  useEffect(() => {
+    const fetchSuppliers = async () => {
+      if (!currentShopId) return
+      setSupplierSearchLoading(true)
+      try {
+        const token = localStorage.getItem("accessToken")
+        const response = await fetch(`/api/suppliers?shopId=${currentShopId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (response.ok) {
+          const data = await response.json()
+          setSuppliers(data.data?.suppliers || [])
+        }
+      } catch (error) {
+        console.error("Error fetching suppliers:", error)
+      } finally {
+        setSupplierSearchLoading(false)
+      }
+    }
+    fetchSuppliers()
+  }, [currentShopId])
+
+  const filteredSuppliers = suppliers.filter(s =>
+    s.name.toLowerCase().includes(supplierSearchTerm.toLowerCase()) ||
+    (s.phone && s.phone.includes(supplierSearchTerm))
+  )
+
+  const handleCreateSupplier = async () => {
+    if (!newSupplier.name) {
+      toast.error("Please enter a supplier name")
+      return
+    }
+    // For now, we'll just set it locally and the backend will handle creation if needed
+    // or we can explicitly call an API. The implementation plan says "supplierInfo" will be passed.
+    setSelectedSupplier({
+      id: 0, // 0 indicates a new supplier
+      name: newSupplier.name,
+      phone: newSupplier.phone,
+      address: newSupplier.address
+    } as Supplier)
+    setIsNewSupplierDialogOpen(false)
+    toast.success("New supplier info added")
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
@@ -1339,6 +1488,122 @@ function AddSalePage() {
                   </div>
                 )}
               </div>
+
+              {/* Direct Sale Toggle */}
+              <div className="flex items-center space-x-2 p-4 bg-emerald-50 rounded-xl border border-emerald-100">
+                <input
+                  type="checkbox"
+                  id="isDirectSale"
+                  checked={isDirectSale}
+                  onChange={(e) => setIsDirectSale(e.target.checked)}
+                  className="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500"
+                />
+                <Label htmlFor="isDirectSale" className="text-lg font-semibold text-emerald-800 cursor-pointer">
+                  {t("Direct Truck Sale (Skip Inventory)", "डायरेक्ट ट्रक सेल (इन्वेंटरी छोड़ें)")}
+                </Label>
+              </div>
+
+              {/* Supplier Selection (Only if Direct Sale) */}
+              {isDirectSale && (
+                <div className="space-y-4 p-4 border-2 border-dashed border-emerald-200 rounded-2xl bg-white">
+                  <h3 className="text-lg font-semibold text-emerald-700">{t("Supplier Information (For Purchase)", "सप्लायर की जानकारी (खरीद के लिए)")}</h3>
+
+                  <div className="space-y-4">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                      <Input
+                        placeholder={t("Search suppliers...", "सप्लायर खोजें...")}
+                        value={supplierSearchTerm}
+                        onChange={(e) => setSupplierSearchTerm(e.target.value)}
+                        className="pl-10"
+                      />
+                    </div>
+
+                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                      {supplierSearchLoading ? (
+                        <div className="text-center text-gray-500 py-2">{t("Loading suppliers...", "सप्लायर लोड हो रहे हैं...")}</div>
+                      ) : suppliers.length === 0 ? (
+                        <div className="text-center text-gray-500 py-2">{t("No suppliers found", "कोई सप्लायर नहीं मिला")}</div>
+                      ) : (
+                        filteredSuppliers.map((supplier) => (
+                          <div
+                            key={supplier.id}
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors ${selectedSupplier?.id === supplier.id
+                              ? "border-emerald-500 bg-emerald-50"
+                              : "border-gray-200 hover:border-gray-300"
+                              }`}
+                            onClick={() => setSelectedSupplier(supplier)}
+                          >
+                            <div className="flex items-center gap-3">
+                              <User className="h-5 w-5 text-gray-500" />
+                              <div className="flex-1">
+                                <p className="font-medium">{supplier.name}</p>
+                                <p className="text-sm text-gray-600">{supplier.phone}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    <Dialog open={isNewSupplierDialogOpen} onOpenChange={setIsNewSupplierDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button type="button" variant="outline" className="w-full border-dashed">
+                          <Plus className="h-4 w-4 mr-2" />
+                          {t("Add New Supplier Info", "नई सप्लायर जानकारी जोड़ें")}
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>{t("Add New Supplier Info", "नई सप्लायर जानकारी जोड़ें")}</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="s-name">{t("Supplier Name", "सप्लायर का नाम")}</Label>
+                            <Input
+                              id="s-name"
+                              value={newSupplier.name}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, name: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="s-phone">{t("Phone", "फोन")}</Label>
+                            <Input
+                              id="s-phone"
+                              value={newSupplier.phone}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, phone: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor="s-address">{t("Address", "पता")}</Label>
+                            <Textarea
+                              id="s-address"
+                              value={newSupplier.address}
+                              onChange={(e) => setNewSupplier({ ...newSupplier, address: e.target.value })}
+                            />
+                          </div>
+                          <Button type="button" onClick={handleCreateSupplier} className="w-full">
+                            {t("Save Supplier Info", "सप्लायर की जानकारी सहेजें")}
+                          </Button>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  {selectedSupplier && (
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="flex items-center gap-3">
+                        <User className="h-5 w-5 text-emerald-600" />
+                        <div>
+                          <p className="font-medium text-emerald-800">{selectedSupplier?.name}</p>
+                          <p className="text-sm text-emerald-600">{selectedSupplier?.phone}</p>
+                          <p className="text-sm text-emerald-600">{selectedSupplier?.address}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* TMT Mode Toggle */}
               <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
@@ -1742,7 +2007,7 @@ function AddSalePage() {
                                 </SelectContent>
                               </Select>
                             </div>
-                            <div>
+                            <div className={isDirectSale ? "md:col-span-1" : "md:col-span-1"}>
                               <Label>{t("Type", "प्रकार")}</Label>
                               <Select
                                 value={item.typeId > 0 ? item.typeId.toString() : ""}
@@ -1768,35 +2033,42 @@ function AddSalePage() {
 
                             </div>
                             <div>
-                              <Label>{t("Name", "नाम")}</Label>
-                              <Select
-                                value={item.productId > 0 ? item.productId.toString() : ""}
-                                onValueChange={(value) => handleItemChange(index, "productId", value)}
-                                disabled={!item.categoryId || !item.typeId || productsLoading}
-                              >
-                                <SelectTrigger>
-                                  <SelectValue placeholder={t("Select product", "आइटम चुनें")} />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {(() => {
+                              <Label>{isDirectSale ? t("Product Name / Brand", "आइटम का नाम / ब्रांड") : t("Name", "नाम")}</Label>
+                              {isDirectSale ? (
+                                <Input
+                                  value={item.name}
+                                  onChange={(e) => handleItemChange(index, "name", e.target.value)}
+                                  placeholder={t("Enter name (e.g. Ganga Sand)", "नाम दर्ज करें")}
+                                />
+                              ) : (
+                                <Select
+                                  value={item.productId > 0 ? item.productId.toString() : ""}
+                                  onValueChange={(value) => handleItemChange(index, "productId", value)}
+                                  disabled={!item.categoryId || !item.typeId || productsLoading}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder={t("Select product", "आइटम चुनें")} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {(() => {
+                                      // Only filter products if both categoryId and typeId are valid (not 0)
+                                      const filteredProducts = (item.categoryId > 0 && item.typeId > 0)
+                                        ? products.filter(
+                                          (p: any) =>
+                                            Number(p.category?.id) === Number(item.categoryId) &&
+                                            Number(p.type?.id) === Number(item.typeId)
+                                        )
+                                        : [];
 
-                                    // Only filter products if both categoryId and typeId are valid (not 0)
-                                    const filteredProducts = (item.categoryId > 0 && item.typeId > 0)
-                                      ? products.filter(
-                                        (p: any) =>
-                                          Number(p.category?.id) === Number(item.categoryId) &&
-                                          Number(p.type?.id) === Number(item.typeId)
-                                      )
-                                      : [];
-
-                                    return filteredProducts.map((product: any) => (
-                                      <SelectItem key={product.id} value={product.id.toString()}>
-                                        {product.name}
-                                      </SelectItem>
-                                    ));
-                                  })()}
-                                </SelectContent>
-                              </Select>
+                                      return filteredProducts.map((product: any) => (
+                                        <SelectItem key={product.id} value={product.id.toString()}>
+                                          {product.name}
+                                        </SelectItem>
+                                      ));
+                                    })()}
+                                  </SelectContent>
+                                </Select>
+                              )}
                             </div>
                             {/* TMT Bar Bundle/Piece Input */}
                             {item.categoryName && (item.categoryName.toLowerCase().includes('tmt') || item.categoryName.toLowerCase().includes('steel')) && getTmtBundleSize(item) ? (
@@ -1906,6 +2178,22 @@ function AddSalePage() {
                                   </SelectContent>
                                 </Select>
                               )}
+                              {['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(item.unit) && (
+                                <div className="mt-2 text-xs">
+                                  <Label className="text-[10px] font-medium text-blue-700 mb-1 block">Conversion (CFT/Unit)</Label>
+                                  <Input
+                                    type="number"
+                                    step="0.001"
+                                    value={item.conversionCft || ""}
+                                    onChange={(e) => handleItemChange(index, "conversionCft", e.target.value)}
+                                    placeholder="Ex: 100"
+                                    className="h-7 text-[10px] border-blue-200"
+                                  />
+                                  {item.quantity && item.conversionCft && (
+                                    <div className="text-[9px] text-blue-600 font-bold mt-0.5">Total: {(item.quantity * item.conversionCft).toFixed(2)} CFT</div>
+                                  )}
+                                </div>
+                              )}
                               {(item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
                                 item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) && !item.unit && (
                                 <div className="text-xs text-red-600 mt-1">
@@ -1985,15 +2273,36 @@ function AddSalePage() {
                                 )}
                               </div>
                             )}
+                            {isDirectSale && (
+                              <div>
+                                <Label className="text-xs text-blue-600 font-bold">{t("Purchase Rate", "खरीद दर")}</Label>
+                                <Input
+                                  type="number"
+                                  value={item.purchasePrice}
+                                  onChange={(e) => handleItemChange(index, "purchasePrice", e.target.value)}
+                                  min="0"
+                                  step="0.01"
+                                  className="border-blue-300 mb-1"
+                                />
+                                {item.productId && (
+                                  <div className="text-[10px] text-gray-400">
+                                    {t("Ref:", "संदर्भ:")} ₹{(products.find((p: any) => Number(p.id) === Number(item.productId))?.costPrice ?? 0)}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
                             <div>
-                              <Label>{t("Price", "कीमत")}</Label>
+                              <Label className={isDirectSale ? "text-xs text-green-600 font-bold" : ""}>
+                                {isDirectSale ? t("Sell Rate", "बिक्री दर") : t("Price", "कीमत")}
+                              </Label>
                               <Input
                                 type="number"
                                 value={item.price}
                                 onChange={(e) => handleItemChange(index, "price", e.target.value)}
                                 min="0"
                                 step="0.01"
-                                className="mb-1"
+                                className={isDirectSale ? "border-green-300 mb-1" : "mb-1"}
                               />
                               {item.productId && (
                                 <div className="text-xs text-gray-500 mb-1">
@@ -2001,15 +2310,15 @@ function AddSalePage() {
                                     (() => {
                                       const p = products.find((p: any) => Number(p.id) === Number(item.productId));
                                       if (!p) return "-";
-                                      console.log('🔍 [AddSale] Default price debug - product:', p);
-                                      console.log('🔍 [AddSale] Default price debug - dailyRate:', p.dailyRate, 'price:', p.price);
-
                                       // Use dailyRate if available, else fallback to price
-                                      const defaultPrice = p.dailyRate !== null && p.dailyRate !== undefined ? Number(p.dailyRate) : Number(p.price);
-                                      console.log('🔍 [AddSale] Default price debug - calculated:', defaultPrice);
-                                      return defaultPrice || "-";
+                                      const rawPrice = p.dailyRate !== null && p.dailyRate !== undefined ? Number(p.dailyRate) : Number(p.price);
+                                      return rawPrice ? rawPrice.toFixed(2) : "-";
                                     })()
                                   }
+                                  {" "}/{(() => {
+                                    const p = products.find((p: any) => Number(p.id) === Number(item.productId));
+                                    return p?.unit || "unit";
+                                  })()}
                                   {(() => {
                                     const p = products.find((p: any) => Number(p.id) === Number(item.productId));
                                     if (p && p.dailyRate !== null && p.dailyRate !== undefined) {
@@ -2019,7 +2328,16 @@ function AddSalePage() {
                                   })()}
                                 </div>
                               )}
-                              {item.productId && item.price < (products.find((p: any) => Number(p.id) === Number(item.productId))?.costPrice ?? 0) && (
+                              {!isDirectSale && item.productId && (() => {
+                                const prod = products.find((p: any) => Number(p.id) === Number(item.productId));
+                                if (!prod) return false;
+                                const rawCost = Number(prod?.costPrice ?? 0);
+                                // Only show warning if user is selling in the SAME unit as the product is stored
+                                // (Cannot reliably compare e.g. Tempo price vs Highwa cost without knowing the highwa->CFT mapping)
+                                const sameUnit = item.unit === prod.unit || !item.unit;
+                                if (!sameUnit) return false;
+                                return Number(item.price) < rawCost - 0.01;
+                              })() && (
                                 <div className="text-xs text-red-600">
                                   {t("Warning: Price is below cost price!", "चेतावनी: कीमत लागत मूल्य से कम है!")}
                                 </div>
@@ -2180,6 +2498,43 @@ function AddSalePage() {
                     </div>
                   </div>
 
+                  {/* Transport Details */}
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-semibold">{t("Transport Details", "परिवहन विवरण")}</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border p-4 rounded-lg bg-gray-50/50">
+                      <div>
+                        <Label htmlFor="transportFare">{t("Transport Fare", "परिवहन शुल्क")}</Label>
+                        <Input
+                          id="transportFare"
+                          type="number"
+                          value={transportFare}
+                          onChange={e => setTransportFare(Number(e.target.value))}
+                          min="0"
+                          step="0.01"
+                          placeholder="₹ 0.00"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="vehicleNumber">{t("Vehicle Number", "गाड़ी नंबर")}</Label>
+                        <Input
+                          id="vehicleNumber"
+                          value={vehicleNumber}
+                          onChange={e => setVehicleNumber(e.target.value)}
+                          placeholder="UP 32 XX 0000"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="driverName">{t("Driver Name", "ड्राइवर का नाम")}</Label>
+                        <Input
+                          id="driverName"
+                          value={driverName}
+                          onChange={e => setDriverName(e.target.value)}
+                          placeholder={t("Enter driver name", "ड्राइवर का नाम दर्ज करें")}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Total */}
                   <div className="space-y-2 mt-6">
                     <div className="flex justify-between text-base">
@@ -2267,7 +2622,7 @@ function AddSalePage() {
                         !selectedCustomer ||
                         saleItems.length === 0 ||
                         saleItems.some(item =>
-                          !item.productId ||
+                          (isDirectSale ? !item.name : !item.productId) ||
                           !item.unit ||
                           !item.quantity ||
                           item.quantity <= 0

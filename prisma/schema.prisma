@@ -267,6 +267,7 @@ model Shop {
   tmtSales              TmtSale[]
   tmtSizes              TmtSize[]
   userAssignments       UserShopAssignment[]
+  stockLedgerEntries    StockLedger[]
 
   @@index([isActive])
   @@index([createdAt])
@@ -347,6 +348,8 @@ model Product {
   salesAnalytics     ProductSalesAnalytics[]
   saleItems          SaleItem[]
   stockEntries       StockEntry[]
+  unitConversions    ProductUnitConversion[]
+  stockLedgerEntries StockLedger[]
 
   @@index([sku])
   @@index([barcode])
@@ -400,6 +403,8 @@ model StockEntry {
   productId     BigInt
   supplierId    BigInt
   quantity      Int
+  unitName      String?
+  conversionCft Decimal?      @db.Decimal(12, 3)
   unitPrice     Decimal       @db.Decimal(10, 2)
   totalAmount   Decimal       @db.Decimal(12, 2)
   entryDate     DateTime
@@ -598,6 +603,9 @@ model Sale {
   totalAmount   Decimal       @db.Decimal(12, 2)
   discount      Decimal       @default(0) @db.Decimal(10, 2)
   finalAmount   Decimal       @db.Decimal(12, 2)
+  transportFare Decimal       @default(0) @db.Decimal(12, 2)
+  vehicleNumber String?
+  driverName    String?
   paymentMethod PaymentMethod
   paymentStatus PaymentStatus @default(PENDING)
   saleDate      DateTime
@@ -624,6 +632,8 @@ model SaleItem {
   saleId     BigInt
   productId  BigInt
   quantity   Int
+  unitName   String?
+  conversionCft Decimal? @db.Decimal(12, 3)
   unit       String?
   unitPrice  Decimal  @db.Decimal(10, 2)
   totalPrice Decimal  @db.Decimal(12, 2)
@@ -1019,6 +1029,39 @@ model ActivityLog {
   @@index([userId, createdAt])
   @@index([action])
   @@index([resource])
+}
+
+model ProductUnitConversion {
+  id        BigInt   @id @default(sequence())
+  productId BigInt
+  unitName  String
+  cftValue  Decimal  @db.Decimal(10, 3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id])
+
+  @@unique([productId, unitName])
+  @@index([productId])
+}
+
+model StockLedger {
+  id              BigInt   @id @default(sequence())
+  productId       BigInt
+  shopId          BigInt
+  transactionType String // PURCHASE, SALE, DIRECT_SALE, ADJUSTMENT, LOSS
+  unitName        String
+  unitQuantity    Decimal  @db.Decimal(12, 3)
+  cftQuantity     Decimal  @db.Decimal(12, 3)
+  referenceId     BigInt?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  product Product @relation(fields: [productId], references: [id])
+  shop    Shop    @relation(fields: [shopId], references: [id])
+
+  @@index([productId])
+  @@index([shopId])
 }
 
 enum PlatformRole {

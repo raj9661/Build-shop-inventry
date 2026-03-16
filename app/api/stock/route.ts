@@ -115,7 +115,10 @@ export async function POST(req: NextRequest) {
       costPrice,
       minStockLevel,
       maxStockLevel,
-      paymentStatus // Accept paymentStatus
+      paymentStatus, // Accept paymentStatus
+      unitName,
+      conversionCft,
+      sellingPrice
     } = body;
 
     if (!productName || !categoryId || !typeId || !supplierName || !quantity || !unitPrice) {
@@ -124,6 +127,7 @@ export async function POST(req: NextRequest) {
         message: 'Missing required fields: productName, categoryId, typeId, supplierName, quantity, unitPrice'
       }, { status: 400 });
     }
+
 
     // Get user's shop access
     const shopFilter = await getShopFilter(token);
@@ -145,6 +149,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'No valid shop found' }, { status: 403 });
     }
 
+    // Calculate normalized quantity in CFT
+    const convFactor = conversionCft ? parseFloat(conversionCft) : 1;
+    const totalCft = Number(quantity || 0) * convFactor;
+
     // Start a transaction
     const result = await prisma.$transaction(async (tx) => {
       // 1. Find or create supplier
@@ -157,35 +165,14 @@ export async function POST(req: NextRequest) {
       });
 
       if (!supplier) {
-        // Check if supplier exists in any shop with same name
-        const existingSupplier = await tx.supplier.findFirst({
-          where: {
+        supplier = await tx.supplier.create({
+          data: {
             name: supplierName,
+            phone: supplierPhone,
+            shopId: shopId,
             isActive: true
           }
         });
-
-        if (existingSupplier) {
-          // If supplier exists in another shop, create a new entry for this shop
-          supplier = await tx.supplier.create({
-            data: {
-              name: supplierName,
-              phone: supplierPhone,
-              shopId: shopId,
-              isActive: true
-            }
-          });
-        } else {
-          // Create new supplier
-          supplier = await tx.supplier.create({
-            data: {
-              name: supplierName,
-              phone: supplierPhone,
-              shopId: shopId,
-              isActive: true
-            }
-          });
-        }
       }
 
       // 2. Find or create product
@@ -198,49 +185,21 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      console.log('🔍 [Stock Entry] Product lookup result:', {
-        productFound: !!product,
-        productId: product?.id,
-        productName: product?.name,
-        currentStock: product?.stockQuantity,
-        currentStockType: typeof product?.stockQuantity,
-        searchCriteria: {
-          name: productName,
-          categoryId: parseInt(categoryId),
-          typeId: parseInt(typeId),
-          shopId: shopId
-        }
-      });
-
       if (!product) {
-        console.log('🔍 [Stock Entry] Creating new product');
         product = await tx.product.create({
           data: {
             name: productName,
             categoryId: parseInt(categoryId),
             typeId: parseInt(typeId),
             shopId: shopId,
-            unit: unit,
-            price: price ?? unitPrice,
+            unit: unit || 'unit',
+            price: price ?? (sellingPrice || unitPrice),
             costPrice: costPrice ?? unitPrice,
             sku: sku,
             stockQuantity: 0, // Will be updated after stock entry
             minStockLevel: minStockLevel ?? 0,
             maxStockLevel: maxStockLevel ?? null,
             isActive: true
-          }
-        });
-        console.log('🔍 [Stock Entry] New product created:', product.id);
-      } else {
-        // Always update product fields with latest values from the form
-        product = await tx.product.update({
-          where: { id: product.id },
-          data: {
-            price: price ?? unitPrice,
-            costPrice: costPrice ?? unitPrice,
-            sku: sku,
-            minStockLevel: minStockLevel ?? product.minStockLevel,
-            maxStockLevel: maxStockLevel ?? product.maxStockLevel
           }
         });
       }
@@ -251,6 +210,8 @@ export async function POST(req: NextRequest) {
           productId: product.id,
           supplierId: supplier.id,
           quantity: parseInt(quantity),
+          unitName: unitName || null,
+          conversionCft: conversionCft ? parseFloat(conversionCft) : null,
           unitPrice: parseFloat(unitPrice),
           totalAmount: parseFloat(unitPrice) * parseInt(quantity),
           entryDate: new Date(entryDate),
@@ -261,87 +222,48 @@ export async function POST(req: NextRequest) {
         }
       });
 
-      // 4. Update product stock quantity
-      console.log('🔍 [Stock Entry] Product stock quantity before update:', {
-        rawStockQuantity: product.stockQuantity,
-        rawStockQuantityType: typeof product.stockQuantity,
-        rawStockQuantityConstructor: product.stockQuantity?.constructor?.name
-      });
-
-      const currentStock = Number(product.stockQuantity);
-      const addingQuantity = parseInt(quantity);
-      const newStockQuantity = currentStock + addingQuantity;
-      console.log('🔍 [Stock Entry] Updating product stock:', {
-        productId: product.id,
-        productName: product.name,
-        currentStock: currentStock,
-        currentStockType: typeof currentStock,
-        addingQuantity: addingQuantity,
-        addingQuantityType: typeof addingQuantity,
-        newStockQuantity: newStockQuantity,
-        newStockQuantityType: typeof newStockQuantity,
-        calculation: `${currentStock} + ${addingQuantity} = ${newStockQuantity}`
-      });
-
-      // Check if this is a new product or existing product
-      console.log('🔍 [Stock Entry] Product details:', {
-        isNewProduct: currentStock === 0,
-        productCreatedAt: product.createdAt,
-        productUpdatedAt: product.updatedAt
-      });
-
-      // Check existing stock entries for this product
-      const existingStockEntries = await tx.stockEntry.findMany({
-        where: { productId: product.id },
-        select: { id: true, quantity: true, entryDate: true, notes: true }
-      });
-      console.log('🔍 [Stock Entry] Existing stock entries for this product:', existingStockEntries);
-
-      // Calculate total stock from all entries
-      const totalStockFromEntries = existingStockEntries.reduce((sum, entry) => sum + entry.quantity, 0);
-      console.log('🔍 [Stock Entry] Total stock from all entries:', totalStockFromEntries);
-
+      // 4. Handle Stock Update and Ledger
+      // Normal Purchase - Update stock and create ledger
       await tx.product.update({
         where: { id: product.id },
         data: {
-          stockQuantity: newStockQuantity
+          stockQuantity: {
+            increment: totalCft
+          }
         }
       });
 
-      console.log('🔍 [Stock Entry] Product stock updated successfully');
+      await tx.stockLedger.create({
+        data: {
+          productId: product.id,
+          shopId: shopId,
+          transactionType: 'PURCHASE',
+          unitName: unitName || unit || 'unit',
+          unitQuantity: Number(quantity),
+          cftQuantity: totalCft,
+          referenceId: stockEntry.id,
+          notes: notes || `Purchase from ${supplierName}`,
+        }
+      });
 
       // 5. Update supplier outstanding payment if not paid
       if (stockEntry.paymentStatus === 'PENDING') {
-        const currentOutstanding = Number(supplier.outstandingPayment || 0);
-        const newOutstanding = currentOutstanding + Number(stockEntry.totalAmount);
-        
         await tx.supplier.update({
           where: { id: supplier.id },
-          data: { outstandingPayment: newOutstanding }
-        });
-        
-        console.log('🔍 [Stock Entry] Supplier outstanding payment updated:', {
-          supplierId: supplier.id,
-          previousOutstanding: currentOutstanding,
-          newOutstanding: newOutstanding
+          data: { 
+            outstandingPayment: {
+              increment: Number(stockEntry.totalAmount)
+            }
+          }
         });
       }
 
       return { stockEntry, product, supplier };
     });
 
-    // Use shared serialization utility
-
-    // Convert BigInt to string for JSON serialization
-    const serializedResult = {
-      stockEntry: serializeBigInt(result.stockEntry),
-      product: serializeBigInt(result.product),
-      supplier: serializeBigInt(result.supplier)
-    };
-
     return NextResponse.json({
       success: true,
-      data: serializedResult,
+      data: serializeBigInt(result),
       message: 'Stock entry created successfully'
     });
   } catch (error) {

@@ -585,6 +585,7 @@ export const getAvailableUnits = (categoryName: string): { value: string; label:
       { value: "407", label: "407", labelHi: "407" },
       { value: "highwa", label: "Highwa", labelHi: "हीवा" },
       { value: "tempo", label: "Tempo", labelHi: "टेम्पो" },
+      { value: "bag", label: "Bag", labelHi: "बैग" },
       { value: "chota_haathi", label: "Chota Haathi (Tata)", labelHi: "छोटा हाथी (टाटा)" },
       { value: "small_hiwa", label: "Small Hiwa", labelHi: "छोटा हीवा" },
       { value: "big_hiwa", label: "Big Hiwa", labelHi: "बड़ा हीवा" },

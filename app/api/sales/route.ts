@@ -236,10 +236,19 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const {
       customerId, customerInfo, shopId, saleDate, totalAmount, finalAmount, discount, taxAmount, paymentStatus, notes,
-      items, payment_type, paid_amount, partial_payment_method
+      items, payment_type, paid_amount, partial_payment_method, isDirectSale, supplierId, supplierInfo,
+      transportFare, vehicleNumber, driverName
     } = body;
-    if ((!customerId && !customerInfo) || !shopId || !saleDate || !totalAmount || !finalAmount || !items || items.length === 0) {
-      return NextResponse.json({ success: false, message: 'Missing required fields' }, { status: 400 });
+    
+    const hasItems = items && Array.isArray(items) && items.length > 0;
+    const hasTransport = Number(transportFare || 0) > 0;
+
+    if ((!customerId && !customerInfo) || !shopId || !saleDate || !totalAmount || !finalAmount || (!hasItems && !hasTransport)) {
+      return NextResponse.json({ success: false, message: 'Missing required fields or invalid sale content' }, { status: 400 });
+    }
+
+    if (isDirectSale && !supplierId && !supplierInfo) {
+      return NextResponse.json({ success: false, message: 'Supplier information is required for direct sale' }, { status: 400 });
     }
 
     const sale = await prisma.$transaction(async (tx) => {
@@ -273,6 +282,20 @@ export async function POST(req: NextRequest) {
         });
         finalCustomerId = Number(newCustomer.id);
         console.log('New customer created with ID:', finalCustomerId);
+      }
+
+      // 1b. Create or get supplier (for direct sale)
+      let finalSupplierId = supplierId;
+      if (isDirectSale && supplierInfo && !supplierId) {
+        const newSupplier = await tx.supplier.create({
+          data: {
+            name: supplierInfo.name,
+            phone: supplierInfo.phone,
+            shopId,
+            isActive: true
+          }
+        });
+        finalSupplierId = Number(newSupplier.id);
       }
 
       // Map frontend payment method to Prisma enum
@@ -339,66 +362,132 @@ export async function POST(req: NextRequest) {
           totalAmount,
           finalAmount,
           discount,
+          transportFare: Number(transportFare || 0),
+          vehicleNumber: vehicleNumber || null,
+          driverName: driverName || null,
           paymentStatus: salePaymentStatus,
           paymentMethod: paymentMethodToStore as any,
-          notes: saleNotes,
+          notes: isDirectSale ? `${saleNotes}\n(Direct Truck Sale)` : saleNotes,
           isActive: true,
         }
       });
 
-      // 2. Create sale items (no stock check or update here, only on completion)
-      console.log('🔍 [Sales API] Creating sale items:', items);
-      console.log('🔍 [Sales API] Items count:', items.length);
-      await Promise.all(items.map(async (item: any, index: number) => {
-        console.log(`🔍 [Sales API] Processing item ${index}:`, {
-          productId: item.productId,
-          quantity: item.quantity,
-          name: item.name,
-          allFields: Object.keys(item),
-          itemData: item
-        });
-        if (!item.productId) {
-          console.error('❌ [Sales API] Missing productId for item:', item);
+      // 2. Create sale items if any exist
+      console.log('🔍 [Sales API] Processing items:', items?.length || 0);
+      if (hasItems) {
+        await Promise.all(items.map(async (item: any, index: number) => {
+        let finalProductId = item.productId;
+        if (isDirectSale && (!finalProductId || finalProductId === 0) && item.name && item.categoryId && item.typeId) {
+          let product = await tx.product.findFirst({
+            where: {
+              name: { equals: item.name, mode: 'insensitive' },
+              categoryId: Number(item.categoryId),
+              typeId: Number(item.typeId),
+              shopId: shopId
+            }
+          });
+          if (!product) {
+            product = await tx.product.create({
+              data: {
+                name: item.name,
+                categoryId: Number(item.categoryId),
+                typeId: Number(item.typeId),
+                shopId: shopId,
+                stockQuantity: 0,
+                unit: item.unitName || item.unit || 'units',
+                price: Number(item.price_per_unit || item.unitPrice || 0),
+                costPrice: Number(item.purchasePrice || item.price_per_unit || item.unitPrice || 0),
+                isActive: true
+              }
+            });
+          }
+          finalProductId = product.id;
+        }
+
+        if (!finalProductId) {
           throw new Error('Missing productId for sale item');
         }
+
+        
+        const itemConvFactor = item.conversionCft ? parseFloat(item.conversionCft) : 1;
+        const itemTotalCft = Number(item.quantity) * itemConvFactor;
+
         // Create sale item
         await tx.saleItem.create({
           data: {
             saleId: createdSale.id,
-            productId: item.productId, // Must be sent from frontend
-            quantity: item.quantity,
-            unitPrice: item.price_per_unit,
-            totalPrice: item.quantity * item.price_per_unit,
+            productId: finalProductId,
+            quantity: Number(item.quantity),
+            unitName: item.unitName || item.unit || null,
+            conversionCft: item.conversionCft ? parseFloat(item.conversionCft) : null,
+            unitPrice: Number(item.price_per_unit || item.unitPrice),
+            totalPrice: Number(item.quantity) * Number(item.price_per_unit || item.unitPrice),
             isActive: true
           }
         });
-      }));
 
-      // 3. Update inventory quantities (deduct sold quantities)
-      console.log('🔍 [Sales API] Starting inventory update for', items.length, 'items');
-      await Promise.all(items.map(async (item: any, index: number) => {
-        console.log(`🔍 [Sales API] Updating inventory for item ${index}:`, {
-          productId: item.productId,
-          quantity: item.quantity,
-          productIdType: typeof item.productId,
-          productIdValue: item.productId
-        });
+        // If direct sale, create a StockEntry for the purchase side
+        if (isDirectSale && finalSupplierId) {
+          const purchasePrice = Number(item.purchasePrice || item.price_per_unit || item.unitPrice);
+          const totalPurchaseAmount = purchasePrice * Number(item.quantity);
 
-        if (!item.productId) {
-          console.error(`❌ [Sales API] Cannot update inventory - missing productId for item ${index}:`, item);
-          throw new Error(`Missing productId for inventory update - item ${index}`);
+          await tx.stockEntry.create({
+            data: {
+              productId: finalProductId,
+              supplierId: BigInt(finalSupplierId),
+              shopId: shopId,
+              quantity: Number(item.quantity),
+              unitName: item.unitName || item.unit || null,
+              conversionCft: item.conversionCft ? parseFloat(item.conversionCft) : null,
+              unitPrice: purchasePrice,
+              totalAmount: totalPurchaseAmount,
+              entryDate: new Date(saleDate),
+              notes: `Auto-created from Direct Sale #${createdSale.id}`,
+              paymentStatus: 'PENDING',
+              isActive: true
+            }
+          });
+
+          // Update supplier outstanding payment
+          await tx.supplier.update({
+            where: { id: BigInt(finalSupplierId) },
+            data: {
+              outstandingPayment: {
+                increment: totalPurchaseAmount
+              }
+            }
+          });
         }
 
-        await tx.product.update({
-          where: { id: item.productId },
-          data: {
-            stockQuantity: {
-              decrement: item.quantity
+        // Update product inventory (deduct total CFT) - ONLY IF NOT DIRECT SALE
+        if (!isDirectSale) {
+          await tx.product.update({
+            where: { id: item.productId },
+            data: {
+              stockQuantity: {
+                decrement: itemTotalCft
+              }
             }
+          });
+        }
+
+        // Create Stock Ledger entry
+        await tx.stockLedger.create({
+          data: {
+            productId: finalProductId,
+            shopId: shopId,
+            transactionType: 'SALE',
+            unitName: item.unitName || item.unit || 'unit',
+            unitQuantity: Number(item.quantity),
+            cftQuantity: itemTotalCft,
+            referenceId: createdSale.id,
+            notes: notes || `Sale to ${customerInfo?.name || customerId || 'Customer'}`,
           }
         });
-        console.log(`✅ [Sales API] Successfully updated inventory for product ${item.productId}`);
       }));
+    }
+
+      // 3. Inventory update is now handled inside the items map above
 
       // 4. Payment information is stored in the Sale model itself
       // The paymentMethod and paymentStatus fields in Sale handle payment tracking
@@ -778,18 +867,22 @@ export async function PATCH(req: NextRequest) {
           for (const item of currentSale.items) {
             const product = item.product;
             if (product) {
+              const itemConvFactor = (item as any).conversionCft ? parseFloat((item as any).conversionCft.toString()) : 1;
+              const itemTotalCft = Number(item.quantity) * itemConvFactor;
+
               console.log('🔍 [Sales API] Restoring stock for item:', {
                 productId: product.id,
                 productName: product.name,
-                quantity: item.quantity,
-                unit: (item as any).unit,
+                unitQuantity: item.quantity,
+                conversionCft: itemConvFactor,
+                totalCft: itemTotalCft,
                 currentStock: product.stockQuantity
               });
 
               // Regular sales: handle cement differently
               const isCement = product.name.toLowerCase().includes('cement');
-              const isLoose = (item as any).unit === 'kg';
-              // Fallback: treat as bag if unit is missing or not 'kg'
+              const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg';
+              
               if (isCement && isLoose) {
                 // Restore damagedQuantity for loose cement
                 const newDamagedQuantity = Number(product.damagedQuantity || 0) + Number(item.quantity);
@@ -800,33 +893,31 @@ export async function PATCH(req: NextRequest) {
                     updatedAt: new Date(),
                   }
                 });
-                console.log('🔍 [Sales API] Restored damagedQuantity for cement:', newDamagedQuantity);
-              } else if (isCement) {
-                // Restore stockQuantity for full bags or if unit is missing/incorrect
-                // Round to nearest integer for bags
-                const bagsToRestore = Math.round(Number(item.quantity));
-                const currentStockQty = Number(product.stockQuantity ?? 0);
-                const newStockQuantity = currentStockQty + bagsToRestore;
-                await tx.product.update({
-                  where: { id: product.id },
-                  data: {
-                    stockQuantity: newStockQuantity,
-                    updatedAt: new Date(),
-                  }
-                });
-                console.log('🔍 [Sales API] Restored stockQuantity for cement bags:', newStockQuantity);
               } else {
-                // Restore stockQuantity for other products
-                const currentStockQty = Number(product.stockQuantity ?? 0);
-                const newStockQuantity = currentStockQty + Number(item.quantity);
+                // Restore stockQuantity in CFT
                 await tx.product.update({
                   where: { id: product.id },
                   data: {
-                    stockQuantity: newStockQuantity,
+                    stockQuantity: {
+                      increment: itemTotalCft
+                    },
                     updatedAt: new Date(),
                   }
                 });
-                console.log('🔍 [Sales API] Restored stockQuantity for product:', newStockQuantity);
+
+                // Create Stock Ledger entry for restoration
+                await tx.stockLedger.create({
+                  data: {
+                    productId: product.id,
+                    shopId: resultSale.shopId,
+                    transactionType: 'ADJUSTMENT',
+                    unitName: (item as any).unitName || (item as any).unit || 'unit',
+                    unitQuantity: Number(item.quantity),
+                    cftQuantity: itemTotalCft,
+                    referenceId: resultSale.id,
+                    notes: `Sale #${resultSale.id} Cancellation - Stock Restored`,
+                  }
+                });
               }
             }
           }
