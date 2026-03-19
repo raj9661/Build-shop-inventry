@@ -516,8 +516,21 @@ export async function POST(req: NextRequest) {
         items: itemsWithUnit, // pass items with unit
         shopId: shopId // explicitly pass the shopId to ensure consistency
       });
-      console.log('🔍 [Sales API] Ledger entry created successfully');
-      // Do NOT create a separate payment ledger entry here!
+      console.log('🔍 [Sales API] Ledger debit entry created successfully');
+
+      // For immediately-paid sales (cash/online/partial), create a payment entry
+      // to offset the debit so the customer's currentBalance stays accurate.
+      // Loan/credit sales intentionally have no payment entry (full amount stays as balance).
+      if (paidAmount > 0) {
+        await createPaymentEntry(tx, {
+          customerId: finalCustomerId,
+          amount: -paidAmount, // Negative amount = credit (payment received)
+          date: new Date(saleDate),
+          description: `Payment for Sale #${createdSale.id}`,
+          shopId: shopId
+        });
+        console.log('🔍 [Sales API] Ledger payment entry created (paidAmount:', paidAmount, ')');
+      }
 
       return createdSale;
     });

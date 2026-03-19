@@ -278,16 +278,50 @@ export async function GET(req: NextRequest) {
       method, amount: data.amount, count: data.count
     }));
 
-    // Highest Balance Customers
+    // Highest Balance Customers — computed live from ledger entries every request.
+    // No pre-filter on currentBalance: manual payments in the ledger UI are reflected instantly.
+    // Walk-in customers are excluded (they always pay cash, never have dues).
     const customers = await prisma.customer.findMany({
-      where: { isActive: true, currentBalance: { gt: 0 }, ...whereClause },
-      orderBy: { currentBalance: 'desc' },
-      include: { shop: { select: { name: true } } }
+      where: {
+        isActive: true,
+        name: { not: { startsWith: 'Walk-in' } },
+        ...whereClause
+      },
+      include: {
+        shop: { select: { name: true } },
+        ledgerEntries: {
+          where: { isActive: true },
+          select: { amount: true, type: true }
+        }
+      }
     });
 
-    const highestBalanceCustomersData = customers.map(c => ({
-      id: Number(c.id), name: c.name, phone: c.phone, balance: Number(c.currentBalance), shopName: c.shop.name
-    }));
+    const highestBalanceCustomersData = customers
+      .map(c => {
+        // Correct balance formula:
+        // - sale_payment with positive amount = purchase/debit (customer owes)
+        // - sale_payment with negative amount = auto payment entry (customer paid via sales route)
+        // - loan_clearing with positive amount = manual payment via ledger UI (subtract!)
+        let realBalance = 0;
+        for (const entry of c.ledgerEntries) {
+          const amount = Number(entry.amount);
+          if (entry.type === 'loan_clearing') {
+            // Manual payments stored as positive — always subtract
+            realBalance -= amount;
+          } else {
+            // sale_payment: positive = debit (adds), negative = credit (subtracts naturally)
+            realBalance += amount;
+          }
+        }
+        const computedBalance = c.ledgerEntries.length === 0
+          ? Number(c.currentBalance)
+          : Math.max(0, realBalance);
+        return {
+          id: Number(c.id), name: c.name, phone: c.phone, balance: computedBalance, shopName: c.shop.name
+        };
+      })
+      .filter(c => c.balance > 0)
+      .sort((a, b) => b.balance - a.balance);
 
     // Get recent activity logs
     const recentActivity = await prisma.activityLog.findMany({

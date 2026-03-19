@@ -79,6 +79,25 @@ export default function Suppliers() {
   const [syncLoading, setSyncLoading] = useState(false);
   const isProcessingPaymentRef = useRef(false);
 
+  // Extra charge (vehicle fare etc.) — SUPER_DUPER_ADMIN only
+  const [fareDialogOpen, setFareDialogOpen] = useState(false);
+  const [fareAmount, setFareAmount] = useState(0);
+  const [fareDescription, setFareDescription] = useState("");
+  const [fareDate, setFareDate] = useState(new Date().toISOString().split("T")[0]);
+  const [fareLoading, setFareLoading] = useState(false);
+  const [userRole, setUserRole] = useState("");
+
+  // Load user role from localStorage on mount
+  useEffect(() => {
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        setUserRole(payload.role || '');
+      }
+    } catch {}
+  }, []);
+
   // Load suppliers and available items from API
   useEffect(() => {
     console.log('🔍 [Suppliers] useEffect triggered - currentShop:', currentShop?.id, currentShop?.name);
@@ -468,6 +487,49 @@ export default function Suppliers() {
     setPayDate(new Date().toISOString().split("T")[0]);
     setPayWeek(null);
     setPayNotes("");
+  };
+
+  const resetFareDialog = () => {
+    setFareAmount(0);
+    setFareDescription("");
+    setFareDate(new Date().toISOString().split("T")[0]);
+  };
+
+  const handleAddFare = async () => {
+    if (!viewingSupplier) return;
+    if (fareAmount <= 0) { toast.error('Please enter a valid amount'); return; }
+    if (!fareDescription.trim()) { toast.error('Please enter a description'); return; }
+
+    setFareLoading(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) throw new Error('Authentication required');
+      const res = await fetch('/api/supplier-charges', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          supplierId: viewingSupplier.id,
+          amount: fareAmount,
+          description: fareDescription,
+          date: fareDate,
+          shopId: currentShop?.id
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Extra charge added successfully!');
+        setFareDialogOpen(false);
+        resetFareDialog();
+        await loadSuppliers(true);
+        await loadSupplierDetails(viewingSupplier.id);
+      } else {
+        toast.error(data.message || 'Failed to add charge');
+      }
+    } catch (e) {
+      toast.error('Failed to add charge');
+    } finally {
+      setFareLoading(false);
+    }
   };
 
   const handlePaySupplier = async () => {
@@ -934,6 +996,16 @@ export default function Suppliers() {
                               </Button>
                             </>
                           )}
+                          {/* Extra Charge button — SUPER_DUPER_ADMIN only */}
+                          {userRole === 'SUPER_DUPER_ADMIN' && (
+                            <Button
+                              className="mt-2 ml-2 bg-orange-500 hover:bg-orange-600 text-white"
+                              variant="default"
+                              onClick={() => setFareDialogOpen(true)}
+                            >
+                              🚛 Add Extra Charge
+                            </Button>
+                          )}
                         </div>
                         <div>
                           <Label className="text-sm font-medium text-gray-600">{t("Last Supply", "अंतिम आपूर्ति")}</Label>
@@ -1008,33 +1080,70 @@ export default function Suppliers() {
                     </CardContent>
                   </Card>
                   
-                  <Card className="shadow-lg border-0 bg-white">
-                      <CardHeader className="bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-t-lg">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    <Card className="shadow-lg border-0 bg-white">
+                      <CardHeader className="bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-t-lg">
                         <CardTitle className="flex items-center gap-2">
                           <IndianRupee className="h-5 w-5" />
                           {t("Payment History", "भुगतान इतिहास")}
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="p-6">
-                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.length > 0 ? (
-                          <div className="space-y-4">
-                             {viewingSupplier.paymentHistory.map((payment, index) => (
-                               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.filter((p: any) => !p.notes?.startsWith('EXTRA_CHARGE:')).length > 0 ? (
+                          <div className="space-y-3">
+                             {viewingSupplier.paymentHistory
+                               .filter((p: any) => !p.notes?.startsWith('EXTRA_CHARGE:'))
+                               .map((payment, index) => (
+                               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
                                  <div>
                                    <p className="font-semibold text-green-600">₹{(payment.amount || 0).toLocaleString()}</p>
                                    <p className="text-xs text-gray-500">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString() : 'N/A'} via {payment.paymentMethod || 'CASH'}</p>
                                  </div>
-                                 {payment.notes && <p className="text-xs text-gray-400 italic">{payment.notes}</p>}
+                                 {payment.notes && <p className="text-xs text-gray-400 italic max-w-[150px] truncate">{payment.notes}</p>}
                                </div>
                              ))}
                           </div>
                         ) : (
-                          <div className="text-center py-4 text-gray-400 text-sm">
+                          <div className="text-center py-8 text-gray-400 text-sm italic">
                             {t("No payment history", "कोई भुगतान इतिहास नहीं")}
                           </div>
                         )}
                       </CardContent>
                     </Card>
+
+                    <Card className="shadow-lg border-0 bg-white">
+                      <CardHeader className="bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-t-lg">
+                        <CardTitle className="flex items-center gap-2">
+                          <Truck className="h-5 w-5" />
+                          {t("Extra Charges & Fares", "अतिरिक्त शुल्क और किराया")}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-6">
+                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.filter((p: any) => p.notes?.startsWith('EXTRA_CHARGE:')).length > 0 ? (
+                          <div className="space-y-3">
+                             {viewingSupplier.paymentHistory
+                               .filter((p: any) => p.notes?.startsWith('EXTRA_CHARGE:'))
+                               .map((charge, index) => {
+                                 const chargeLabel = charge.notes?.replace('EXTRA_CHARGE:', '').trim();
+                                 return (
+                                   <div key={index} className="flex items-center justify-between p-3 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors">
+                                     <div>
+                                       <p className="font-semibold text-orange-600">🚛 +₹{Math.abs(charge.amount || 0).toLocaleString()}</p>
+                                       <p className="font-medium text-[11px] text-orange-700">{chargeLabel}</p>
+                                       <p className="text-xs text-gray-500">{charge.paymentDate ? new Date(charge.paymentDate).toLocaleDateString() : 'N/A'}</p>
+                                     </div>
+                                   </div>
+                                 );
+                               })}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-gray-400 text-sm italic">
+                            {t("No charge history", "कोई शुल्क इतिहास नहीं")}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               )}
             </TabsContent>
@@ -1127,6 +1236,78 @@ export default function Suppliers() {
                   <><Loader2 className="h-4 w-4 mr-2 animate-spin" /> Processing...</>
                 ) : (
                   <><IndianRupee className="h-4 w-4 mr-1" /> Pay ₹{payAmount > 0 ? payAmount.toLocaleString() : '0'}</>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Extra Charge Dialog — SUPER_DUPER_ADMIN only */}
+      <Dialog open={fareDialogOpen} onOpenChange={(open) => { if (!fareLoading) { setFareDialogOpen(open); if (!open) resetFareDialog(); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              🚛 Add Extra Charge to Supplier
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            {viewingSupplier && (
+              <div className="bg-orange-50 rounded-lg p-3 text-sm text-orange-700">
+                <span className="font-medium">Supplier:</span> {viewingSupplier.name}
+                <span className="ml-2 text-gray-500">· Current Outstanding: ₹{(viewingSupplier.outstandingPayment || 0).toLocaleString()}</span>
+              </div>
+            )}
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Amount (₹) *</Label>
+              <Input
+                type="number"
+                value={fareAmount || ''}
+                onChange={e => setFareAmount(Number(e.target.value))}
+                min={1}
+                placeholder="e.g. 500"
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Description *</Label>
+              <Input
+                value={fareDescription}
+                onChange={e => setFareDescription(e.target.value)}
+                placeholder="e.g. Vehicle Fare, Transport Cost, Labour Charge"
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm font-medium">Date</Label>
+              <Input
+                type="date"
+                value={fareDate}
+                onChange={e => setFareDate(e.target.value)}
+                className="h-10 rounded-xl"
+              />
+            </div>
+            <div className="bg-yellow-50 rounded-lg p-3 text-xs text-yellow-700">
+              ⚠️ This amount will be <strong>added</strong> to the supplier's outstanding balance.
+            </div>
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                className="flex-1 rounded-xl"
+                onClick={() => { setFareDialogOpen(false); resetFareDialog(); }}
+                disabled={fareLoading}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="flex-1 rounded-xl bg-orange-500 hover:bg-orange-600 text-white"
+                onClick={handleAddFare}
+                disabled={fareLoading || fareAmount <= 0 || !fareDescription.trim()}
+              >
+                {fareLoading ? (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Processing...</>
+                ) : (
+                  <>🚛 Add ₹{fareAmount > 0 ? fareAmount.toLocaleString() : '0'} Charge</>
                 )}
               </Button>
             </div>

@@ -12,40 +12,42 @@ const { PrismaClient, Prisma } = require('@prisma/client');
  */
 async function calculateRunningBalance(tx, customerId, newEntries) {
   try {
-    // Get all ledger entries for the customer, ordered by date and id
     const allEntries = await tx.customerLedgerEntry.findMany({
-      where: { customerId },
-      orderBy: [
-        { date: 'asc' },
-        { id: 'asc' }
-      ]
+      where: { customerId, isActive: true },
+      orderBy: [{ date: 'asc' }, { id: 'asc' }]
     });
 
     let runningBalance = new Prisma.Decimal(0);
 
-    // Calculate running balance for all entries using the current schema
+    // Correct formula:
+    // - sale_payment with positive amount = debit (customer owes)
+    // - sale_payment with negative amount = auto credit (from sales route)
+    // - loan_clearing with positive amount = manual payment via ledger UI (SUBTRACT)
     for (const entry of allEntries) {
-      // For the current schema, we only have 'amount' field
-      // We'll treat positive amounts as debits and negative as credits
       const amount = entry.amount ? new Prisma.Decimal(entry.amount) : new Prisma.Decimal(0);
-      runningBalance = runningBalance.plus(amount);
+      if (entry.type === 'loan_clearing') {
+        runningBalance = runningBalance.minus(amount);
+      } else {
+        // sale_payment: positive adds, negative subtracts naturally
+        runningBalance = runningBalance.plus(amount);
+      }
     }
 
-    // Update customer's current balance if the field exists
+    // Clamp to 0 minimum
+    if (runningBalance.lt(0)) runningBalance = new Prisma.Decimal(0);
+
     try {
       await tx.customer.update({
         where: { id: customerId },
         data: { currentBalance: runningBalance }
       });
     } catch (updateError) {
-      // If currentBalance field doesn't exist, just log and continue
       console.log('Note: currentBalance field may not exist in Customer model');
     }
 
     console.log(`Calculated running balance for customer ${customerId}: ${runningBalance}`);
   } catch (error) {
     console.error('Error calculating running balance:', error);
-    // Don't throw error, just log it since balance calculation is not critical
     console.log('Continuing without balance calculation...');
   }
 }

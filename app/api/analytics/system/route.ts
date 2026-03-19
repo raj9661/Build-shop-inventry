@@ -817,29 +817,57 @@ export async function GET(req: NextRequest) {
       topShopsData = [];
     }
 
-    // Highest Balance Customers
+    // Highest Balance Customers - compute real balance dynamically from ledger entries
     let highestBalanceCustomersData: Array<{ id: number; name: string; phone: string | null; balance: number; shopName: string }> = [];
     let totalCustomerBalance = 0;
     try {
-      console.log('🔍 [System Analytics] Fetching highest balance customers...');
+      // Highest Balance Customers — computed live from ledger entries every request.
+      // No pre-filter on currentBalance: manual payments in the ledger UI are reflected instantly.
+      // Walk-in customers are excluded (they always pay cash, never have dues).
       const customers = await prisma.customer.findMany({
         where: {
           isActive: true,
-          currentBalance: { gt: 0 },
+          name: { not: { startsWith: 'Walk-in' } },
           ...shopFilter
         },
-        orderBy: { currentBalance: 'desc' },
         include: {
-          shop: { select: { name: true } }
+          shop: { select: { name: true } },
+          ledgerEntries: {
+            where: { isActive: true },
+            select: { amount: true, type: true }
+          }
         }
       });
-      highestBalanceCustomersData = customers.map(c => ({
-        id: Number(c.id),
-        name: c.name,
-        phone: c.phone,
-        balance: Number(c.currentBalance),
-        shopName: c.shop.name
-      }));
+
+      highestBalanceCustomersData = customers
+        .map(c => {
+          // Correct balance formula:
+          // - sale_payment with positive amount = purchase/debit (customer owes)
+          // - sale_payment with negative amount = auto payment entry (customer paid via sales route)
+          // - loan_clearing with positive amount = manual payment via ledger UI (always subtract)
+          let realBalance = 0;
+          for (const entry of c.ledgerEntries) {
+            const amount = Number(entry.amount);
+            if (entry.type === 'loan_clearing') {
+              realBalance -= amount;
+            } else {
+              // sale_payment: positive = debit (adds), negative = credit (subtracts naturally)
+              realBalance += amount;
+            }
+          }
+          const computedBalance = c.ledgerEntries.length === 0
+            ? Number(c.currentBalance)
+            : Math.max(0, realBalance);
+          return {
+            id: Number(c.id),
+            name: c.name,
+            phone: c.phone,
+            balance: computedBalance,
+            shopName: c.shop.name
+          };
+        })
+        .filter(c => c.balance > 0)
+        .sort((a, b) => b.balance - a.balance);
       
       // Calculate total balance for all customers fetched
       totalCustomerBalance = highestBalanceCustomersData.reduce((sum, c) => sum + c.balance, 0);
