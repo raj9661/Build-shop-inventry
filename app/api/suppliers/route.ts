@@ -107,9 +107,27 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    const tmtSuppliedGroups = await prisma.tmtInventory.groupBy({
+      by: ['supplierId'],
+      where: {
+        supplierId: { in: supplierIds },
+        isActive: true
+      },
+      _sum: {
+        totalAmount: true
+      }
+    });
+
     const totalSuppliedMap: { [id: string]: number } = {};
     totalSuppliedGroups.forEach(group => {
       totalSuppliedMap[group.supplierId.toString()] = Number(group._sum.totalAmount || 0);
+    });
+    
+    tmtSuppliedGroups.forEach(group => {
+      if (group.supplierId) {
+        const idStr = group.supplierId.toString();
+        totalSuppliedMap[idStr] = (totalSuppliedMap[idStr] || 0) + Number(group._sum.totalAmount || 0);
+      }
     });
 
     // Build response - LIGHT VERSION

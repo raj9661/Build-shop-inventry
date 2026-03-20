@@ -84,14 +84,43 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     console.log(`🔍 [Supplier Detail API] Found ${payments.length} payments`);
 
+    // Fetch TMT inventory entries for this supplier
+    const tmtEntries = await prisma.tmtInventory.findMany({
+      where: {
+        supplierId: BigInt(supplierId),
+        isActive: true
+      },
+      include: {
+        product: { 
+          include: { 
+            company: { select: { name: true } },
+            size: { select: { sizeMm: true } }
+          }
+        }
+      },
+      orderBy: { lastUpdated: 'desc' }
+    });
+
+    console.log(`🔍 [Supplier Detail API] Found ${tmtEntries.length} TMT entries`);
+
     // Process enrichment logic
-    const totalSupplied = stockEntries.reduce((sum, e) => sum + Number(e.totalAmount), 0);
-    const lastSupply = stockEntries.length > 0 ? stockEntries[0].entryDate : null;
+    const totalSupplied = stockEntries.reduce((sum, e) => sum + Number(e.totalAmount), 0) + 
+                          tmtEntries.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0);
+    
+    // Determine last supply date (either from regular stock or TMT)
+    const stockLastDate = stockEntries.length > 0 ? stockEntries[0].entryDate : null;
+    const tmtLastDate = tmtEntries.length > 0 ? tmtEntries[0].lastUpdated : null;
+    let lastSupply = stockLastDate;
+    if (tmtLastDate && (!stockLastDate || tmtLastDate > stockLastDate)) {
+      lastSupply = tmtLastDate;
+    }
 
     console.log(`🔍 [Supplier Detail API] Calculated TotalSupplied: ${totalSupplied}`);
 
     // Weekly supply history
     const weeklyMap: { [week: string]: any } = {};
+    
+    // Process regular stock entries
     for (const e of stockEntries) {
       const week = getWeekString(e.entryDate);
       if (!weeklyMap[week]) weeklyMap[week] = { week, quantity: 0, amount: 0, items: [] };
@@ -103,6 +132,26 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         unit: e.product?.unit || '',
         dateSupplied: e.entryDate instanceof Date ? e.entryDate.toISOString() : e.entryDate,
         paymentStatus: e.paymentStatus
+      });
+    }
+
+    // Process TMT entries
+    for (const e of tmtEntries) {
+      const week = getWeekString(e.lastUpdated);
+      if (!weeklyMap[week]) weeklyMap[week] = { week, quantity: 0, amount: 0, items: [] };
+      
+      // For TMT, we don't have a single "quantity" in the same way as regular products
+      // but we can use totalAmount and list the product
+      const productName = `${e.product?.company?.name || ''} ${e.product?.size?.sizeMm || ''}mm ${e.product?.productName || ''}`.trim();
+      
+      weeklyMap[week].amount += Number(e.totalAmount || 0);
+      weeklyMap[week].quantity += Number(e.availableQtyKg || 0);
+      weeklyMap[week].items.push({
+        productName: productName || 'TMT Bar',
+        quantity: Number(e.availableQtyKg),
+        unit: 'kg',
+        dateSupplied: e.lastUpdated instanceof Date ? e.lastUpdated.toISOString() : e.lastUpdated,
+        paymentStatus: 'PENDING'
       });
     }
 

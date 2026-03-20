@@ -1056,7 +1056,13 @@ export default function Suppliers() {
                                     {(supply.items ?? []).map((item: any, idx: number) => (
                                       <li key={idx} className="flex items-center justify-between text-sm text-gray-700">
                                         <span>
-                                          <span className="font-medium">{item.productName}</span> — Qty: {item.quantity} {getUnitLabel(item.unit, language)}
+                                          <span className="font-medium">{item.productName}</span>
+                                          {item.dateSupplied && (
+                                            <span className="text-[10px] text-gray-400 ml-2">
+                                              ({new Date(item.dateSupplied).toLocaleDateString()})
+                                            </span>
+                                          )}
+                                          {" "}— Qty: {item.quantity} {getUnitLabel(item.unit, language)}
                                         </span>
                                         {item.paymentStatus === 'COMPLETED' ? (
                                           <Badge variant="outline" className="text-[10px] h-4 bg-green-50 text-green-600 border-green-200">Paid</Badge>

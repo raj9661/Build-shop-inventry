@@ -64,8 +64,18 @@ export async function POST(req: NextRequest) {
           }
         });
 
+        const tmtStockAggregate = await tx.tmtInventory.aggregate({
+          where: {
+            supplierId: supplier.id,
+            isActive: true
+          },
+          _sum: {
+            totalAmount: true
+          }
+        });
+
         const openingBalance = Number(supplier.openingBalance || 0);
-        const totalStock = Number(stockAggregate._sum.totalAmount || 0);
+        const totalStock = Number(stockAggregate._sum.totalAmount || 0) + Number(tmtStockAggregate._sum.totalAmount || 0);
         const totalPaid = Number(paymentAggregate._sum.amount || 0);
         
         const realBalance = openingBalance + totalStock - totalPaid;
