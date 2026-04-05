@@ -276,8 +276,8 @@ export async function GET(req: NextRequest) {
       totalShops,
       activeShops,
       totalUsers,
-      totalSales,
-      totalRevenue,
+      totalGeneralSales,
+      totalGeneralRevenue,
       totalProducts,
       totalCustomers,
       totalEmployees,
@@ -289,7 +289,9 @@ export async function GET(req: NextRequest) {
       recentLoginLogs,
       businessMetrics,
       inventoryAnalytics,
-      businessGoals
+      businessGoals,
+      totalTmtSales,
+      totalTmtRevenue
     ] = await Promise.all([
       // Total shops - only count shops created by this SUPER_DUPER_ADMIN
       shopId && shopId !== ALL_SHOPS_ID ? 1 : prisma.shop.count({
@@ -466,8 +468,41 @@ export async function GET(req: NextRequest) {
             select: { name: true }
           }
         }
+      }),
+      
+      // Total TMT sales
+      prisma.tmtSale.count({
+        where: {
+          isActive: true,
+          saleDate: {
+            gte: startDate,
+            lte: endDate
+          },
+          ...shopFilter
+        }
+      }),
+
+      // Total TMT revenue
+      prisma.tmtSale.aggregate({
+        where: {
+          isActive: true,
+          saleDate: {
+            gte: startDate,
+            lte: endDate
+          },
+          ...shopFilter
+        },
+        _sum: { totalAmount: true }
       })
     ]);
+    
+    // Combine totals
+    const totalSales = Number(totalGeneralSales) + Number(totalTmtSales);
+    const totalRevenueObj = {
+      _sum: {
+        finalAmount: (Number(totalGeneralRevenue._sum.finalAmount || 0) + Number(totalTmtRevenue._sum.totalAmount || 0))
+      }
+    };
 
     // Get shops with their statistics (only shops created by this SUPER_DUPER_ADMIN)
     // Get shops with their statistics based on role isolation
@@ -531,7 +566,7 @@ export async function GET(req: NextRequest) {
     const allowedShopIds = shopsWithStats.map((s) => Number(s.id));
 
     // Calculate revenue by shop for the selected range
-    const revenueByShop = await prisma.sale.groupBy({
+    const generalRevenueByShop = await prisma.sale.groupBy({
       by: ['shopId'],
       where: {
         isActive: true,
@@ -542,21 +577,50 @@ export async function GET(req: NextRequest) {
       _count: { id: true }
     });
 
+    const tmtRevenueByShop = await prisma.tmtSale.groupBy({
+      by: ['shopId'],
+      where: {
+        isActive: true,
+        saleDate: { gte: startDate, lte: endDate },
+        ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
+      },
+      _sum: { totalAmount: true },
+      _count: { id: true }
+    });
+
+    // Merge both revenue streams by shopId
+    const shopRevenueMap = new Map<number, { amount: number; count: number }>();
+    
+    generalRevenueByShop.forEach(item => {
+      const id = Number(item.shopId);
+      const val = shopRevenueMap.get(id) || { amount: 0, count: 0 };
+      val.amount += item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0;
+      val.count += item._count.id;
+      shopRevenueMap.set(id, val);
+    });
+
+    tmtRevenueByShop.forEach(item => {
+      const id = Number(item.shopId);
+      const val = shopRevenueMap.get(id) || { amount: 0, count: 0 };
+      val.amount += item._sum?.totalAmount ? parseFloat((item._sum.totalAmount as any).toString()) : 0;
+      val.count += item._count.id;
+      shopRevenueMap.set(id, val);
+    });
+
     // Get shop names for revenue breakdown
     const shopRevenueData = await Promise.all(
-      revenueByShop.map(async (item) => {
+      Array.from(shopRevenueMap.entries()).map(async ([shopId, data]) => {
         const shop = await prisma.shop.findUnique({
-          where: { id: item.shopId },
+          where: { id: BigInt(shopId) },
           select: { name: true, location: true }
         });
-        const amount = item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0
         return {
-          shopId: Number(item.shopId),
+          shopId,
           shopName: shop?.name || 'Unknown Shop',
           shopLocation: shop?.location || '',
-          amount,
-          revenue: amount,
-          sales: item._count.id
+          amount: data.amount,
+          revenue: data.amount,
+          sales: data.count
         };
       })
     );
@@ -566,27 +630,50 @@ export async function GET(req: NextRequest) {
     try {
       console.log('🔍 [System Analytics] Fetching payment breakdown from sales...');
       console.log('🔍 Date range for payment breakdown:', { startDate, endDate, days });
-      const sales = await prisma.sale.findMany({
-        where: {
-          isActive: true,
-          saleDate: {
-            gte: startDate,
-            lte: endDate
+      const [sales, tmtSales] = await Promise.all([
+        prisma.sale.findMany({
+          where: {
+            isActive: true,
+            saleDate: {
+              gte: startDate,
+              lte: endDate
+            },
+            ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
           },
-          ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
-        },
-        select: {
-          finalAmount: true,
-          paymentMethod: true,
-          paymentStatus: true,
-          notes: true
-        }
-      });
+          select: {
+            finalAmount: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            notes: true
+          }
+        }),
+        prisma.tmtSale.findMany({
+          where: {
+            isActive: true,
+            saleDate: {
+              gte: startDate,
+              lte: endDate
+            },
+            ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
+          },
+          select: {
+            totalAmount: true,
+            paymentMethod: true,
+            paymentStatus: true,
+            notes: true
+          }
+        })
+      ]);
+
+      const combinedSales = [
+        ...sales.map(s => ({ ...s, amount: Number(s.finalAmount || 0) })),
+        ...tmtSales.map(ts => ({ ...ts, amount: Number(ts.totalAmount || 0) }))
+      ];
 
       const breakdownMap = new Map<string, { amount: number, count: number }>();
       
-      sales.forEach(sale => {
-        const amount = Number(sale.finalAmount || 0);
+      combinedSales.forEach(sale => {
+        const amount = sale.amount;
         let method = sale.paymentMethod as string;
         
         // Check for partial payments or loans in notes
@@ -655,28 +742,44 @@ export async function GET(req: NextRequest) {
       // Create month end (last day of month, 23:59:59.999 UTC)
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
-      const monthSales = await prisma.sale.aggregate({
-        where: {
-          isActive: true,
-          saleDate: {
-            gte: monthStart,
-            lte: monthEnd
+      const [monthSales, monthTmtSales] = await Promise.all([
+        prisma.sale.aggregate({
+          where: {
+            isActive: true,
+            saleDate: {
+              gte: monthStart,
+              lte: monthEnd
+            },
+            ...shopFilter
           },
-          ...shopFilter
-        },
-        _sum: { finalAmount: true },
-        _count: { id: true }
-      });
+          _sum: { finalAmount: true },
+          _count: { id: true }
+        }),
+        prisma.tmtSale.aggregate({
+          where: {
+            isActive: true,
+            saleDate: {
+              gte: monthStart,
+              lte: monthEnd
+            },
+            ...shopFilter
+          },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        })
+      ]);
 
       // Format month as "MMM YYYY"
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
 
-      const revenue = Number(monthSales._sum.finalAmount || 0);
-      console.log(`📊 Month ${monthLabel}: ${monthSales._count.id || 0} sales, ₹${revenue}`);
+      const revenue = Number(monthSales._sum.finalAmount || 0) + Number(monthTmtSales._sum.totalAmount || 0);
+      const salesCount = (monthSales._count.id || 0) + (monthTmtSales._count.id || 0);
+      
+      console.log(`📊 Month ${monthLabel}: ${salesCount} sales, ₹${revenue}`);
 
       salesByMonth.push({
         month: monthLabel,
-        sales: monthSales._count.id || 0,
+        sales: salesCount,
         revenue: revenue
       });
     }
@@ -769,7 +872,7 @@ export async function GET(req: NextRequest) {
     }
 
     // Top shops by revenue
-    const topShops = await prisma.sale.groupBy({
+    const generalTopShops = await prisma.sale.groupBy({
       by: ['shopId'],
       where: {
         isActive: true,
@@ -780,37 +883,68 @@ export async function GET(req: NextRequest) {
         ...shopFilter
       },
       _sum: { finalAmount: true },
-      _count: { id: true },
-      orderBy: { _sum: { finalAmount: 'desc' } },
-      take: 10
+      _count: { id: true }
+    });
+
+    const tmtTopShops = await prisma.tmtSale.groupBy({
+      by: ['shopId'],
+      where: {
+        isActive: true,
+        saleDate: {
+          gte: startDate,
+          lte: endDate
+        },
+        ...shopFilter
+      },
+      _sum: { totalAmount: true },
+      _count: { id: true }
+    });
+
+    const topShopsMap = new Map<number, { revenue: number; sales: number }>();
+    generalTopShops.forEach(item => {
+      const id = Number(item.shopId);
+      const val = topShopsMap.get(id) || { revenue: 0, sales: 0 };
+      val.revenue += item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0;
+      val.sales += item._count.id;
+      topShopsMap.set(id, val);
+    });
+    tmtTopShops.forEach(item => {
+      const id = Number(item.shopId);
+      const val = topShopsMap.get(id) || { revenue: 0, sales: 0 };
+      val.revenue += item._sum?.totalAmount ? parseFloat((item._sum.totalAmount as any).toString()) : 0;
+      val.sales += item._count.id;
+      topShopsMap.set(id, val);
     });
 
     let topShopsData: Array<{ name: string; revenue: number; sales: number; customers: number }> = [];
     try {
       console.log('🔍 [System Analytics] Processing top shops data...');
-      topShopsData = await Promise.all(
-        topShops.map(async (item) => {
+      
+      const allShopsData = await Promise.all(
+        Array.from(topShopsMap.entries()).map(async ([shopId, data]) => {
           const shop = await prisma.shop.findUnique({
-            where: { id: item.shopId },
+            where: { id: BigInt(shopId) },
             select: { name: true }
           });
 
           // Get customer count for this shop
           const customerCount = await prisma.customer.count({
             where: {
-              shopId: item.shopId,
+              shopId: BigInt(shopId),
               isActive: true
             }
           });
 
           return {
             name: shop?.name || 'Unknown Shop',
-            revenue: Number(item._sum.finalAmount || 0),
-            sales: item._count.id || 0,
+            revenue: data.revenue,
+            sales: data.sales,
             customers: customerCount
           };
         })
       );
+      
+      topShopsData = allShopsData.sort((a, b) => b.revenue - a.revenue).slice(0, 10);
       console.log('✅ [System Analytics] Top shops data processed successfully');
     } catch (error) {
       console.error('❌ [System Analytics] Top shops data processing error:', error);
@@ -887,9 +1021,7 @@ function serializeBigInt(obj: any): string {
 
     // We also need to map individual sales if they are ever needed in system analytics
     // (currently it seems to focus on aggregates, but let's ensure the logic is there or robust)
-    
-    // Calculate business metrics
-    const revenue = Number(totalRevenue._sum.finalAmount || 0);
+    const revenue = Number(totalRevenueObj._sum.finalAmount || 0);
     const expenses = Number(totalExpenses._sum.amount || 0);
     const employeePayments = Number(totalEmployeePayments._sum.amount || 0);
     const supplierPayments = Number(totalSupplierPayments._sum.amount || 0);
@@ -1048,7 +1180,7 @@ function serializeBigInt(obj: any): string {
 
     console.log('✅ System analytics data sent successfully');
     console.log('📊 Analytics data prepared:', {
-      totalRevenue: Number(totalRevenue._sum.finalAmount || 0),
+      totalRevenue: Number(totalRevenueObj._sum.finalAmount || 0),
       totalSales,
       totalProducts,
       totalCustomers,

@@ -13,6 +13,19 @@ import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
 import { salesService, type CreateSaleData } from "../lib/services/salesService"
 import { useShop } from "../contexts/ShopContext"
+import { getAvailableUnits } from "../lib/tmtUtils"
+
+// Add fraction parsing utility
+const parseQuantity = (value: string): number => {
+  if (value.includes('/')) {
+    const [num, den] = value.split('/').map(Number);
+    if (!isNaN(num) && !isNaN(den) && den !== 0) {
+      return num / den;
+    }
+  }
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
 
 type CashSaleItem = {
   productId: string;
@@ -175,7 +188,7 @@ export default function CashSale() {
       return;
     }
 
-    const requestedQuantity = parseFloat(currentItem.quantity);
+    const requestedQuantity = parseQuantity(currentItem.quantity);
     if (isNaN(requestedQuantity) || requestedQuantity <= 0) {
       toast.error(t("Please enter a valid quantity", "कृपया एक वैध मात्रा दर्ज करें"));
       return;
@@ -600,12 +613,10 @@ export default function CashSale() {
                             />
                           );
                         } else {
-                          const unitOptions = [
-                            { value: 'bag', label: t('Bag', 'बैग') },
-                            { value: 'kg', label: t('Kg', 'किलो') },
-                            { value: 'piece', label: t('Piece', 'पीस') },
-                            { value: 'tina', label: t('Tina', 'टिना') },
-                          ];
+                          const product = products.find((p: any) => String(p.id) === String(currentItem.productId));
+                          const categoryName = product?.category?.name || "";
+                          const unitOptions = getAvailableUnits(categoryName);
+                          
                           return (
                             <select
                               id="unit"
@@ -616,7 +627,7 @@ export default function CashSale() {
                             >
                               <option value="">{t('Select unit', 'इकाई चुनें')}</option>
                               {unitOptions.map(opt => (
-                                <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                <option key={opt.value} value={opt.value}>{language === 'hi' ? opt.labelHi : opt.label}</option>
                               ))}
                             </select>
                           );
@@ -629,11 +640,17 @@ export default function CashSale() {
                     <Label htmlFor="quantity">{t("Quantity", "मात्रा")}</Label>
                     <Input
                       id="quantity"
-                      type="number"
+                      type="text"
                       min="0"
                       value={currentItem.quantity}
-                      onChange={e => setCurrentItem({ ...currentItem, quantity: e.target.value })}
-                      placeholder={productType === 'tmt' ? `Enter ${currentItem.unit || 'quantity'}` : "Quantity"}
+                      onChange={e => {
+                        const val = e.target.value;
+                        // Allow numbers, fractions (1/2), and decimals
+                        if (/^[0-9./]*$/.test(val)) {
+                          setCurrentItem({ ...currentItem, quantity: val });
+                        }
+                      }}
+                      placeholder={productType === 'tmt' ? `Enter ${currentItem.unit || 'quantity'}` : t("Enter quantity (e.g. 1/2 or 0.5)", "मात्रा दर्ज करें (जैसे 1/2 या 0.5)")}
                       className="mt-1 h-12 text-base rounded-xl"
                       disabled={!currentItem.productId}
                     />

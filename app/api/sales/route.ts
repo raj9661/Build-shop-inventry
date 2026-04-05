@@ -459,17 +459,51 @@ export async function POST(req: NextRequest) {
           });
         }
 
-        // Update product inventory (deduct total CFT) - ONLY IF NOT DIRECT SALE
-        if (!isDirectSale) {
-          await tx.product.update({
-            where: { id: item.productId },
-            data: {
-              stockQuantity: {
-                decrement: itemTotalCft
-              }
+        // 3. Update product inventory and ledger
+        const productInfo = await tx.product.findUnique({
+          where: { id: finalProductId },
+          include: { category: { select: { name: true } } }
+        });
+
+        const categoryName = (productInfo as any)?.category?.name?.toLowerCase()?.trim() || '';
+        const isCement = categoryName.includes('cement');
+        const isLoose = item.unit === 'kg' || item.unitName === 'kg' || item.stockType === 'damaged';
+
+        // Update product inventory - ONLY IF NOT DIRECT SALE
+        if (!isDirectSale && productInfo) {
+          if (isCement && isLoose) {
+              // Loose cement sold in kg → deduct from damagedQuantity
+              await tx.product.update({
+                where: { id: finalProductId },
+                data: {
+                  damagedQuantity: {
+                    decrement: Number(item.quantity)
+                  }
+                }
+              });
+            } else if (isCement) {
+              // Cement sold in bags → deduct raw bag quantity (NOT itemTotalCft)
+              // stockQuantity stores number of bags, conversionCft does NOT apply here
+              await tx.product.update({
+                where: { id: finalProductId },
+                data: {
+                  stockQuantity: {
+                    decrement: Number(item.quantity)
+                  }
+                }
+              });
+            } else {
+              // All other products (Sand, Stone, Bricks etc.) → deduct by CFT volume
+              await tx.product.update({
+                where: { id: finalProductId },
+                data: {
+                  stockQuantity: {
+                    decrement: itemTotalCft
+                  }
+                }
+              });
             }
-          });
-        }
+          }
 
         // Create Stock Ledger entry
         await tx.stockLedger.create({
@@ -479,7 +513,7 @@ export async function POST(req: NextRequest) {
             transactionType: 'SALE',
             unitName: item.unitName || item.unit || 'unit',
             unitQuantity: Number(item.quantity),
-            cftQuantity: itemTotalCft,
+            cftQuantity: (isCement && !isLoose) ? Number(item.quantity) : itemTotalCft,
             referenceId: createdSale.id,
             notes: notes || `Sale to ${customerInfo?.name || customerId || 'Customer'}`,
           }
@@ -639,7 +673,7 @@ export async function PATCH(req: NextRequest) {
           include: {
             items: {
               include: {
-                product: true
+                product: { include: { category: { select: { name: true } } } }
               }
             }
           }
@@ -740,7 +774,7 @@ export async function PATCH(req: NextRequest) {
             shop: true,
             items: {
               include: {
-                product: true
+                product: { include: { category: { select: { name: true } } } }
               }
             }
           }
@@ -764,26 +798,29 @@ export async function PATCH(req: NextRequest) {
         for (const item of currentSale.items) {
           const product = item.product;
           if (product) {
-            // Cement loose sale: restore damagedQuantity
-            const isCement = product.name.toLowerCase().includes('cement');
-            const isLoose = (item as any).unit === 'kg';
+            const itemConvFactor = (item as any).conversionCft ? parseFloat((item as any).conversionCft.toString()) : 1;
+            const itemTotalCft = Number(item.quantity) * itemConvFactor;
+            // Cement detected by category name (products are "Konark", "Nuvoco PSC" etc., not "cement")
+            const isCement = (product as any).category?.name?.toLowerCase()?.includes('cement') ?? false;
+            const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg' || (item as any).stockType === 'damaged';
             if (isCement && isLoose) {
+              // Restore loose cement kg → damagedQuantity
               const newDamagedQuantity = Number(product.damagedQuantity || 0) + Number(item.quantity);
               await tx.product.update({
                 where: { id: product.id },
-                data: {
-                  damagedQuantity: newDamagedQuantity,
-                  updatedAt: new Date(),
-                }
+                data: { damagedQuantity: newDamagedQuantity, updatedAt: new Date() }
               });
-            } else {
-              const newStockQuantity = Number(product.stockQuantity) + Number(item.quantity);
+            } else if (isCement) {
+              // Restore cement bags → raw bag count (NOT CFT)
               await tx.product.update({
                 where: { id: product.id },
-                data: {
-                  stockQuantity: newStockQuantity,
-                  updatedAt: new Date(),
-                }
+                data: { stockQuantity: { increment: Number(item.quantity) }, updatedAt: new Date() }
+              });
+            } else {
+              // All other products restore by CFT volume
+              await tx.product.update({
+                where: { id: product.id },
+                data: { stockQuantity: { increment: itemTotalCft }, updatedAt: new Date() }
               });
             }
           }
@@ -892,32 +929,47 @@ export async function PATCH(req: NextRequest) {
                 currentStock: product.stockQuantity
               });
 
-              // Regular sales: handle cement differently
-              const isCement = product.name.toLowerCase().includes('cement');
-              const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg';
+              // Regular sales: handle cement differently - detect by CATEGORY name not product name
+              const isCement = (product as any).category?.name?.toLowerCase()?.includes('cement') ?? false;
+              const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg' || (item as any).stockType === 'damaged';
               
               if (isCement && isLoose) {
-                // Restore damagedQuantity for loose cement
+                // Restore damagedQuantity for loose cement (kg)
                 const newDamagedQuantity = Number(product.damagedQuantity || 0) + Number(item.quantity);
                 await tx.product.update({
                   where: { id: product.id },
-                  data: {
-                    damagedQuantity: newDamagedQuantity,
-                    updatedAt: new Date(),
-                  }
+                  data: { damagedQuantity: newDamagedQuantity, updatedAt: new Date() }
                 });
-              } else {
-                // Restore stockQuantity in CFT
+              } else if (isCement) {
+                // Restore cement bags → raw bag count (NOT CFT)
                 await tx.product.update({
                   where: { id: product.id },
                   data: {
-                    stockQuantity: {
-                      increment: itemTotalCft
-                    },
+                    stockQuantity: { increment: Number(item.quantity) },
                     updatedAt: new Date(),
                   }
                 });
-
+                await tx.stockLedger.create({
+                  data: {
+                    productId: product.id,
+                    shopId: resultSale.shopId,
+                    transactionType: 'ADJUSTMENT',
+                    unitName: (item as any).unitName || (item as any).unit || 'bag',
+                    unitQuantity: Number(item.quantity),
+                    cftQuantity: Number(item.quantity), // 1 bag = 1 unit for cement
+                    referenceId: resultSale.id,
+                    notes: `Sale #${resultSale.id} Cancellation - Cement Bags Restored`,
+                  }
+                });
+              } else {
+                // Restore stockQuantity in CFT for all other products
+                await tx.product.update({
+                  where: { id: product.id },
+                  data: {
+                    stockQuantity: { increment: itemTotalCft },
+                    updatedAt: new Date(),
+                  }
+                });
                 // Create Stock Ledger entry for restoration
                 await tx.stockLedger.create({
                   data: {
@@ -935,7 +987,6 @@ export async function PATCH(req: NextRequest) {
             }
           }
         }
-      }
 
       return resultSale;
     });

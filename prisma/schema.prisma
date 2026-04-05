@@ -402,7 +402,7 @@ model StockEntry {
   id            BigInt        @id @default(sequence())
   productId     BigInt
   supplierId    BigInt
-  quantity      Int
+  quantity      Decimal       @db.Decimal(12, 3)
   unitName      String?
   conversionCft Decimal?      @db.Decimal(12, 3)
   unitPrice     Decimal       @db.Decimal(10, 2)
@@ -631,7 +631,7 @@ model SaleItem {
   id         BigInt   @id @default(sequence())
   saleId     BigInt
   productId  BigInt
-  quantity   Int
+  quantity   Decimal  @db.Decimal(12, 3)
   unitName   String?
   conversionCft Decimal? @db.Decimal(12, 3)
   unit       String?
@@ -709,7 +709,7 @@ model ProductSalesAnalytics {
   id           BigInt   @id @default(sequence())
   productId    BigInt
   date         DateTime
-  quantitySold Int
+  quantitySold Decimal  @db.Decimal(12, 3)
   totalRevenue Decimal  @db.Decimal(12, 2)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())

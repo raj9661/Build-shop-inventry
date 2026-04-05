@@ -195,9 +195,10 @@ export async function POST(req: NextRequest) {
           throw new Error(`Invalid productId for item ${index + 1}: ${item.productId}`);
         }
 
-        // Get product to check stock
+        // Get product to check stock (include category for cement detection)
         const product = await tx.product.findUnique({
-          where: { id: productId }
+          where: { id: productId },
+          include: { category: { select: { name: true } } }
         });
 
         if (!product) {
@@ -223,8 +224,16 @@ export async function POST(req: NextRequest) {
           throw new Error(`Invalid quantity for item ${index + 1}: ${item.quantity}`);
         }
 
-        if (availableStock < requestedQuantity) {
-          throw new Error(`Insufficient ${stockType} stock for product ${product.name}. Available: ${availableStock}, Requested: ${requestedQuantity}`);
+        const itemConvFactor = item.conversionCft ? parseFloat(item.conversionCft) : 1;
+        const itemTotalCft = requestedQuantity * itemConvFactor;
+
+        // Cement logic bypasses the basic availableStock check if it handles units dynamically
+        // Cement detected by category name (products are named "Konark", "Nuvoco PSC" etc. not "cement")
+        const categoryName = (product as any).category?.name?.toLowerCase()?.trim() || '';
+        const isCement = categoryName.includes('cement');
+
+        if (!isCement && availableStock < itemTotalCft) {
+          throw new Error(`Insufficient ${stockType} stock for product ${product.name}. Available: ${availableStock}, Requested CFT: ${itemTotalCft}`);
         }
 
         // Create sale item
@@ -234,18 +243,22 @@ export async function POST(req: NextRequest) {
             saleId: createdSale.id,
             productId: productId,
             quantity: requestedQuantity,
-            unit: item.unit, // Store the unit!
+            unit: item.unit, 
+            unitName: item.unitName || item.unit || null,
+            conversionCft: itemConvFactor, // Save conversionCft properly
             unitPrice: parseFloat(item.price_per_unit || item.price || 0),
             totalPrice: requestedQuantity * parseFloat(item.price_per_unit || item.price || 0),
             isActive: true
           }
         });
 
-        // Cement logic
-        const isCement = product.name.toLowerCase().includes('cement');
         if (isCement) {
           if (stockType === 'damaged') {
             // Deduct the sold kg amount from damagedQuantity (which is in kg)
+            // for damaged cement, the unit is always Kg, conversionCft should be 1
+            if (currentDamaged < requestedQuantity) {
+               throw new Error(`Insufficient damaged stock for ${product.name}. Available: ${currentDamaged}kg, Requested: ${requestedQuantity}kg`);
+            }
             const newDamaged = Math.max(0, currentDamaged - requestedQuantity); // requestedQuantity is in kg
             console.log(`Deducting ${requestedQuantity}kg loose cement from damaged bag stock: ${currentDamaged}kg -> ${newDamaged}kg`);
             await tx.product.update({
@@ -256,9 +269,16 @@ export async function POST(req: NextRequest) {
             });
           } else {
             // Deduct from main bag stock (each bag = 50kg)
-            let bagsToDeduct = item.unit === 'bag' || item.unit === 'bags' ? requestedQuantity : requestedQuantity / 50;
+            let bagsToDeduct = requestedQuantity; // Default to requested quantity (bags)
             if (item.unit === 'kg' && requestedQuantity % 50 === 0) {
               bagsToDeduct = requestedQuantity / 50;
+            } else if (item.unit !== 'bag' && item.unit !== 'bags' && item.unit !== 'piece' && item.unitName !== 'piece') {
+              // If not bag/piece, and not kg, assume it might be kg-based input but tagged differently
+              // But safest for cement is to treat "piece" or "bag" as 1:1
+              bagsToDeduct = requestedQuantity / 50;
+            }
+            if (currentStock < bagsToDeduct) {
+               throw new Error(`Insufficient stock for ${product.name}. Available: ${currentStock} bags, Requested: ${bagsToDeduct} bags`);
             }
             const newStock = Math.max(0, currentStock - bagsToDeduct);
             console.log(`Deducting ${bagsToDeduct} bags from main stock: ${currentStock} -> ${newStock}`);
@@ -272,7 +292,7 @@ export async function POST(req: NextRequest) {
         } else {
           // Update stock immediately for cash sales
           if (stockType === 'normal') {
-            const newStockQuantity = Math.max(0, currentStock - requestedQuantity);
+            const newStockQuantity = Math.max(0, currentStock - itemTotalCft); // Use itemTotalCft here!
             console.log(`Updating normal stock for ${product.name}: ${currentStock} -> ${newStockQuantity}`);
             await tx.product.update({
               where: { id: product.id },
@@ -281,7 +301,7 @@ export async function POST(req: NextRequest) {
               }
             });
           } else if (stockType === 'damaged') {
-            const newDamagedQuantity = Math.max(0, currentDamaged - requestedQuantity);
+            const newDamagedQuantity = Math.max(0, currentDamaged - itemTotalCft);
             console.log(`Updating damaged stock for ${product.name}: ${currentDamaged} -> ${newDamagedQuantity}`);
             await tx.product.update({
               where: { id: product.id },

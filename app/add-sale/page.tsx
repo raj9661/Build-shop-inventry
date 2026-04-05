@@ -23,6 +23,18 @@ import ProperBillPrint from "./ProperBillPrint"
 import NormalBillPrint from "./NormalBillPrint"
 import { getAvailableTmtUnits, formatTmtQuantity, getWeightPerPiece, getBundleConfig, convertToKg, getAvailableChipSizes, getAvailableUnits } from "../lib/tmtUtils"
 
+// Add fraction parsing utility
+const parseQuantity = (value: string): number => {
+  if (value.includes('/')) {
+    const [num, den] = value.split('/').map(Number);
+    if (!isNaN(num) && !isNaN(den) && den !== 0) {
+      return num / den;
+    }
+  }
+  const parsed = parseFloat(value);
+  return isNaN(parsed) ? 0 : parsed;
+};
+
 type SaleItem = { categoryId: number; categoryName: string; typeId: number; typeName: string; productId: number; name: string; quantity: number; price: number; purchasePrice?: number; unit: string; size: string; stockType?: 'normal' | 'damaged'; conversionCft?: number }
 
 type Supplier = {
@@ -823,8 +835,8 @@ function AddSalePage() {
         console.log('🔍 [AddSale] Updated item:', newItems[index]);
       }
     } else if (field === "quantity") {
-      // If TMT and unit is piece, just update quantity
-      const quantityValue = value === "" ? 0 : Number.parseInt(value) || 0
+      // Use parseQuantity to handle fractions like 1/2
+      const quantityValue = parseQuantity(value.toString());
 
       // Check stock availability (ONLY if not direct sale)
       if (!isDirectSale && newItems[index].productId) {
@@ -983,7 +995,7 @@ function AddSalePage() {
   // Calculate totals
   const subtotal = isTmtMode
     ? (selectedTmtProduct && tmtQuantity && tmtPricePerUnit ? parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit) : 0)
-    : saleItems.reduce((sum, item) => sum + (item.quantity * item.price), 0)
+    : saleItems.reduce((sum, item) => sum + (parseQuantity(item.quantity.toString()) * (item.price || 0)), 0)
   const discountAmount = discountType === 'percent' ? (subtotal * discount) / 100 : discount
   const cgstPercent = tax / 2
   const sgstPercent = tax / 2
@@ -1004,7 +1016,7 @@ function AddSalePage() {
     })() : 0)
     : saleItems.reduce((sum, item) => {
       const product = products.find((p: any) => Number(p.id) === Number(item.productId))
-      const itemQty = Number(item.quantity) || 0
+      const itemQty = parseQuantity(item.quantity.toString())
       const rawCost = Number(item.purchasePrice ?? product?.costPrice ?? 0)
       
       // Normalize cost if selling in fractional units
@@ -2101,9 +2113,21 @@ function AddSalePage() {
                               <div>
                                 <Label>{t("Quantity", "मात्रा")}</Label>
                                 <Input
-                                  type="number"
-                                  value={item.quantity}
-                                  onChange={(e) => handleItemChange(index, "quantity", e.target.value)}
+                                  type="text"
+                                  value={saleItems[index].quantity === 0 ? "" : saleItems[index].quantity}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    if (/^[0-9./]*$/.test(val)) {
+                                      const items = [...saleItems];
+                                      // @ts-ignore - we temporarily store the string to allow typing
+                                      items[index].quantity = val;
+                                      setSaleItems(items);
+                                    }
+                                  }}
+                                  onBlur={(e) => {
+                                    const val = e.target.value;
+                                    handleItemChange(index, "quantity", val);
+                                  }}
                                   min="0"
                                 />
                                 <span className="ml-2 text-gray-700">{item.unit || '-'}</span>
@@ -2190,7 +2214,7 @@ function AddSalePage() {
                                     className="h-7 text-[10px] border-blue-200"
                                   />
                                   {item.quantity && item.conversionCft && (
-                                    <div className="text-[9px] text-blue-600 font-bold mt-0.5">Total: {(item.quantity * item.conversionCft).toFixed(2)} CFT</div>
+                                    <div className="text-[9px] text-blue-600 font-bold mt-0.5">Total: {(parseQuantity(item.quantity.toString()) * Number(item.conversionCft)).toFixed(2)} CFT</div>
                                   )}
                                 </div>
                               )}
@@ -2213,30 +2237,30 @@ function AddSalePage() {
                                   {item.unit !== "piece" && (
                                     <div>
                                       {t("Pieces:", "पीस:")} {item.unit === "bundle"
-                                        ? (item.quantity * getBundleConfig(item.name)).toFixed(0)
+                                        ? (parseQuantity(item.quantity.toString()) * getBundleConfig(item.name)).toFixed(0)
                                         : item.unit === "kg"
-                                          ? (item.quantity / getWeightPerPiece(item.name)).toFixed(1)
-                                          : item.quantity
+                                          ? (parseQuantity(item.quantity.toString()) / getWeightPerPiece(item.name)).toFixed(1)
+                                          : parseQuantity(item.quantity.toString())
                                       }
                                     </div>
                                   )}
                                   {item.unit !== "bundle" && (
                                     <div>
                                       {t("Bundles:", "बंडल:")} {item.unit === "piece"
-                                        ? (item.quantity / getBundleConfig(item.name)).toFixed(2)
+                                        ? (parseQuantity(item.quantity.toString()) / getBundleConfig(item.name)).toFixed(2)
                                         : item.unit === "kg"
-                                          ? (item.quantity / getWeightPerPiece(item.name) / getBundleConfig(item.name)).toFixed(2)
-                                          : (item.quantity / getBundleConfig(item.name)).toFixed(2)
+                                          ? (parseQuantity(item.quantity.toString()) / getWeightPerPiece(item.name) / getBundleConfig(item.name)).toFixed(2)
+                                          : (parseQuantity(item.quantity.toString()) / getBundleConfig(item.name)).toFixed(2)
                                       }
                                     </div>
                                   )}
                                   {item.unit !== "kg" && (
                                     <div>
                                       {t("Weight (kg):", "वजन (किलो):")} {item.unit === "piece"
-                                        ? (item.quantity * getWeightPerPiece(item.name)).toFixed(2)
+                                        ? (parseQuantity(item.quantity.toString()) * getWeightPerPiece(item.name)).toFixed(2)
                                         : item.unit === "bundle"
-                                          ? (item.quantity * getBundleConfig(item.name) * getWeightPerPiece(item.name)).toFixed(2)
-                                          : (item.quantity * getWeightPerPiece(item.name)).toFixed(2)
+                                          ? (parseQuantity(item.quantity.toString()) * getBundleConfig(item.name) * getWeightPerPiece(item.name)).toFixed(2)
+                                          : (parseQuantity(item.quantity.toString()) * getWeightPerPiece(item.name)).toFixed(2)
                                       }
                                     </div>
                                   )}
@@ -2347,7 +2371,7 @@ function AddSalePage() {
                               <div className="flex-1">
                                 <Label>{t("Total", "कुल")}</Label>
                                 <div className="p-2 bg-gray-100 rounded text-sm font-medium">
-                                  ₹{(item.quantity * item.price).toFixed(2)}
+                                  ₹{(parseQuantity(item.quantity.toString()) * (item.price || 0)).toFixed(2)}
                                 </div>
                               </div>
                               <Button

@@ -182,7 +182,8 @@ export async function POST(req: NextRequest) {
           categoryId: parseInt(categoryId),
           shopId: shopId,
           isActive: true
-        }
+        },
+        include: { category: { select: { name: true } } }
       });
 
       if (!product) {
@@ -200,9 +201,18 @@ export async function POST(req: NextRequest) {
             minStockLevel: minStockLevel ?? 0,
             maxStockLevel: maxStockLevel ?? null,
             isActive: true
-          }
+          },
+          include: { category: { select: { name: true } } }
         });
       }
+
+      if (!product) {
+        throw new Error("Failed to find or create product");
+      }
+
+      const categoryName = (product as any)?.category?.name?.toLowerCase()?.trim() || '';
+      const isCement = categoryName.includes('cement');
+      const isLoose = unit === 'kg' || unitName === 'kg' || notes?.toLowerCase().includes('loose');
 
       // 3. Create stock entry
       const stockEntry = await tx.stockEntry.create({
@@ -228,7 +238,7 @@ export async function POST(req: NextRequest) {
         where: { id: product.id },
         data: {
           stockQuantity: {
-            increment: totalCft
+            increment: (isCement && !isLoose) ? Number(quantity) : totalCft
           }
         }
       });
@@ -240,7 +250,7 @@ export async function POST(req: NextRequest) {
           transactionType: 'PURCHASE',
           unitName: unitName || unit || 'unit',
           unitQuantity: Number(quantity),
-          cftQuantity: totalCft,
+          cftQuantity: (isCement && !isLoose) ? Number(quantity) : totalCft,
           referenceId: stockEntry.id,
           notes: notes || `Purchase from ${supplierName}`,
         }

@@ -620,8 +620,9 @@ export default function AddStock() {
       newErrors.size = "Size is required for chips"
     }
 
-    // Conversion factor for uncountable units
-    if (['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'bag'].includes(formData.unit) && (!formData.conversionCft || Number(formData.conversionCft) <= 0)) {
+    // Conversion factor for uncountable units (skip if it's cement bags)
+    const isCement = formData.categoryId && categories.find((c: any) => c.id.toString() === formData.categoryId)?.name?.toLowerCase().includes("cement");
+    if (['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'bag'].includes(formData.unit) && !isCement && (!formData.conversionCft || Number(formData.conversionCft) <= 0)) {
       newErrors.conversionCft = "Valid conversion factor is required"
     }
 
@@ -1501,7 +1502,11 @@ export default function AddStock() {
                 )}
 
                 {/* Conversion Factor (Visible for uncountable units or if manual adjustment needed) */}
-                {['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(formData.unit) && (
+                {(() => {
+                  const isCement = formData.categoryId && categories.find((c: any) => c.id.toString() === formData.categoryId)?.name?.toLowerCase().includes("cement");
+                  const showConversion = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(formData.unit) && !isCement;
+                  
+                  return showConversion && (
                   <div className="space-y-3">
                     <Label className="text-lg font-medium text-blue-800">कन्वर्जन (CFT per Unit) / Conversion Factor</Label>
                     <Input
@@ -1519,7 +1524,8 @@ export default function AddStock() {
                       )}
                     </div>
                   </div>
-                )}
+                )
+              })()}
 
 
                 {/* Size selection for chips */}

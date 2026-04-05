@@ -67,8 +67,8 @@ export async function GET(req: NextRequest) {
 
     // Get sales data
     const [
-      totalSales,
-      totalRevenue,
+      totalGeneralSales,
+      totalGeneralRevenue,
       totalProducts,
       totalCustomers,
       totalEmployees,
@@ -76,7 +76,9 @@ export async function GET(req: NextRequest) {
       totalExpenses,
       totalSupplierPayments,
       totalEmployeePayments,
-      shops
+      shops,
+      totalTmtSales,
+      totalTmtRevenue
     ] = await Promise.all([
       prisma.sale.count({
         where: {
@@ -136,8 +138,30 @@ export async function GET(req: NextRequest) {
              whereClause.createdBy ? { createdBy: whereClause.createdBy } : {})
         },
         select: { id: true, name: true, location: true }
+      }),
+      prisma.tmtSale.count({
+        where: {
+          ...whereClause,
+          saleDate: { gte: startDate, lte: endDate },
+          isActive: true
+        }
+      }),
+      prisma.tmtSale.aggregate({
+        where: {
+          ...whereClause,
+          saleDate: { gte: startDate, lte: endDate },
+          isActive: true
+        },
+        _sum: { totalAmount: true }
       })
     ]);
+    
+    const totalSales = Number(totalGeneralSales) + Number(totalTmtSales);
+    const totalRevenueObj = {
+      _sum: {
+        finalAmount: (Number(totalGeneralRevenue._sum.finalAmount || 0) + Number(totalTmtRevenue._sum.totalAmount || 0))
+      }
+    };
 
     // Get sales by month
     const salesByMonth = [];
@@ -151,21 +175,35 @@ export async function GET(req: NextRequest) {
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
-      const monthSales = await prisma.sale.aggregate({
-        where: {
-          isActive: true,
-          saleDate: { gte: monthStart, lte: monthEnd },
-          ...whereClause
-        },
-        _sum: { finalAmount: true },
-        _count: { id: true }
-      });
+      const [monthSales, monthTmtSales] = await Promise.all([
+        prisma.sale.aggregate({
+          where: {
+            isActive: true,
+            saleDate: { gte: monthStart, lte: monthEnd },
+            ...whereClause
+          },
+          _sum: { finalAmount: true },
+          _count: { id: true }
+        }),
+        prisma.tmtSale.aggregate({
+          where: {
+            isActive: true,
+            saleDate: { gte: monthStart, lte: monthEnd },
+            ...whereClause
+          },
+          _sum: { totalAmount: true },
+          _count: { id: true }
+        })
+      ]);
 
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      const salesCount = (monthSales._count.id || 0) + (monthTmtSales._count.id || 0);
+      const revenue = Number(monthSales._sum.finalAmount || 0) + Number(monthTmtSales._sum.totalAmount || 0);
+
       salesByMonth.push({
         month: monthLabel,
-        sales: monthSales._count.id || 0,
-        revenue: Number(monthSales._sum.finalAmount || 0)
+        sales: salesCount,
+        revenue: revenue
       });
     }
 
@@ -222,7 +260,7 @@ export async function GET(req: NextRequest) {
     });
 
     // Get top shops
-    const topShops = await prisma.sale.groupBy({
+    const generalTopShops = await prisma.sale.groupBy({
       by: ['shopId'],
       where: {
         ...whereClause,
@@ -230,24 +268,70 @@ export async function GET(req: NextRequest) {
         isActive: true
       },
       _sum: { finalAmount: true },
-      _count: { id: true },
-      orderBy: { _sum: { finalAmount: 'desc' } },
-      take: 10
+      _count: { id: true }
     });
-
-    // Get sales by payment method
-    const salesForPaymentMethod = await prisma.sale.findMany({
+    
+    const tmtTopShops = await prisma.tmtSale.groupBy({
+      by: ['shopId'],
       where: {
         ...whereClause,
         saleDate: { gte: startDate, lte: endDate },
         isActive: true
       },
-      select: { finalAmount: true, paymentMethod: true, paymentStatus: true, notes: true }
+      _sum: { totalAmount: true },
+      _count: { id: true }
     });
 
+    const userTopShopsMap = new Map<number, { revenue: number, sales: number }>();
+    generalTopShops.forEach(item => {
+      const id = Number(item.shopId);
+      const val = userTopShopsMap.get(id) || { revenue: 0, sales: 0 };
+      val.revenue += item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0;
+      val.sales += item._count.id;
+      userTopShopsMap.set(id, val);
+    });
+    tmtTopShops.forEach(item => {
+      const id = Number(item.shopId);
+      const val = userTopShopsMap.get(id) || { revenue: 0, sales: 0 };
+      val.revenue += item._sum?.totalAmount ? parseFloat((item._sum.totalAmount as any).toString()) : 0;
+      val.sales += item._count.id;
+      userTopShopsMap.set(id, val);
+    });
+    
+    // Sort and take top 10
+    const topShopsArr = Array.from(userTopShopsMap.entries())
+      .sort((a, b) => b[1].revenue - a[1].revenue)
+      .slice(0, 10);
+
+    // Get sales by payment method
+    const [salesForPaymentMethod, tmtSalesForPaymentMethod] = await Promise.all([
+      prisma.sale.findMany({
+        where: {
+          ...whereClause,
+          saleDate: { gte: startDate, lte: endDate },
+          isActive: true
+        },
+        select: { finalAmount: true, paymentMethod: true, paymentStatus: true, notes: true }
+      }),
+      prisma.tmtSale.findMany({
+        where: {
+          ...whereClause,
+          saleDate: { gte: startDate, lte: endDate },
+          isActive: true
+        },
+        select: { totalAmount: true, paymentMethod: true, paymentStatus: true, notes: true }
+      })
+    ]);
+
     const paymentBreakdownMap = new Map<string, { amount: number, count: number }>();
-    salesForPaymentMethod.forEach(sale => {
-      const amount = Number(sale.finalAmount || 0);
+    
+    const combinedPayments = [
+      ...salesForPaymentMethod.map(s => ({ ...s, amount: Number(s.finalAmount || 0) })),
+      ...tmtSalesForPaymentMethod.map(ts => ({ ...ts, amount: Number(ts.totalAmount || 0) }))
+    ];
+
+    combinedPayments.forEach(sale => {
+      const amount = sale.amount;
       let method = (sale.paymentMethod || 'CASH') as string;
       
       const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
@@ -332,7 +416,7 @@ export async function GET(req: NextRequest) {
 
     // Format the response data
     const analyticsData = {
-      totalRevenue: Number(totalRevenue._sum.finalAmount || 0),
+      totalRevenue: Number(totalRevenueObj._sum.finalAmount || 0),
       totalSales,
       totalProducts,
       totalCustomers,
@@ -356,12 +440,12 @@ export async function GET(req: NextRequest) {
           quantity: Number(product._sum.quantity || 0), revenue: Number(product._sum.totalPrice || 0)
         };
       })),
-      topShops: await Promise.all(topShops.map(async (shop) => {
-        const s = await prisma.shop.findUnique({ where: { id: shop.shopId }, select: { name: true, location: true } });
-        return { id: Number(shop.shopId), name: s?.name || 'Unknown', location: s?.location || 'N/A', revenue: Number(shop._sum.finalAmount || 0), sales: shop._count.id };
+      topShops: await Promise.all(topShopsArr.map(async ([shopId, data]) => {
+        const s = await prisma.shop.findUnique({ where: { id: BigInt(shopId) }, select: { name: true, location: true } });
+        return { id: Number(shopId), name: s?.name || 'Unknown', location: s?.location || 'N/A', revenue: data.revenue, sales: data.sales };
       })),
       revenueByShop: shops.map(shop => {
-        const rev = totalRevenue._sum.finalAmount ? Number(totalRevenue._sum.finalAmount) : 0; // Simplified for user analytics
+        const rev = totalRevenueObj._sum.finalAmount ? Number(totalRevenueObj._sum.finalAmount) : 0; // Simplified for user analytics
         return { id: Number(shop.id), name: shop.name, location: shop.location, revenue: rev, sales: totalSales };
       }),
       salesByPaymentMethod,
