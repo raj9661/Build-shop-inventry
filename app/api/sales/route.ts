@@ -987,6 +987,7 @@ export async function PATCH(req: NextRequest) {
             }
           }
         }
+      }
 
       return resultSale;
     });
