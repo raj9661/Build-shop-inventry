@@ -25,13 +25,33 @@ import { getAvailableTmtUnits, formatTmtQuantity, getWeightPerPiece, getBundleCo
 
 // Add fraction parsing utility
 const parseQuantity = (value: string): number => {
-  if (value.includes('/')) {
-    const [num, den] = value.split('/').map(Number);
+  if (!value) return 0;
+  // Replace "and", "-", etc with spaces to handle "1 and 1/2" or "1-1/2"
+  const cleanValue = value.toString().toLowerCase().replace(/and/g, ' ').replace(/-/g, ' ').trim();
+  
+  // Handle space-separated mixed fraction: "1 1/2"
+  if (cleanValue.includes(' ') && cleanValue.includes('/')) {
+    const parts = cleanValue.split(/\s+/);
+    let total = 0;
+    for (const part of parts) {
+      if (part.includes('/')) {
+        const [num, den] = part.split('/').map(Number);
+        if (!isNaN(num) && !isNaN(den) && den !== 0) total += num / den;
+      } else {
+        const num = parseFloat(part);
+        if (!isNaN(num)) total += num;
+      }
+    }
+    return total;
+  }
+  
+  if (cleanValue.includes('/')) {
+    const [num, den] = cleanValue.split('/').map(Number);
     if (!isNaN(num) && !isNaN(den) && den !== 0) {
       return num / den;
     }
   }
-  const parsed = parseFloat(value);
+  const parsed = parseFloat(cleanValue);
   return isNaN(parsed) ? 0 : parsed;
 };
 
@@ -721,37 +741,26 @@ function AddSalePage() {
     const newItems = [...saleItems]
     if (field === "unit") {
       newItems[index].unit = value
-      // Robust TMT bar detection: check categoryName, typeName, and product name
-      const item = newItems[index]
-      const isTmt = [item.categoryName, item.typeName, item.name].some(
-        v => typeof v === 'string' && v.toLowerCase().includes('tmt')
-      )
-      const bundleSize = getTmtBundleSize(item)
-      const product = products.find((p: any) => p.id === item.productId)
-      const bundlePrice = product?.price || 0
-      // Debug log
-      console.log('TMT DEBUG:', {
-        categoryName: item.categoryName,
-        typeName: item.typeName,
-        name: item.name,
-        bundleSize,
-        bundlePrice,
-        isTmt,
-        unit: value
-      })
-      if (isTmt) {
-        if (!bundleSize) {
-          toast.error('No bundle size found for this TMT type!')
-        }
-        if (!bundlePrice) {
-          toast.error('No bundle price found for this TMT product!')
-        }
-      }
-      if (isTmt && bundleSize && bundlePrice) {
+      const item = newItems[index];
+      const isTmtProduct = (item.categoryName?.toLowerCase()?.includes('tmt') || item.categoryName?.toLowerCase()?.includes('steel')) && !item.categoryName?.toLowerCase()?.includes('ring');
+      const isRingProduct = item.categoryName?.toLowerCase()?.includes('ring');
+      const bundleSize = getTmtBundleSize(item) || 1;
+      
+      if (isRingProduct) {
         if (value === "piece") {
-          newItems[index].price = Number((bundlePrice / bundleSize).toFixed(2))
+          newItems[index].price = 9;
         } else if (value === "bundle") {
-          newItems[index].price = Number(bundlePrice)
+          newItems[index].price = 9 * bundleSize;
+        }
+      } else if (isTmtProduct) {
+        const product = products.find((p: any) => p.id === item.productId)
+        const bundlePrice = product?.price || 0
+        if (bundlePrice > 0) {
+          if (value === "piece") {
+            newItems[index].price = Number((bundlePrice / bundleSize).toFixed(2))
+          } else if (value === "bundle") {
+            newItems[index].price = Number(bundlePrice)
+          }
         }
       }
       // Cement logic (existing)
@@ -811,14 +820,24 @@ function AddSalePage() {
       console.log('🔍 [AddSale] Found product:', product);
       if (product) {
         // For sand and chips category or TMT bars, don't auto-set unit, let user choose
-        const isSandChipsCategory = product.category?.name?.toLowerCase().includes("sand") ||
-          product.category?.name?.toLowerCase().includes("chips") ||
-          product.category?.name?.toLowerCase().includes("bricks") ||
-          product.category?.name?.toLowerCase().includes("aggregates")
-        const isTMTBarCategory = product.category?.name?.toLowerCase().includes("tmt") ||
-          product.category?.name?.toLowerCase().includes("steel")
+        const isSandChipsCategory = product.category?.name?.toLowerCase()?.includes("sand") ||
+          product.category?.name?.toLowerCase()?.includes("chips") ||
+          product.category?.name?.toLowerCase()?.includes("bricks") ||
+          product.category?.name?.toLowerCase()?.includes("aggregates")
+        const isTMTBarCategory = product.category?.name?.toLowerCase()?.includes("tmt") ||
+          product.category?.name?.toLowerCase()?.includes("steel")
+        const isRingProduct = product.category?.name?.toLowerCase()?.includes("ring")
+        
         // Use dailyRate if available, else fallback to static price
-        const defaultPrice = product.dailyRate !== null && product.dailyRate !== undefined ? Number(product.dailyRate) : Number(product.price);
+        let defaultPrice = product.dailyRate !== null && product.dailyRate !== undefined ? Number(product.dailyRate) : Number(product.price);
+        
+        // Special logic for Rings: default to piece-based calculation if requested
+        if (isRingProduct) {
+          const bundleSize = getTmtBundleSize(newItems[index]) || 25;
+          const currentUnit = newItems[index].unit || "bundle";
+          defaultPrice = currentUnit === "piece" ? 9 : 9 * bundleSize;
+        }
+
         console.log('🔍 [AddSale] Product price - dailyRate:', product.dailyRate, 'price:', product.price, 'price type:', typeof product.price, 'defaultPrice:', defaultPrice);
         newItems[index] = {
           ...newItems[index],
@@ -826,7 +845,7 @@ function AddSalePage() {
           name: product.name,
           price: defaultPrice,
           purchasePrice: Number(product.costPrice || 0), // Set purchase price from product costPrice
-          unit: (isSandChipsCategory || isTMTBarCategory) ? newItems[index].unit || "" : (product.unit || newItems[index].unit || ""), // auto-set unit if not already set
+          unit: (isSandChipsCategory || isTMTBarCategory || isRingProduct) ? newItems[index].unit || "" : (product.unit || newItems[index].unit || ""), // auto-set unit if not already set
           categoryId: Number(product.category?.id),
           categoryName: product.category?.name,
           typeId: Number(product.type?.id),
@@ -838,8 +857,11 @@ function AddSalePage() {
       // Use parseQuantity to handle fractions like 1/2
       const quantityValue = parseQuantity(value.toString());
 
-      // Check stock availability (ONLY if not direct sale)
-      if (!isDirectSale && newItems[index].productId) {
+      const isSandChips = newItems[index].categoryName?.toLowerCase()?.includes('sand') || 
+                          newItems[index].categoryName?.toLowerCase()?.includes('chips');
+
+      // Check stock availability (ONLY if not direct sale and NOT Sand/Chips)
+      if (!isDirectSale && newItems[index].productId && !isSandChips) {
         const product = products.find((p: any) => Number(p.id) === Number(newItems[index].productId))
         if (product && product.stockQuantity !== null && product.stockQuantity !== undefined) {
           const availableStock = Number(product.stockQuantity) || 0
@@ -1023,7 +1045,12 @@ function AddSalePage() {
       const convFactor = (item.conversionCft && Number(item.conversionCft) > 0) ? Number(item.conversionCft) : null
       
       let itemCost = rawCost
-      if (convFactor) {
+      const isRing = item.categoryName?.toLowerCase()?.includes('ring')
+      
+      if (isRing && item.unit === 'piece') {
+        const bundleSize = getBundleConfig(item.name || "") || 25
+        itemCost = rawCost / bundleSize
+      } else if (convFactor) {
         // If the product cost is per bulk unit (e.g. ₹30,000 per Tempo),
         // and the user is selling in base unit (e.g. CFT), the cost per CFT is rawCost / convFactor.
         if (item.unit === 'cft' || item.unit === 'kg' || item.unit === 'pieces') {
@@ -1068,7 +1095,7 @@ function AddSalePage() {
     // Check if sand and chips items have units selected
     const sandChipsItemsWithoutUnit = saleItems.filter(item =>
       item.categoryId && item.typeId && item.productId &&
-      (item.categoryName.toLowerCase().includes("sand") || item.categoryName.toLowerCase().includes("chips")) &&
+      item.categoryName && (item.categoryName.toLowerCase().includes("sand") || item.categoryName.toLowerCase().includes("chips")) &&
       !item.unit
     )
 
@@ -1080,19 +1107,19 @@ function AddSalePage() {
     // Check if TMT bar items have units selected
     const tmtItemsWithoutUnit = saleItems.filter(item =>
       item.categoryId && item.typeId && item.productId &&
-      (item.categoryName.toLowerCase().includes("tmt") || item.categoryName.toLowerCase().includes("steel")) &&
+      item.categoryName && (item.categoryName.toLowerCase().includes("tmt") || item.categoryName.toLowerCase().includes("steel") || item.categoryName.toLowerCase().includes("ring")) &&
       !item.unit
     )
 
     if (tmtItemsWithoutUnit.length > 0) {
-      toast.error(t("Please select units for TMT bar items", "कृपया TMT बार के लिए इकाई चुनें"))
+      toast.error(t("Please select units for TMT bar / Ring items", "कृपया TMT बार / रिंग के लिए इकाई चुनें"))
       return
     }
 
     // Check if chip items have sizes selected
     const chipItemsWithoutSize = saleItems.filter(item =>
       item.categoryId && item.typeId && item.productId &&
-      item.categoryName.toLowerCase().includes("chips") &&
+      item.categoryName && item.categoryName.toLowerCase().includes("chips") &&
       !item.size
     )
 
@@ -1114,6 +1141,10 @@ function AddSalePage() {
     // Check stock availability for all items (SKIP for direct sale)
     if (!isDirectSale) {
       for (const item of validItems) {
+        const isSandChips = item.categoryName?.toLowerCase()?.includes('sand') || 
+                            item.categoryName?.toLowerCase()?.includes('chips');
+        if (isSandChips) continue; // Bypass stock check for Sand and Chips
+
         const product = products.find((p: any) => Number(p.id) === Number(item.productId))
         if (product && Number(product.stockQuantity) !== null && Number(product.stockQuantity) !== undefined) {
           const availableStockInBaseUnit = Number(product.stockQuantity) || 0
@@ -2082,8 +2113,8 @@ function AddSalePage() {
                                 </Select>
                               )}
                             </div>
-                            {/* TMT Bar Bundle/Piece Input */}
-                            {item.categoryName && (item.categoryName.toLowerCase().includes('tmt') || item.categoryName.toLowerCase().includes('steel')) && getTmtBundleSize(item) ? (
+                            {/* TMT Bar Bundle/Piece Input - ONLY for TMT/Steel, NOT Rings */}
+                            {item.categoryName && (item.categoryName.toLowerCase().includes('tmt') || item.categoryName.toLowerCase().includes('steel')) && !item.categoryName.toLowerCase().includes('ring') && getTmtBundleSize(item) ? (
                               <div className="flex flex-col gap-1">
                                 <div className="flex flex-wrap gap-2 items-center">
                                   <Input
@@ -2136,9 +2167,9 @@ function AddSalePage() {
                             <div>
                               <Label>
                                 {t("Unit", "इकाई")}
-                                {((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
-                                  item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) ||
-                                  (item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel"))) && (
+                                {((item.categoryName?.toLowerCase()?.includes("sand") || item.categoryName?.toLowerCase()?.includes("chips") ||
+                                  item.categoryName?.toLowerCase()?.includes("bricks") || item.categoryName?.toLowerCase()?.includes("aggregates")) ||
+                                  (item.categoryName?.toLowerCase()?.includes("tmt") || item.categoryName?.toLowerCase()?.includes("steel") || item.categoryName?.toLowerCase()?.includes("ring"))) && (
                                     <span className="text-red-500 ml-1">*</span>
                                   )}
                               </Label>
@@ -2181,9 +2212,9 @@ function AddSalePage() {
                                   disabled={productsLoading}
                                 >
                                   <SelectTrigger className={
-                                    ((item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
-                                      item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) ||
-                                      (item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel"))) && !item.unit
+                                    ((item.categoryName?.toLowerCase()?.includes("sand") || item.categoryName?.toLowerCase()?.includes("chips") ||
+                                      item.categoryName?.toLowerCase()?.includes("bricks") || item.categoryName?.toLowerCase()?.includes("aggregates")) ||
+                                      (item.categoryName?.toLowerCase()?.includes("tmt") || item.categoryName?.toLowerCase()?.includes("steel") || item.categoryName?.toLowerCase()?.includes("ring"))) && !item.unit
                                       ? "border-red-500"
                                       : ""
                                   }>
@@ -2218,49 +2249,49 @@ function AddSalePage() {
                                   )}
                                 </div>
                               )}
-                              {(item.categoryName?.toLowerCase().includes("sand") || item.categoryName?.toLowerCase().includes("chips") ||
-                                item.categoryName?.toLowerCase().includes("bricks") || item.categoryName?.toLowerCase().includes("aggregates")) && !item.unit && (
+                              {(item.categoryName?.toLowerCase()?.includes("sand") || item.categoryName?.toLowerCase()?.includes("chips") ||
+                                item.categoryName?.toLowerCase()?.includes("bricks") || item.categoryName?.toLowerCase()?.includes("aggregates")) && !item.unit && (
                                 <div className="text-xs text-red-600 mt-1">
                                   {t("Unit is required for this category", "इस श्रेणी के लिए इकाई आवश्यक है")}
                                 </div>
                               )}
-                              {(item.categoryName?.toLowerCase().includes("tmt") || item.categoryName?.toLowerCase().includes("steel")) && !item.unit && (
+                              {(item.categoryName?.toLowerCase()?.includes("tmt") || item.categoryName?.toLowerCase()?.includes("steel") || item.categoryName?.toLowerCase()?.includes("ring")) && !item.unit && (
                                 <div className="text-xs text-red-600 mt-1">
-                                  {t("Unit is required for TMT bars", "TMT बार के लिए इकाई आवश्यक है")}
+                                  {t("Unit is required for TMT bars / Rings", "TMT बार / रिंग के लिए इकाई आवश्यक है")}
                                 </div>
                               )}
 
-                              {/* TMT Bar Unit Conversion Display */}
-                              {item.categoryName?.toLowerCase().includes("tmt") && item.unit && item.quantity > 0 && (
+                              {/* TMT Bar Unit Conversion Display - ONLY for TMT, NOT Rings */}
+                              {item.categoryName?.toLowerCase()?.includes("tmt") && item.unit && item.quantity > 0 && (
                                 <div className="text-xs text-blue-600 mt-1 space-y-1">
                                   <div className="font-medium">{t("Equivalent quantities:", "समतुल्य मात्रा:")}</div>
                                   {item.unit !== "piece" && (
                                     <div>
                                       {t("Pieces:", "पीस:")} {item.unit === "bundle"
-                                        ? (parseQuantity(item.quantity.toString()) * getBundleConfig(item.name)).toFixed(0)
+                                        ? (parseQuantity(item.quantity?.toString() || "0") * getBundleConfig(item.name || "")).toFixed(0)
                                         : item.unit === "kg"
-                                          ? (parseQuantity(item.quantity.toString()) / getWeightPerPiece(item.name)).toFixed(1)
-                                          : parseQuantity(item.quantity.toString())
+                                          ? (parseQuantity(item.quantity?.toString() || "0") / getWeightPerPiece(item.name || "")).toFixed(1)
+                                          : parseQuantity(item.quantity?.toString() || "0")
                                       }
                                     </div>
                                   )}
                                   {item.unit !== "bundle" && (
                                     <div>
                                       {t("Bundles:", "बंडल:")} {item.unit === "piece"
-                                        ? (parseQuantity(item.quantity.toString()) / getBundleConfig(item.name)).toFixed(2)
+                                        ? (parseQuantity(item.quantity?.toString() || "0") / getBundleConfig(item.name || "")).toFixed(2)
                                         : item.unit === "kg"
-                                          ? (parseQuantity(item.quantity.toString()) / getWeightPerPiece(item.name) / getBundleConfig(item.name)).toFixed(2)
-                                          : (parseQuantity(item.quantity.toString()) / getBundleConfig(item.name)).toFixed(2)
+                                          ? (parseQuantity(item.quantity?.toString() || "0") / getWeightPerPiece(item.name || "") / getBundleConfig(item.name || "")).toFixed(2)
+                                          : (parseQuantity(item.quantity?.toString() || "0") / getBundleConfig(item.name || "")).toFixed(2)
                                       }
                                     </div>
                                   )}
                                   {item.unit !== "kg" && (
                                     <div>
                                       {t("Weight (kg):", "वजन (किलो):")} {item.unit === "piece"
-                                        ? (parseQuantity(item.quantity.toString()) * getWeightPerPiece(item.name)).toFixed(2)
+                                        ? (parseQuantity(item.quantity?.toString() || "0") * getWeightPerPiece(item.name || "")).toFixed(2)
                                         : item.unit === "bundle"
-                                          ? (parseQuantity(item.quantity.toString()) * getBundleConfig(item.name) * getWeightPerPiece(item.name)).toFixed(2)
-                                          : (parseQuantity(item.quantity.toString()) * getWeightPerPiece(item.name)).toFixed(2)
+                                          ? (parseQuantity(item.quantity?.toString() || "0") * getBundleConfig(item.name || "") * getWeightPerPiece(item.name || "")).toFixed(2)
+                                          : (parseQuantity(item.quantity?.toString() || "0") * getWeightPerPiece(item.name || "")).toFixed(2)
                                       }
                                     </div>
                                   )}
@@ -2268,7 +2299,7 @@ function AddSalePage() {
                               )}
                             </div>
                             {/* Size selection for chips */}
-                            {item.categoryName?.toLowerCase().includes("chips") && (
+                            {item.categoryName?.toLowerCase()?.includes("chips") && (
                               <div>
                                 <Label>
                                   {t("Size", "साइज़")}

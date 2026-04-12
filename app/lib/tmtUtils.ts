@@ -518,15 +518,18 @@ export const TMT_WEIGHT_PER_PIECE = {
 }
 
 export const getBundleConfig = (productName: string): number => {
+  if (!productName) return 1;
   const name = productName.toLowerCase()
   if (name.includes("8mm")) return TMT_BUNDLE_CONFIG['8mm']
   if (name.includes("10mm")) return TMT_BUNDLE_CONFIG['10mm']
   if (name.includes("12mm")) return TMT_BUNDLE_CONFIG['12mm']
   if (name.includes("16mm")) return TMT_BUNDLE_CONFIG['16mm']
+  if (name.includes("ring") || name.includes("7 x") || name.includes("7x")) return 25 // 1 bundle of rings = 25 pieces
   return 1 // default
 }
 
 export const getWeightPerPiece = (productName: string): number => {
+  if (!productName) return 1;
   const name = productName.toLowerCase()
   if (name.includes("8mm")) return TMT_WEIGHT_PER_PIECE['8mm']
   if (name.includes("10mm")) return TMT_WEIGHT_PER_PIECE['10mm']
@@ -570,7 +573,8 @@ export const getAvailableChipSizes = (): { value: string; label: string; labelHi
 export const getAvailableUnits = (categoryName: string): { value: string; label: string; labelHi: string }[] => {
   if (categoryName.toLowerCase().includes("ring")) {
     return [
-      { value: "bundle", label: "Bundle", labelHi: "बंडल" }
+      { value: "bundle", label: "Bundle", labelHi: "बंडल" },
+      { value: "piece", label: "Piece", labelHi: "पीस" }
     ]
   }
 

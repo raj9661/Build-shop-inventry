@@ -17,13 +17,33 @@ import { getAvailableUnits } from "../lib/tmtUtils"
 
 // Add fraction parsing utility
 const parseQuantity = (value: string): number => {
-  if (value.includes('/')) {
-    const [num, den] = value.split('/').map(Number);
+  if (!value) return 0;
+  // Replace "and", "-", etc with spaces to handle "1 and 1/2" or "1-1/2"
+  const cleanValue = value.toString().toLowerCase().replace(/and/g, ' ').replace(/-/g, ' ').trim();
+  
+  // Handle space-separated mixed fraction: "1 1/2"
+  if (cleanValue.includes(' ') && cleanValue.includes('/')) {
+    const parts = cleanValue.split(/\s+/);
+    let total = 0;
+    for (const part of parts) {
+      if (part.includes('/')) {
+        const [num, den] = part.split('/').map(Number);
+        if (!isNaN(num) && !isNaN(den) && den !== 0) total += num / den;
+      } else {
+        const num = parseFloat(part);
+        if (!isNaN(num)) total += num;
+      }
+    }
+    return total;
+  }
+
+  if (cleanValue.includes('/')) {
+    const [num, den] = cleanValue.split('/').map(Number);
     if (!isNaN(num) && !isNaN(den) && den !== 0) {
       return num / den;
     }
   }
-  const parsed = parseFloat(value);
+  const parsed = parseFloat(cleanValue);
   return isNaN(parsed) ? 0 : parsed;
 };
 
@@ -34,6 +54,7 @@ type CashSaleItem = {
   unit: string;
   quantity: number;
   price: number;
+  conversionCft?: number;
   isTmt?: boolean;
   tmtDetails?: {
     unitType: string;
@@ -61,7 +82,8 @@ export default function CashSale() {
     stockType: 'normal',
     unit: '',
     quantity: '',
-    price: ''
+    price: '',
+    conversionCft: '' as any
   })
 
   const [customerInfo, setCustomerInfo] = useState({
@@ -129,7 +151,7 @@ export default function CashSale() {
 
   // Reset form when toggling product type
   useEffect(() => {
-    setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '' })
+    setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '', conversionCft: '' as any })
     setTmtBundles('')
     setTmtPieces('')
     setTmtTotalPieces(0)
@@ -200,6 +222,8 @@ export default function CashSale() {
       if (!product) { toast.error("Product not found"); return; }
 
       const isCement = product.category?.name?.toLowerCase() === 'cement';
+      const isSandChips = product.category?.name?.toLowerCase()?.includes('sand') || 
+                          product.category?.name?.toLowerCase()?.includes('chips');
       let availableStock = 0;
 
       if (currentItem.stockType === 'normal') {
@@ -213,7 +237,7 @@ export default function CashSale() {
         .filter(i => !i.isTmt && i.productId === currentItem.productId && i.stockType === currentItem.stockType && i.unit === currentItem.unit)
         .reduce((sum, i) => sum + i.quantity, 0)
 
-      if (availableStock - alreadyAdded < requestedQuantity) {
+      if (!isSandChips && availableStock - alreadyAdded < requestedQuantity) {
         toast.error(`Insufficient stock! Available: ${availableStock - alreadyAdded} ${currentItem.unit}`);
         return;
       }
@@ -225,6 +249,7 @@ export default function CashSale() {
         unit: currentItem.unit,
         quantity: requestedQuantity,
         price: parseFloat(currentItem.price),
+        conversionCft: currentItem.conversionCft ? parseFloat(currentItem.conversionCft as any) : undefined,
         isTmt: false
       }])
 
@@ -265,7 +290,7 @@ export default function CashSale() {
     }
 
     // Reset
-    setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '' })
+    setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '', conversionCft: '' as any })
     setTmtBundles('')
     setTmtPieces('')
   }
@@ -310,6 +335,8 @@ export default function CashSale() {
     if (!product) return
 
     const isCement = product.category?.name?.toLowerCase() === 'cement'
+    const isSandChips = product.category?.name?.toLowerCase()?.includes('sand') || 
+                        product.category?.name?.toLowerCase()?.includes('chips');
     let availableStock = 0
     if (item.stockType === 'normal') {
       availableStock = product.stockQuantity ?? 0
@@ -323,7 +350,7 @@ export default function CashSale() {
       .reduce((sum, i) => sum + i.quantity, 0)
 
     const newQuantity = item.quantity + delta
-    if (newQuantity > availableStock - alreadyAdded) {
+    if (!isSandChips && newQuantity > availableStock - alreadyAdded) {
       toast.error(`Insufficient stock`);
       return
     }
@@ -422,7 +449,7 @@ export default function CashSale() {
       // Reset
       setItems([]);
       setCustomerInfo({ phone: "", address: "" });
-      setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '' });
+      setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '', conversionCft: '' as any });
       setTmtBundles('');
       setTmtPieces('');
       // Refresh
@@ -519,17 +546,17 @@ export default function CashSale() {
                           } else if (product) {
                             unit = '';
                           }
-                          setCurrentItem({ ...currentItem, productId: pid, name: product?.name || '', unit, price: product?.price || '' })
+                          setCurrentItem({ ...currentItem, productId: pid, name: product?.name || '', unit, price: product?.price || '', conversionCft: '' as any })
                         } else {
                           const product = tmtProducts.find((p: any) => String(p.id) === String(pid));
-                          setCurrentItem({ ...currentItem, productId: pid, name: product?.productName || '', unit: 'bundle', price: '' })
+                          setCurrentItem({ ...currentItem, productId: pid, name: product?.productName || '', unit: 'bundle', price: '', conversionCft: '' as any })
                           // Trigger unit change to set default price
                           // We can't immediately trigger handleTmtUnitChange because state needs time. 
                           // But we can manually set it here.
                           if (product) {
                             // Default to bundle price
                             const price = (product.sellingPricePerPiece * product.rodsPerBundle) || (product.sellingPricePerKg * product.weightPerBundleKg) || 0;
-                            setCurrentItem(prev => ({ ...prev, productId: pid, name: product.productName, unit: 'bundle', price: price > 0 ? price.toFixed(2) : '' }));
+                            setCurrentItem(prev => ({ ...prev, productId: pid, name: product.productName, unit: 'bundle', price: price > 0 ? price.toFixed(2) : '', conversionCft: '' as any }));
                           }
                         }
                       }}
@@ -636,6 +663,20 @@ export default function CashSale() {
                     </div>
                   )}
 
+                  {['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(currentItem.unit) && (
+                    <div className="mt-0">
+                      <Label htmlFor="conv">{t("Conversion (CFT/Unit)", "रूपांतरण (CFT/इकाई)")}</Label>
+                      <Input
+                        id="conv"
+                        type="number"
+                        placeholder="Ex: 100"
+                        value={currentItem.conversionCft}
+                        onChange={e => setCurrentItem({ ...currentItem, conversionCft: e.target.value })}
+                        className="mt-1 h-12 text-base rounded-xl"
+                      />
+                    </div>
+                  )}
+
                   <div>
                     <Label htmlFor="quantity">{t("Quantity", "मात्रा")}</Label>
                     <Input
@@ -703,6 +744,11 @@ export default function CashSale() {
                         <div className="flex flex-col">
                           <h4 className="font-medium text-base md:text-lg">{item.name}</h4>
                           {item.isTmt && <span className="text-xs text-blue-600 font-semibold">[TMT]</span>}
+                          {item.conversionCft && (
+                            <span className="text-xs text-blue-600">
+                              {item.quantity} × {item.conversionCft} = {(item.quantity * item.conversionCft).toFixed(2)} CFT
+                            </span>
+                          )}
                         </div>
                         <div className="flex items-center gap-2">
                           <span className="text-gray-700">{item.quantity} {item.unit}</span>
