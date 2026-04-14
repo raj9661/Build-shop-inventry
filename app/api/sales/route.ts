@@ -205,7 +205,7 @@ export async function GET(req: NextRequest) {
             name: item.product?.name || '',
             sku: item.product?.sku || '',
             quantity: Number(item.quantity),
-            unit: (item as any).unit || '',
+            unit: (item as any).unit || (item as any).unitName || '',
             price_per_unit: parseDecimal(item.unitPrice),
             total_price: parseDecimal(item.totalPrice)
           }
@@ -419,6 +419,7 @@ export async function POST(req: NextRequest) {
             productId: finalProductId,
             quantity: Number(item.quantity),
             unitName: item.unitName || item.unit || null,
+            unit: item.unitName || item.unit || null,
             conversionCft: item.conversionCft ? parseFloat(item.conversionCft) : null,
             unitPrice: Number(item.price_per_unit || item.unitPrice),
             totalPrice: Number(item.quantity) * Number(item.price_per_unit || item.unitPrice),

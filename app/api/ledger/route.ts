@@ -401,7 +401,7 @@ export async function GET(req: NextRequest) {
             items: sale.items?.map((item: any) => ({
               name: item.product?.name || item.productName || 'Unknown',
               quantity: Number(item.quantity || 0),
-              unit: (item as any).unit || item.product?.unit || 'units',
+              unit: (item as any).unit || (item as any).unitName || item.product?.unit || 'units',
               price_per_unit: Number(item.unitPrice || item.price_per_unit || 0)
             })) || []
           }];
