@@ -27,14 +27,20 @@ export function SalesTabs({ shopId }: { shopId: number }) {
   const [cancelIsTmt, setCancelIsTmt] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  // Helper: is within today's window
+  // Helper: is within today's window (robust across timezones)
   const isToday = (d: any) => {
     if (!d) return false;
-    const dt = new Date(d);
-    const today = new Date();
-    return dt.getFullYear() === today.getFullYear() &&
-           dt.getMonth() === today.getMonth() &&
-           dt.getDate() === today.getDate();
+    // Use dayjs for robust comparison - matches current calendar day
+    const saleDate = dayjs(d);
+    const now = dayjs();
+    
+    // If it's the same calendar day, it's today
+    if (saleDate.isSame(now, 'day')) return true;
+    
+    // Fallback: Also show if it was within the last 18 hours 
+    // (handles late night sales or early morning viewing better)
+    const hoursDiff = Math.abs(now.diff(saleDate, 'hour'));
+    return hoursDiff < 18;
   };
 
   // Show only sales that are not cancelled and not completed as active (unchanged)

@@ -398,7 +398,8 @@ export default function CashSale() {
             stockType: item.stockType,
             unit: item.unit,
             quantity: Number(item.quantity),
-            price_per_unit: Number(item.price)
+            price_per_unit: Number(item.price),
+            conversionCft: item.conversionCft ? Number(item.conversionCft) : undefined
           })),
           payment_type: "cash",
           paid_amount: regularItems.reduce((acc, i) => acc + (i.price * i.quantity), 0)
@@ -663,19 +664,28 @@ export default function CashSale() {
                     </div>
                   )}
 
-                  {['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft', 'bag'].includes(currentItem.unit) && (
-                    <div className="mt-0">
-                      <Label htmlFor="conv">{t("Conversion (CFT/Unit)", "रूपांतरण (CFT/इकाई)")}</Label>
-                      <Input
-                        id="conv"
-                        type="number"
-                        placeholder="Ex: 100"
-                        value={currentItem.conversionCft}
-                        onChange={e => setCurrentItem({ ...currentItem, conversionCft: e.target.value })}
-                        className="mt-1 h-12 text-base rounded-xl"
-                      />
-                    </div>
-                  )}
+                  {(() => {
+                    const product = products.find((p: any) => String(p.id) === String(currentItem.productId));
+                    const isCement = product?.category?.name?.toLowerCase() === 'cement';
+                    const showConv = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft'].includes(currentItem.unit) && !isCement;
+                    
+                    if (showConv) {
+                      return (
+                        <div className="mt-0">
+                          <Label htmlFor="conv">{t("Conversion (CFT/Unit)", "रूपांतरण (CFT/इकाई)")}</Label>
+                          <Input
+                            id="conv"
+                            type="number"
+                            placeholder="Ex: 100"
+                            value={currentItem.conversionCft}
+                            onChange={e => setCurrentItem({ ...currentItem, conversionCft: e.target.value })}
+                            className="mt-1 h-12 text-base rounded-xl"
+                          />
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
 
                   <div>
                     <Label htmlFor="quantity">{t("Quantity", "मात्रा")}</Label>
