@@ -60,7 +60,7 @@ export default function Suppliers() {
   const [activeTab, setActiveTab] = useState("list")
   const [viewingSupplier, setViewingSupplier] = useState<Supplier | null>(null)
   const [ledgerPage, setLedgerPage] = useState(1)
-  const [showFullLedger, setShowFullLedger] = useState(false)
+  const [showAllLedger, setShowAllLedger] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const [availableItems, setAvailableItems] = useState<string[]>([])
   const [formData, setFormData] = useState({
@@ -866,7 +866,7 @@ export default function Suppliers() {
                                   // Set viewing supplier immediately to show basic info
                                   setViewingSupplier(supplier)
                                   setLedgerPage(1)
-                                  setShowFullLedger(false)
+                                  setShowAllLedger(false)
                                   setActiveTab("view")
                                   
                                   // Fetch full history in background
@@ -1019,141 +1019,350 @@ export default function Suppliers() {
                     </Card>
                   </div>
 
-                  <Card className="shadow-lg border-0 bg-white">
-                    <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-t-lg">
-                      <CardTitle className="flex items-center gap-2">
-                        <Calendar className="h-5 w-5" />
-                        {t("Weekly Supply History", "साप्ताहिक आपूर्ति इतिहास")}
-                      </CardTitle>
+                  {/* ═══ SUPPLIER LEDGER ═══ */}
+                  <Card className="shadow-lg border-0 bg-white overflow-hidden">
+                    <CardHeader className="bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 text-white rounded-t-lg p-0">
+                      <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <CardTitle className="flex items-center gap-2 text-lg font-bold">
+                          <span className="text-2xl">📒</span>
+                          {t("Supplier Ledger", "सप्लायर खाता बही")}
+                          <span className="text-sm font-normal opacity-80 ml-1">— {viewingSupplier.name}</span>
+                        </CardTitle>
+                        {/* Running balance badge — uses server-computed value (reliable) */}
+                        {(() => {
+                          const bal = viewingSupplier.outstandingPayment || 0;
+                          return (
+                            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-base ${bal > 0 ? 'bg-red-500/20 text-red-100' : 'bg-green-500/20 text-green-100'}`}>
+                              <span>{bal > 0 ? '🔴' : '✅'}</span>
+                              <span>{t('Balance', 'बकाया')}: ₹{Math.abs(bal).toLocaleString()}</span>
+                              <span className="text-xs font-normal opacity-80">{bal > 0 ? t('Due', 'बाकी') : t('Paid', 'भुगतान')}</span>
+                            </div>
+                          );
+                        })()}
+                      </div>
                     </CardHeader>
-                    <CardContent className="p-6">
-                    {viewingSupplier.weeklySupplies && viewingSupplier.weeklySupplies.length > 0 ? (
-                      <div className="space-y-6">
-                        {viewingSupplier.weeklySupplies.map((supply, index) => (
-                          <Card key={`${supply.week}-${index}`} className="overflow-hidden border-none shadow-sm bg-white hover:shadow-md transition-shadow">
-                            <div className="p-4 bg-gray-50 rounded-lg">
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <p className="font-semibold">{supply.week}</p>
-                                  <p className="text-sm text-gray-600">Total Qty: {supply.quantity}</p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="font-bold text-lg">₹{(supply.amount || 0).toLocaleString()}</p>
-                                  <Badge className={supply.status === "paid" ? "bg-green-100 text-green-800" : "bg-red-100 text-red-800"}>
-                                    {supply.status === "paid" ? t("Paid", "भुगतान किया गया") : t("Unpaid", "अभुगतान")}
-                                  </Badge>
-                                  {supply.status !== "paid" && (
-                                    <Button size="sm" className="ml-2 mt-2" onClick={() => {
-                                      setPayAmount(supply.amount);
-                                      setPayWeek(supply.week);
-                                      setPayDialogOpen(true);
-                                    }}>
-                                      Pay
-                                    </Button>
+
+                    <CardContent className="p-0">
+                      {(() => {
+                        const ob = viewingSupplier.openingBalance || 0;
+                        type LedgerRow = { date: string; debit: number; credit: number; label: string; type: 'opening' | 'supply' | 'charge' | 'payment' | 'week_header'; balance: number };
+
+                        const rows: Omit<LedgerRow, 'balance'>[] = [];
+
+                        // Flatten all supply items from weekly supplies
+                        (viewingSupplier.weeklySupplies || []).forEach((wk: any) => {
+                          const weekItems = wk.items || [];
+                          const weekAmount = Number(wk.amount || 0);
+
+                          if (weekItems.length === 0) {
+                            // No item breakdown — show week as one row
+                            if (weekAmount > 0) {
+                              rows.push({
+                                date: wk.date || '',
+                                debit: weekAmount,
+                                credit: 0,
+                                label: `📦 ${wk.week} — ${wk.quantity} units`,
+                                type: 'supply',
+                              });
+                            }
+                          } else {
+                            // Show every item on its own row with its actual delivery date
+                            const itemsHavePrices = weekItems.some((it: any) => Number(it.totalPrice || it.price || 0) > 0);
+                            // Per-item debit: use individual price if available, else share week total evenly
+                            const perItemFallback = weekItems.length > 0 ? weekAmount / weekItems.length : 0;
+
+                            weekItems.forEach((item: any) => {
+                              const itemDebit = itemsHavePrices
+                                ? Number(item.totalPrice || item.price || 0)
+                                : Math.round(perItemFallback);
+
+                              rows.push({
+                                date: item.dateSupplied || wk.date || '',
+                                debit: itemDebit,
+                                credit: 0,
+                                label: `📦 ${item.productName || 'Item'} — ${item.quantity} ${getUnitLabel(item.unit, language)}`,
+                                type: 'supply',
+                              });
+                            });
+                          }
+                        });
+
+                        // Payments & charges
+                        (viewingSupplier.paymentHistory || []).forEach((p: any) => {
+                          if (p.notes?.startsWith('EXTRA_CHARGE:')) {
+                            rows.push({
+                              date: p.paymentDate || '',
+                              debit: Math.abs(Number(p.amount || 0)),
+                              credit: 0,
+                              label: `🚛 ${p.notes.replace('EXTRA_CHARGE:', '').trim()}`,
+                              type: 'charge',
+                            });
+                          } else {
+                            rows.push({
+                              date: p.paymentDate || '',
+                              debit: 0,
+                              credit: Math.abs(Number(p.amount || 0)),
+                              label: `💳 ${p.paymentMethod || 'CASH'}${p.notes ? ' · ' + p.notes : ''}`,
+                              type: 'payment',
+                            });
+                          }
+                        });
+
+                        // Sort chronologically
+                        rows.sort((a, b) => {
+                          const ta = a.date ? new Date(a.date).getTime() : 0;
+                          const tb = b.date ? new Date(b.date).getTime() : 0;
+                          return ta - tb;
+                        });
+
+                        // Compute running balance
+                        let running = ob;
+                        const ledger: LedgerRow[] = [];
+
+                        // Opening balance row
+                        if (ob !== 0) {
+                          ledger.push({ date: '', debit: ob, credit: 0, label: '⬛ Opening Balance (पुराना बकाया)', type: 'opening', balance: ob });
+                          running = ob;
+                        }
+
+                        let currentWeek = '';
+
+                        rows.forEach(r => {
+                          let rWeek = '';
+                          if (r.date) {
+                             const d = new Date(r.date);
+                             if (!isNaN(d.getTime())) {
+                               const day = d.getDay();
+                               const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday is 1, Sunday is 0 -> 7
+                               const startOfWeek = new Date(d);
+                               startOfWeek.setDate(diff);
+                               const endOfWeek = new Date(startOfWeek);
+                               endOfWeek.setDate(startOfWeek.getDate() + 6);
+                               const startStr = startOfWeek.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                               const endStr = endOfWeek.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+                               rWeek = `${startStr} — ${endStr}`;
+                             }
+                          }
+
+                          if (rWeek && rWeek !== currentWeek) {
+                             ledger.push({ date: '', debit: 0, credit: 0, label: `🗓️ 7-Day Slot: ${rWeek}`, type: 'week_header', balance: running });
+                             currentWeek = rWeek;
+                          }
+
+                          running += r.debit - r.credit;
+                          ledger.push({ ...r, balance: running });
+                        });
+
+                        // Pagination Logic: Group ledger rows by week chunks
+                        const weekChunks: LedgerRow[][] = [];
+                        let currentChunk: LedgerRow[] = [];
+                        
+                        ledger.forEach((row) => {
+                          if (row.type === 'week_header') {
+                            if (currentChunk.length > 0) weekChunks.push(currentChunk);
+                            currentChunk = [row];
+                          } else {
+                            currentChunk.push(row);
+                          }
+                        });
+                        if (currentChunk.length > 0) weekChunks.push(currentChunk);
+
+                        // Calculate total pages (2 weeks per page)
+                        const weeksPerPage = 2;
+                        const totalPages = Math.max(1, Math.ceil(weekChunks.length / weeksPerPage));
+                        // Determine which chunks to show for current page
+                        // Page 1 = Last 2 chunks (newest weeks)
+                        // Page 2 = Previous 2 chunks
+                        const startChunkIdx = Math.max(0, weekChunks.length - ledgerPage * weeksPerPage);
+                        const endChunkIdx = weekChunks.length - (ledgerPage - 1) * weeksPerPage;
+                        
+                        const visibleLedger = showAllLedger ? weekChunks.flat() : weekChunks.slice(startChunkIdx, endChunkIdx).flat();
+
+                        if (ledger.length === 0) {
+                          return (
+                            <div className="text-center py-16 text-gray-400 italic">
+                              <span className="text-4xl block mb-3">📭</span>
+                              {t("No transactions yet", "अभी तक कोई लेनदेन नहीं")}
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div className="overflow-x-auto">
+                            {/* Desktop table */}
+                            <table className="w-full text-sm hidden sm:table">
+                              <thead>
+                                <tr className="bg-gray-50 border-b-2 border-gray-200">
+                                  <th className="text-left px-4 py-3 font-semibold text-gray-700 w-28">📅 {t("Date", "तारीख")}</th>
+                                  <th className="text-left px-4 py-3 font-semibold text-gray-700">📝 {t("Particulars", "विवरण")}</th>
+                                  <th className="text-right px-4 py-3 font-semibold text-red-600 w-28">🔴 {t("Debit", "उधार")}</th>
+                                  <th className="text-right px-4 py-3 font-semibold text-green-600 w-28">🟢 {t("Paid", "भुगतान")}</th>
+                                  <th className="text-right px-4 py-3 font-semibold text-indigo-700 w-32">⚖️ {t("Balance", "बकाया")}</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {visibleLedger.map((row, i) => (
+                                  <tr
+                                    key={i}
+                                    className={`border-b transition-colors ${
+                                      row.type === 'opening' ? 'bg-amber-50 hover:bg-amber-100'
+                                      : row.type === 'week_header' ? 'bg-indigo-50/80 hover:bg-indigo-100/80 font-bold'
+                                      : row.type === 'payment' ? 'bg-green-50/60 hover:bg-green-100/60'
+                                      : row.type === 'charge' ? 'bg-orange-50/60 hover:bg-orange-100/60'
+                                      : 'bg-white hover:bg-blue-50/40'
+                                    }`}
+                                  >
+                                    {row.type === 'week_header' ? (
+                                      <td className="px-4 py-3 text-indigo-800 text-center" colSpan={5}>
+                                        {row.label}
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap font-mono text-xs">
+                                          {row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-gray-800 font-medium">{row.label}</td>
+                                        <td className="px-4 py-3 text-right font-semibold text-red-600">
+                                          {row.debit > 0 ? `₹${row.debit.toLocaleString('en-IN')}` : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right font-semibold text-green-600">
+                                          {row.credit > 0 ? `₹${row.credit.toLocaleString('en-IN')}` : '—'}
+                                        </td>
+                                        <td className="px-4 py-3 text-right">
+                                          <span className={`font-bold text-sm px-2 py-0.5 rounded-md ${row.balance > 0 ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                                            ₹{Math.abs(row.balance).toLocaleString('en-IN')}
+                                            <span className="ml-1 font-normal text-[10px]">{row.balance > 0 ? 'Dr' : 'Cr'}</span>
+                                          </span>
+                                        </td>
+                                      </>
+                                    )}
+                                  </tr>
+                                ))}
+                              </tbody>
+                              {/* Footer totals — final balance from server (reliable) */}
+                              {(() => {
+                                const totalDebit = ledger.reduce((s, r) => s + r.debit, 0);
+                                const totalCredit = ledger.reduce((s, r) => s + r.credit, 0);
+                                const finalBalance = viewingSupplier.outstandingPayment || 0;
+                                return (
+                                  <tfoot>
+                                    <tr className="bg-indigo-700 text-white font-bold text-sm">
+                                      <td className="px-4 py-3" colSpan={2}>{t("Net Balance", "कुल बकाया")}</td>
+                                      <td className="px-4 py-3 text-right">₹{totalDebit.toLocaleString('en-IN')}</td>
+                                      <td className="px-4 py-3 text-right">₹{totalCredit.toLocaleString('en-IN')}</td>
+                                      <td className="px-4 py-3 text-right">
+                                        <span className={`px-2 py-0.5 rounded font-bold ${finalBalance > 0 ? 'bg-red-400 text-white' : 'bg-green-400 text-white'}`}>
+                                          ₹{Math.abs(finalBalance).toLocaleString('en-IN')} {finalBalance > 0 ? 'Dr' : 'Cr'}
+                                        </span>
+                                      </td>
+                                    </tr>
+                                  </tfoot>
+                                );
+                              })()}
+                            </table>
+
+                            {/* Mobile card list */}
+                            <div className="sm:hidden divide-y divide-gray-100">
+                              {visibleLedger.map((row, i) => (
+                                <div
+                                  key={i}
+                                  className={`px-4 py-3 ${
+                                    row.type === 'opening' ? 'bg-amber-50'
+                                    : row.type === 'week_header' ? 'bg-indigo-50 font-bold border-y border-indigo-100'
+                                    : row.type === 'payment' ? 'bg-green-50'
+                                    : row.type === 'charge' ? 'bg-orange-50'
+                                    : 'bg-white'
+                                  }`}
+                                >
+                                  {row.type === 'week_header' ? (
+                                    <div className="text-center text-indigo-800 py-1">{row.label}</div>
+                                  ) : (
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-gray-800 text-sm truncate">{row.label}</p>
+                                        <p className="text-xs text-gray-400 mt-0.5">
+                                          {row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                        </p>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        {row.debit > 0 && <p className="text-sm font-bold text-red-600">-₹{row.debit.toLocaleString('en-IN')}</p>}
+                                        {row.credit > 0 && <p className="text-sm font-bold text-green-600">+₹{row.credit.toLocaleString('en-IN')}</p>}
+                                        <p className={`text-xs font-semibold mt-1 ${row.balance > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                                          Bal: ₹{Math.abs(row.balance).toLocaleString('en-IN')} {row.balance > 0 ? 'Dr' : 'Cr'}
+                                        </p>
+                                      </div>
+                                    </div>
                                   )}
                                 </div>
-                              </div>
-                              {/* List all products supplied this week */}
-                              {Array.isArray(supply.items) && supply.items.length > 0 && (
-                                <div className="mt-2 ml-2 border-t pt-2">
-                                  <ul className="space-y-1">
-                                    {(supply.items ?? []).map((item: any, idx: number) => (
-                                      <li key={idx} className="flex items-center justify-between text-sm text-gray-700">
-                                        <span>
-                                          <span className="font-medium">{item.productName}</span>
-                                          {item.dateSupplied && (
-                                            <span className="text-[10px] text-gray-400 ml-2">
-                                              ({new Date(item.dateSupplied).toLocaleDateString()})
-                                            </span>
-                                          )}
-                                          {" "}— Qty: {item.quantity} {getUnitLabel(item.unit, language)}
-                                        </span>
-                                        {item.paymentStatus === 'COMPLETED' ? (
-                                          <Badge variant="outline" className="text-[10px] h-4 bg-green-50 text-green-600 border-green-200">Paid</Badge>
-                                        ) : (
-                                          <Badge variant="outline" className="text-[10px] h-4 bg-red-50 text-red-600 border-red-200">Unpaid</Badge>
-                                        )}
-                                      </li>
-                                    ))}
-                                  </ul>
+                              ))}
+                              
+                              {/* Mobile footer */}
+                              {(() => {
+                                const finalBalance = viewingSupplier.outstandingPayment || 0;
+                                return (
+                                  <div className="bg-indigo-700 text-white px-4 py-3 flex justify-between font-bold">
+                                    <span>{t("Net Balance", "कुल बकाया")}</span>
+                                    <span className={`${finalBalance > 0 ? 'text-red-300' : 'text-green-300'}`}>
+                                      ₹{Math.abs(finalBalance).toLocaleString('en-IN')} {finalBalance > 0 ? 'Dr' : 'Cr'}
+                                    </span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                            
+                            {/* Pagination and Show Full Ledger Controls */}
+                            <div className="mt-6 space-y-4 px-4 pt-4 border-t border-gray-100 bg-gray-50/50 rounded-b-xl">
+                              {(totalPages > 1 && !showAllLedger) && (
+                                <div className="flex items-center justify-between">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={ledgerPage >= totalPages}
+                                    onClick={() => setLedgerPage(p => p + 1)}
+                                    className="shadow-sm hover:bg-white"
+                                  >
+                                    {t("Previous", "पिछला")}
+                                  </Button>
+                                  <span className="text-sm text-gray-600 font-medium bg-white px-3 py-1 rounded-full border border-gray-100 shadow-sm">
+                                    {t("Page", "पृष्ठ")} {ledgerPage} / {totalPages}
+                                  </span>
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    disabled={ledgerPage <= 1}
+                                    onClick={() => setLedgerPage(p => p - 1)}
+                                    className="shadow-sm hover:bg-white"
+                                  >
+                                    {t("Next", "अगला")}
+                                  </Button>
                                 </div>
                               )}
+                              
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => setShowAllLedger(!showAllLedger)}
+                                className="w-full flex items-center justify-center gap-2 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-medium py-2"
+                              >
+                                {showAllLedger ? (
+                                  <>
+                                    <span>📄</span>
+                                    {t("Switch to Pagination", "पृष्ठों पर वापस जाएं")}
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>📜</span>
+                                    {t("Show Full Ledger History", "पूरा खाता इतिहास दिखाएं")}
+                                  </>
+                                )}
+                              </Button>
                             </div>
-                          </Card>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-12 text-gray-400 bg-gray-50 rounded-xl border-2 border-dashed border-gray-100 italic">
-                        {t("No supply history", "कोई आपूर्ति इतिहास नहीं")}
-                      </div>
-                    )}
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
-                  
-                  <div className="grid gap-6 md:grid-cols-2">
-                    <Card className="shadow-lg border-0 bg-white">
-                      <CardHeader className="bg-gradient-to-r from-emerald-500 to-green-600 text-white rounded-t-lg">
-                        <CardTitle className="flex items-center gap-2">
-                          <IndianRupee className="h-5 w-5" />
-                          {t("Payment History", "भुगतान इतिहास")}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.filter((p: any) => !p.notes?.startsWith('EXTRA_CHARGE:')).length > 0 ? (
-                          <div className="space-y-3">
-                             {viewingSupplier.paymentHistory
-                               .filter((p: any) => !p.notes?.startsWith('EXTRA_CHARGE:'))
-                               .map((payment, index) => (
-                               <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                                 <div>
-                                   <p className="font-semibold text-green-600">₹{(payment.amount || 0).toLocaleString()}</p>
-                                   <p className="text-xs text-gray-500">{payment.paymentDate ? new Date(payment.paymentDate).toLocaleDateString() : 'N/A'} via {payment.paymentMethod || 'CASH'}</p>
-                                 </div>
-                                 {payment.notes && <p className="text-xs text-gray-400 italic max-w-[150px] truncate">{payment.notes}</p>}
-                               </div>
-                             ))}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-gray-400 text-sm italic">
-                            {t("No payment history", "कोई भुगतान इतिहास नहीं")}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
 
-                    <Card className="shadow-lg border-0 bg-white">
-                      <CardHeader className="bg-gradient-to-r from-orange-500 to-amber-600 text-white rounded-t-lg">
-                        <CardTitle className="flex items-center gap-2">
-                          <Truck className="h-5 w-5" />
-                          {t("Extra Charges & Fares", "अतिरिक्त शुल्क और किराया")}
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="p-6">
-                        {viewingSupplier.paymentHistory && viewingSupplier.paymentHistory.filter((p: any) => p.notes?.startsWith('EXTRA_CHARGE:')).length > 0 ? (
-                          <div className="space-y-3">
-                             {viewingSupplier.paymentHistory
-                               .filter((p: any) => p.notes?.startsWith('EXTRA_CHARGE:'))
-                               .map((charge, index) => {
-                                 const chargeLabel = charge.notes?.replace('EXTRA_CHARGE:', '').trim();
-                                 return (
-                                   <div key={index} className="flex items-center justify-between p-3 bg-orange-50 border border-orange-100 rounded-lg hover:bg-orange-100 transition-colors">
-                                     <div>
-                                       <p className="font-semibold text-orange-600">🚛 +₹{Math.abs(charge.amount || 0).toLocaleString()}</p>
-                                       <p className="font-medium text-[11px] text-orange-700">{chargeLabel}</p>
-                                       <p className="text-xs text-gray-500">{charge.paymentDate ? new Date(charge.paymentDate).toLocaleDateString() : 'N/A'}</p>
-                                     </div>
-                                   </div>
-                                 );
-                               })}
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-gray-400 text-sm italic">
-                            {t("No charge history", "कोई शुल्क इतिहास नहीं")}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
                 </div>
               )}
             </TabsContent>
