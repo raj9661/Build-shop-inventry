@@ -118,6 +118,18 @@ export async function GET(req: NextRequest) {
       }
     });
 
+    const extraChargesGroups = await prisma.supplierPayment.groupBy({
+      by: ['supplierId'],
+      where: {
+        supplierId: { in: supplierIds },
+        isActive: true,
+        notes: { startsWith: 'EXTRA_CHARGE:' }
+      },
+      _sum: {
+        amount: true
+      }
+    });
+
     const totalSuppliedMap: { [id: string]: number } = {};
     totalSuppliedGroups.forEach(group => {
       totalSuppliedMap[group.supplierId.toString()] = Number(group._sum.totalAmount || 0);
@@ -127,6 +139,13 @@ export async function GET(req: NextRequest) {
       if (group.supplierId) {
         const idStr = group.supplierId.toString();
         totalSuppliedMap[idStr] = (totalSuppliedMap[idStr] || 0) + Number(group._sum.totalAmount || 0);
+      }
+    });
+
+    extraChargesGroups.forEach(group => {
+      if (group.supplierId) {
+        const idStr = group.supplierId.toString();
+        totalSuppliedMap[idStr] = (totalSuppliedMap[idStr] || 0) + Math.abs(Number(group._sum.amount || 0));
       }
     });
 

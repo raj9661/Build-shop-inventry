@@ -17,6 +17,8 @@ import HydrationFix from "@/app/components/hydration-fix"
 // Import scheduled notifications service (server-side only)
 if (typeof window === 'undefined') {
   import('./lib/scheduled-notifications');
+  // Apply global BigInt → string patch so JSON.stringify never throws on BigInt values
+  import('../lib/bigint-patch');
 }
 
 const inter = Inter({ subsets: ["latin"] })

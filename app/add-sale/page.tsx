@@ -218,6 +218,13 @@ function AddSalePage() {
     address: ""
   })
   
+  // Custom Date
+  const [customSaleDate, setCustomSaleDate] = useState(() => {
+    const d = new Date();
+    // local YYYY-MM-DD
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  });
+
   // Transport-related state
   const [transportFare, setTransportFare] = useState<number>(0)
   const [vehicleNumber, setVehicleNumber] = useState("")
@@ -386,7 +393,7 @@ function AddSalePage() {
           soldQuantity: parseFloat(tmtQuantity),
           unitType: tmtUnit,
           pricePerUnit: parseFloat(tmtPricePerUnit),
-          saleDate: new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000).toISOString(),
+          saleDate: new Date(customSaleDate).toISOString(),
           customerName: customerType === 'new' ? newCustomer.name : selectedCustomer?.name,
           shopId: currentShopId,
           paymentMethod: paymentMethod,
@@ -1985,6 +1992,22 @@ function AddSalePage() {
                     })()}
                   </div>
 
+                  {/* TMT Date Picker for SUPER DUPER ADMIN */}
+                  {userRole === 'SUPER_DUPER_ADMIN' && (
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-200 mt-4">
+                      <Label htmlFor="tmtCustomSaleDate" className="text-red-700 font-bold mb-2 block">
+                        {t("Override Sale Date (Admin Only)", "बिक्री तिथि (केवल एडमिन)")}
+                      </Label>
+                      <Input
+                        id="tmtCustomSaleDate"
+                        type="date"
+                        value={customSaleDate}
+                        onChange={(e) => setCustomSaleDate(e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                  )}
+
                   {/* TMT Sale Submit Button */}
                   <div className="sticky bottom-4 z-10 pt-4 bg-white/80 backdrop-blur-sm -mx-4 px-4 border-t mt-4 md:static md:bg-transparent md:p-0 md:m-0 md:border-0 shadow-lg md:shadow-none pb-4 md:pb-0 safe-pb-4">
                     <Button
@@ -2665,6 +2688,22 @@ function AddSalePage() {
                       );
                     })()}
                   </div>
+
+                  {/* General Date Picker for SUPER DUPER ADMIN */}
+                  {userRole === 'SUPER_DUPER_ADMIN' && (
+                    <div className="bg-red-50 p-4 rounded-xl border border-red-200 mt-4">
+                      <Label htmlFor="generalCustomSaleDate" className="text-red-700 font-bold mb-2 block">
+                        {t("Override Sale Date (Admin Only)", "बिक्री तिथि (केवल एडमिन)")}
+                      </Label>
+                      <Input
+                        id="generalCustomSaleDate"
+                        type="date"
+                        value={customSaleDate}
+                        onChange={(e) => setCustomSaleDate(e.target.value)}
+                        className="bg-white"
+                      />
+                    </div>
+                  )}
 
                   {/* Bill Summary */}
                   {/* Submit Button */}

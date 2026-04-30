@@ -103,9 +103,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     console.log(`🔍 [Supplier Detail API] Found ${tmtEntries.length} TMT entries`);
 
-    // Process enrichment logic
+    // Calculate extra charges (fares)
+    const totalExtraCharges = payments
+      .filter((p: any) => p.notes?.startsWith('EXTRA_CHARGE:'))
+      .reduce((sum, p) => sum + Math.abs(Number(p.amount || 0)), 0);
+
+    // Process enrichment logic (Total Supplied now includes physical stock + TMT + Extra Charges)
     const totalSupplied = stockEntries.reduce((sum, e) => sum + Number(e.totalAmount), 0) + 
-                          tmtEntries.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0);
+                          tmtEntries.reduce((sum, e) => sum + Number(e.totalAmount || 0), 0) +
+                          totalExtraCharges;
     
     // Determine last supply date (either from regular stock or TMT)
     const stockLastDate = stockEntries.length > 0 ? stockEntries[0].entryDate : null;
@@ -130,6 +136,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         productName: e.product?.name || '',
         quantity: Number(e.quantity),
         unit: e.product?.unit || '',
+        totalPrice: Number(e.totalAmount || 0),
         dateSupplied: e.entryDate instanceof Date ? e.entryDate.toISOString() : e.entryDate,
         paymentStatus: e.paymentStatus
       });
@@ -150,6 +157,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         productName: productName || 'TMT Bar',
         quantity: Number(e.availableQtyKg),
         unit: 'kg',
+        totalPrice: Number(e.totalAmount || 0),
         dateSupplied: e.lastUpdated instanceof Date ? e.lastUpdated.toISOString() : e.lastUpdated,
         paymentStatus: 'PENDING'
       });

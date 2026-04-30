@@ -625,6 +625,10 @@ model Sale {
   @@index([paymentStatus])
   @@index([status])
   @@index([isActive])
+  // Composite indexes for common query patterns
+  @@index([shopId, saleDate])           // Dashboard + sales list by shop & date
+  @@index([shopId, paymentStatus])      // Filter active/completed by shop
+  @@index([shopId, isActive, saleDate]) // Ultra-fast dashboard range queries
 }
 
 model SaleItem {
@@ -998,6 +1002,7 @@ model UserShopAssignment {
   @@index([shopId])
   @@index([userId])
   @@index([active])
+  @@index([userId, active])  // Hot path: getAuthContext cache-miss query
 }
 
 model LoginLog {

@@ -1295,6 +1295,8 @@ export default function CustomerLedger() {
                   type="date"
                   value={newEntry.date}
                   onChange={(e) => setNewEntry({ ...newEntry, date: e.target.value })}
+                  disabled={userRole !== 'SUPER_DUPER_ADMIN'}
+                  className={userRole !== 'SUPER_DUPER_ADMIN' ? 'bg-gray-100 cursor-not-allowed' : ''}
                 />
               </div>
               <div>

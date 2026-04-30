@@ -1,48 +1,60 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PaymentStatus } from '@prisma/client';
-import { validateToken } from '@/app/lib/tokenUtils';
-import { getShopFilter } from '@/app/lib/shopAccessUtils';
-import { serializeBigInt } from '../../lib/utils';
+import { prisma } from '@/lib/prisma';
+import { PaymentStatus } from '@prisma/client';
+import { getAuthContext, assertShopAccess, getShopWhereClause, invalidateShopDashboard } from '@/lib/authContext';
 import { createPurchaseEntry, createPaymentEntry } from '@/app/lib/ledgerUtils';
 import { updateTmtInventory, convertToKg } from '@/app/lib/tmtUtils';
 import ultraFastDashboard from '@/app/lib/ultra-fast-dashboard';
 
-const prisma = new PrismaClient();
+// Global BigInt patch — ensures JSON.stringify handles BigInt without per-response wrappers
+import '@/lib/bigint-patch';
 
-// GET - List all sales (filtered by user's shop access)
 export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return NextResponse.json({ success: false, message: 'Access token required' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const decoded = await validateToken(token);
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
+    // Auth + RBAC: Redis cache → 0 extra DB calls on hit
+    const ctx = await getAuthContext(req);
+    if (!ctx) {
+      return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
 
-    // Get shop filter based on user's access
-    const shopFilter = await getShopFilter(token);
-
-    // Build where clause with shop filter
-    const whereClause: any = {};
-    if (Object.keys(shopFilter).length > 0) {
-      Object.assign(whereClause, shopFilter);
-    }
+    // Build tenant-safe where clause from cached shopIds
+    const shopClause = getShopWhereClause(ctx);
 
     const sales = await prisma.sale.findMany({
-      where: whereClause,
-      include: {
+      where: { ...shopClause, isActive: true },
+      select: {
+        id: true,
+        shopId: true,
+        saleDate: true,
+        totalAmount: true,
+        finalAmount: true,
+        discount: true,
+        transportFare: true,
+        vehicleNumber: true,
+        driverName: true,
+        paymentMethod: true,
+        paymentStatus: true,
+        notes: true,
+        status: true,
+        updatedAt: true,
+        createdAt: true,
         customer: { select: { name: true, phone: true } },
         shop: { select: { name: true, location: true } },
         items: {
-          include: {
-            product: { select: { name: true, sku: true } }
-          }
+          where: { isActive: true },
+          select: {
+            id: true,
+            quantity: true,
+            unitName: true,
+            unit: true,
+            conversionCft: true,
+            unitPrice: true,
+            totalPrice: true,
+            product: { select: { name: true, sku: true } },
+          },
         },
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { saleDate: 'desc' },
     });
 
     // Map Prisma payment method to frontend format
@@ -214,7 +226,7 @@ export async function GET(req: NextRequest) {
       return mappedSale
     });
 
-    return NextResponse.json({ success: true, data: { sales: serializeBigInt(mappedSales) } });
+    return NextResponse.json({ success: true, data: { sales: mappedSales } });
   } catch (error) {
     console.error('Get sales error:', error);
     return NextResponse.json({ success: false, message: 'Failed to fetch sales' }, { status: 500 });
@@ -224,14 +236,9 @@ export async function GET(req: NextRequest) {
 // POST - Create a new sale
 export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const ctx = await getAuthContext(req);
+    if (!ctx) {
       return NextResponse.json({ success: false, message: 'Access token required' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const decoded = await validateToken(token);
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
     }
     const body = await req.json();
     const {
@@ -570,21 +577,15 @@ export async function POST(req: NextRequest) {
       return createdSale;
     });
 
-    // Automatically clear dashboard cache for all users of this shop
+    // Invalidate dashboard cache for this shop (non-blocking)
+    invalidateShopDashboard(BigInt(shopId)).catch(() => {});
     try {
       await ultraFastDashboard.clearAllShopDashboardCaches(shopId);
     } catch (e) {
       console.error('Failed to clear all shop dashboard caches after sale creation:', e);
     }
 
-    // Fix BigInt serialization
-    function replacer(key: string, value: any) {
-      return typeof value === 'bigint' ? value.toString() : value;
-    }
-    return new NextResponse(
-      JSON.stringify({ success: true, data: { sale } }, replacer),
-      { status: 200, headers: { 'Content-Type': 'application/json' } }
-    );
+    return NextResponse.json({ success: true, data: { sale } });
   } catch (error) {
     console.error('Create sale error:', error);
     return NextResponse.json({ success: false, message: 'Failed to create sale' }, { status: 500 });
@@ -594,14 +595,9 @@ export async function POST(req: NextRequest) {
 // PATCH - Update sale status (completion/cancellation)
 export async function PATCH(req: NextRequest) {
   try {
-    const authHeader = req.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    const ctx = await getAuthContext(req);
+    if (!ctx) {
       return NextResponse.json({ success: false, message: 'Access token required' }, { status: 401 });
-    }
-    const token = authHeader.substring(7);
-    const decoded = await validateToken(token);
-    if (!decoded) {
-      return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
     }
 
     const body = await req.json();

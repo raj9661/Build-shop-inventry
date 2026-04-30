@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
-import { validateToken } from '@/app/lib/tokenUtils';
+import { validateToken, generateTokenPair, blacklistToken } from '@/app/lib/tokenUtils';
 import emailService from '@/app/lib/emailService';
 import redisService from '@/app/lib/redis-service';
+import { redis } from '@/lib/redis';
 import rateLimiter from '@/app/lib/rate-limiter';
 import { loginSchema, login2FASchema, passwordChangeSchema, passwordChange2FASchema, validateInput } from '@/app/lib/validation-schemas';
-import PaginationService from '@/app/lib/pagination-service';
 import { deviceFingerprintService } from '@/app/lib/device-fingerprint-service';
 import { emailService as newEmailService } from '@/app/lib/email-service';
-
-const prisma = new PrismaClient();
+import { invalidateUserContext } from '@/lib/authContext';
 
 // Generate OTP with crypto-secure random
 function generateOTP(): string {
@@ -107,75 +105,32 @@ export async function POST(req: NextRequest) {
 
     const { email, password, otp, deviceInfo } = validation.data;
 
-    // Check Redis cache for user data first
-    const userCacheKey = `user:${email.toLowerCase()}`;
-    let user = await redisService.get<any>(userCacheKey);
+    // Single DB query — no duplicate parallel fetch
+    const userCacheKey = `user:auth:${email.toLowerCase()}`;
+    let cachedMeta = await redisService.get<any>(userCacheKey);
+    
+    // Always fetch password from DB (never cache it)
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase() },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        password: true,
+        role: true,
+        isActive: true,
+      },
+    });
 
-    if (!user) {
-      console.log(`🔍 [${requestId}] Cache miss - fetching from database`);
-      
-      // Parallel database queries for maximum performance
-      const [userResult, userExists] = await Promise.all([
-        prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            phone: true,
-            password: true,
-            role: true,
-            isActive: true,
-            createdAt: true,
-            lastLoginAt: true
-          }
-        }),
-        prisma.user.findUnique({
-          where: { email: email.toLowerCase() },
-          select: { id: true, isActive: true }
-        })
-      ]);
-
-      if (!userResult || !userResult.isActive) {
-        await rateLimiter.recordAttempt('login', ipAddress, false);
-        await logFailedLogin(email, ipAddress, userAgent, 'User not found or inactive');
-        return NextResponse.json({
-          success: false,
-          message: 'Invalid credentials or user inactive',
-          code: 'INVALID_CREDENTIALS'
-        }, { status: 401 });
-      }
-
-      user = userResult;
-      
-      // Cache user data for 5 minutes (excluding password)
-      const userForCache = { 
-        ...user,
-        id: Number(user.id) // Convert BigInt to Number for caching
-      };
-      delete userForCache.password;
-      await redisService.set(userCacheKey, userForCache, 300);
-    } else {
-      console.log(`🔍 [${requestId}] Cache hit - using cached user data`);
-      
-      // For cached users, we need to fetch password separately
-      const userWithPassword = await prisma.user.findUnique({
-        where: { email: email.toLowerCase() },
-        select: { password: true, isActive: true }
-      });
-      
-      if (!userWithPassword || !userWithPassword.isActive) {
-        await rateLimiter.recordAttempt('login', ipAddress, false);
-        await logFailedLogin(email, ipAddress, userAgent, 'User not found or inactive');
-        await redisService.del(userCacheKey);
-        return NextResponse.json({
-          success: false,
-          message: 'Invalid credentials or user inactive',
-          code: 'INVALID_CREDENTIALS'
-        }, { status: 401 });
-      }
-      
-      user.password = userWithPassword.password;
+    if (!user || !user.isActive) {
+      await rateLimiter.recordAttempt('login', ipAddress, false);
+      await logFailedLogin(email, ipAddress, userAgent, 'User not found or inactive');
+      return NextResponse.json({
+        success: false,
+        message: 'Invalid credentials or user inactive',
+        code: 'INVALID_CREDENTIALS'
+      }, { status: 401 });
     }
 
     // Verify password with optimized bcrypt
@@ -284,98 +239,37 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Generate JWT tokens with optimized settings
-    const tokenPayload = {
-      userId: user.id,
-      email: user.email,
-      role: user.role,
-      requestId
-    };
+    // Generate short-lived access token (15 min) + long refresh token (7d)
+    // Tokens include jti for O(1) Redis blacklisting on logout
+    const { accessToken: token, refreshToken } = generateTokenPair(
+      user.id,
+      user.email,
+      user.role,
+    );
 
-    // Decode base64 JWT secrets if they're encoded
-    let jwtSecret = process.env.JWT_SECRET as string;
-    let jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET as string;
-    
-    try {
-      if (jwtSecret.match(/^[A-Za-z0-9+/]+=*$/)) {
-        jwtSecret = Buffer.from(jwtSecret, 'base64').toString('utf-8');
-        console.log('🔍 [Auth] Decoded base64 JWT_SECRET');
-      }
-      if (jwtRefreshSecret.match(/^[A-Za-z0-9+/]+=*$/)) {
-        jwtRefreshSecret = Buffer.from(jwtRefreshSecret, 'base64').toString('utf-8');
-        console.log('🔍 [Auth] Decoded base64 JWT_REFRESH_SECRET');
-      }
-    } catch (decodeError) {
-      console.log('🔍 [Auth] JWT secrets are not base64 encoded, using as-is');
-    }
-
-    const [token, refreshToken] = await Promise.all([
-      jwt.sign(tokenPayload, jwtSecret, {
-        expiresIn: '24h',
-        issuer: 'building-materials-inventory',
-        audience: 'building-materials-users',
-        algorithm: 'HS256'
-      }),
-      jwt.sign(
-        { userId: user.id, type: 'refresh', requestId },
-        jwtRefreshSecret,
-        {
-          expiresIn: '7d',
-          issuer: 'building-materials-inventory',
-          audience: 'building-materials-users',
-          algorithm: 'HS256'
-        }
-      )
-    ]);
-
-    console.log('🔍 [Auth] Generated JWT token:', {
-      tokenLength: token.length,
-      tokenStart: token.substring(0, 20) + '...',
-      tokenEnd: '...' + token.substring(token.length - 20),
-      payload: tokenPayload
-    });
-
-    // Parallel operations for maximum performance
+    // Log login + fetch assigned shops in parallel (fire-and-forget log)
     const [loginLog, assignedShops] = await Promise.all([
-      // Log login activity
       prisma.loginLog.create({
-        data: {
-          userId: user.id,
-          ipAddress,
-          userAgent,
-          success: true
-        }
+        data: { userId: user.id, ipAddress, userAgent, success: true },
       }),
-      
-      // Get user's assigned shops with Redis caching
       (async () => {
-        const shopAssignmentsKey = `shop_assignments:${user.id}`;
-        let shops = await redisService.get<any[]>(shopAssignmentsKey);
+        const cacheKey = `shop_assignments:${user.id}`;
+        const cached = await redis.get<any[]>(cacheKey);
+        if (cached) return cached;
 
-        if (!shops) {
-          shops = user.role === 'SUPER_DUPER_ADMIN' 
-            ? await prisma.shop.findMany({
-                where: { isActive: true },
-                select: { id: true, name: true, location: true }
-              })
-            : await prisma.userShopAssignment.findMany({
-                where: {
-                  userId: user.id,
-                  active: true
-                },
-                include: {
-                  shop: {
-                    select: { id: true, name: true, location: true }
-                  }
-                }
-              }).then(assignments => assignments.map(assignment => assignment.shop));
-          
-          // Cache shop assignments for 10 minutes
-          await redisService.set(shopAssignmentsKey, shops, 600);
-        }
-        
+        const shops = user.role === 'SUPER_DUPER_ADMIN'
+          ? await prisma.shop.findMany({
+              where: { createdBy: user.id, isActive: true },
+              select: { id: true, name: true, location: true },
+            })
+          : await prisma.userShopAssignment.findMany({
+              where: { userId: user.id, active: true },
+              select: { shop: { select: { id: true, name: true, location: true } } },
+            }).then((a) => a.map((x) => x.shop));
+
+        await redis.set(cacheKey, shops, 600);
         return shops;
-      })()
+      })(),
     ]);
 
     // Update lastLogin timestamp asynchronously (don't wait for it)
@@ -442,48 +336,20 @@ export async function DELETE(req: NextRequest) {
     }
 
     const token = authHeader.substring(7);
+
+    // Blacklist the token in Redis (O(1), no DB write)
+    await blacklistToken(token);
+
     const decoded = await validateToken(token);
-    
-    if (!decoded) {
-      return NextResponse.json({
-        success: false,
-        message: 'Invalid token',
-        code: 'TOKEN_INVALID'
-      }, { status: 401 });
-    }
+    const userId = decoded?.userId;
 
-    const body = await req.json();
-    const { loginId } = body;
-
-    // Parallel operations
+    // Clear user caches in parallel (best-effort)
     await Promise.all([
-      // Log logout event asynchronously
-      loginId ? prisma.loginLog.create({
-        data: {
-          userId: decoded.userId,
-          ipAddress: req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'Unknown',
-          userAgent: req.headers.get('user-agent') || 'Unknown',
-          success: false,
-          failureReason: 'logged_out'
-        }
-      }).catch(error => {
-        console.error('Failed to log logout event:', error);
-      }) : Promise.resolve(),
-
-      // Clear all user-related caches
-      Promise.all([
-        redisService.del(`user:${decoded.email}`),
-        redisService.del(`shop_assignments:${decoded.userId}`),
-        redisService.delPattern(`otp:${decoded.email.toLowerCase()}`)
-      ]).catch(error => {
-        console.error('Failed to clear cache:', error);
-      })
+      userId ? redis.del(`user:ctx:${userId}`, `shop_assignments:${userId}`) : Promise.resolve(),
+      decoded?.email ? redis.del(`user:auth:${decoded.email.toLowerCase()}`) : Promise.resolve(),
     ]);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Logout successful'
-    });
+    return NextResponse.json({ success: true, message: 'Logout successful' });
 
   } catch (error) {
     console.error('Logout error:', error);
@@ -563,46 +429,12 @@ export async function PUT(req: NextRequest) {
       }, { status: 401 });
     }
 
-    // Generate new tokens in parallel
-    // Decode base64 JWT secrets if they're encoded
-    let jwtSecret = process.env.JWT_SECRET as string;
-    let jwtRefreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET as string;
-    
-    try {
-      if (jwtSecret.match(/^[A-Za-z0-9+/]+=*$/)) {
-        jwtSecret = Buffer.from(jwtSecret, 'base64').toString('utf-8');
-      }
-      if (jwtRefreshSecret.match(/^[A-Za-z0-9+/]+=*$/)) {
-        jwtRefreshSecret = Buffer.from(jwtRefreshSecret, 'base64').toString('utf-8');
-      }
-    } catch (decodeError) {
-      // Use as-is if not base64
-    }
-
-    const [newToken, newRefreshToken] = await Promise.all([
-      jwt.sign(
-        {
-          userId: user.id,
-          email: user.email,
-          role: user.role
-        },
-        jwtSecret,
-        {
-          expiresIn: '24h',
-          issuer: 'building-materials-inventory',
-          audience: 'building-materials-users'
-        }
-      ),
-      jwt.sign(
-        { userId: user.id, type: 'refresh' },
-        jwtRefreshSecret,
-        {
-          expiresIn: '7d',
-          issuer: 'building-materials-inventory',
-          audience: 'building-materials-users'
-        }
-      )
-    ]);
+    // Generate new token pair using shared helper (15m access + 7d refresh)
+    const { accessToken: newToken, refreshToken: newRefreshToken } = generateTokenPair(
+      user.id,
+      user.email,
+      user.role,
+    );
 
     return NextResponse.json({
       success: true,
