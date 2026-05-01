@@ -387,17 +387,15 @@ export async function POST(request: NextRequest) {
       if (finalCustomerId) {
         console.log(`Creating ledger entries for TMT Sale #${sale.id}`);
         // Purchase Entry
-        const isCompleted = (paymentStatus === 'PAID' || paidAmount >= totalAmount);
-        if (isCompleted) {
-          await createPurchaseEntry(tx, {
-            customerId: BigInt(finalCustomerId),
-            amount: totalAmount,
-            date: new Date(saleDate),
-            description: `TMT Sale #${sale.id}`,
-            saleId: sale.id,
-            shopId: BigInt(parseInt(shopId))
-          });
-        }
+        // Always create a debit ledger entry for the full bill, and store paid/due in the sale record only (matching regular sales)
+        await createPurchaseEntry(tx, {
+          customerId: BigInt(finalCustomerId),
+          amount: totalAmount,
+          date: new Date(saleDate),
+          description: `TMT Sale #${sale.id}`,
+          saleId: sale.id,
+          shopId: BigInt(parseInt(shopId))
+        });
 
         // Payment Entry
         if (paidAmount > 0) {

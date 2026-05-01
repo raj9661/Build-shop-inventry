@@ -18,6 +18,7 @@ import {
   PanelLeft,
   Store,
   Languages,
+  FileImage,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/hooks/use-language"
@@ -122,6 +123,7 @@ export function CollapsibleSidebar() {
     { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN'] },
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+    { href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN'] },
     { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
   ]
 

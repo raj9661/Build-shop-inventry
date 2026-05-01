@@ -318,7 +318,9 @@ function AddSalePage() {
         quantity: parseFloat(tmtQuantity),
         unitType: tmtUnit,
         pricePerUnit: parseFloat(tmtPricePerUnit),
-        totalAmount: parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit)
+        totalAmount: parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit),
+        costPricePerKg: selectedTmtProduct.costPricePerKg || 0,
+        requiredKg: requiredKg
       }
 
       setTmtSaleItems(prev => [...prev, newTmtItem])
@@ -343,15 +345,25 @@ function AddSalePage() {
 
   // Handle TMT sale submission
   const handleTmtSaleSubmit = async () => {
-    if (!selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit) {
-      toast.error('Please fill in all TMT product details')
-      return
-    }
+    // Build all items: tmtSaleItems (added via Add Item) + current form (if filled)
+    const currentFormItem = (selectedTmtProduct && tmtQuantity && tmtPricePerUnit && parseFloat(tmtPricePerUnit) > 0)
+      ? [{
+          productId: selectedTmtProduct.id,
+          productName: selectedTmtProduct.productName,
+          company: selectedTmtProduct.company?.name,
+          size: selectedTmtProduct.size?.sizeMm,
+          quantity: parseFloat(tmtQuantity),
+          unitType: tmtUnit,
+          pricePerUnit: parseFloat(tmtPricePerUnit),
+          totalAmount: parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit)
+        }]
+      : [];
 
-    // Validate price is set
-    if (parseFloat(tmtPricePerUnit) <= 0) {
-      toast.error('Please enter a valid selling price')
-      return
+    const allItems = [...tmtSaleItems, ...currentFormItem];
+
+    if (allItems.length === 0) {
+      toast.error('Please add at least one TMT product to the sale');
+      return;
     }
 
     if (!selectedCustomer && customerType === 'existing') {
@@ -393,7 +405,7 @@ function AddSalePage() {
           soldQuantity: parseFloat(tmtQuantity),
           unitType: tmtUnit,
           pricePerUnit: parseFloat(tmtPricePerUnit),
-          saleDate: new Date(customSaleDate).toISOString(),
+          saleDate: customSaleDate ? `${customSaleDate}T00:00:00.000Z` : new Date().toISOString(),
           customerName: customerType === 'new' ? newCustomer.name : selectedCustomer?.name,
           shopId: currentShopId,
           paymentMethod: paymentMethod,
@@ -1023,7 +1035,7 @@ function AddSalePage() {
 
   // Calculate totals
   const subtotal = isTmtMode
-    ? (selectedTmtProduct && tmtQuantity && tmtPricePerUnit ? parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit) : 0)
+    ? tmtSaleItems.reduce((sum, item) => sum + item.totalAmount, 0) + (selectedTmtProduct && tmtQuantity && tmtPricePerUnit ? parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit) : 0)
     : saleItems.reduce((sum, item) => sum + (parseQuantity(item.quantity.toString()) * (item.price || 0)), 0)
   const discountAmount = discountType === 'percent' ? (subtotal * discount) / 100 : discount
   const cgstPercent = tax / 2
@@ -1037,12 +1049,21 @@ function AddSalePage() {
     paymentMethod === "loan" ? 0 : finalAmount
   const dueAmount = finalAmount - amountPaid
   const totalCost = isTmtMode
-    ? (selectedTmtProduct && tmtQuantity ? (() => {
-      const quantity = parseFloat(tmtQuantity)
-      const costPerKg = selectedTmtProduct.costPricePerKg || 0
-      const requiredKg = convertToKg(quantity, tmtUnit as any, selectedTmtProduct)
-      return costPerKg * requiredKg
-    })() : 0)
+    ? (() => {
+        let cost = 0;
+        // 1. Add cost of all items in the tmtSaleItems list
+        tmtSaleItems.forEach(item => {
+          cost += (item.costPricePerKg || 0) * (item.requiredKg || 0);
+        });
+        // 2. Add cost of currently selected form product (if any)
+        if (selectedTmtProduct && tmtQuantity) {
+          const quantity = parseFloat(tmtQuantity)
+          const costPerKg = selectedTmtProduct.costPricePerKg || 0
+          const requiredKg = convertToKg(quantity, tmtUnit as any, selectedTmtProduct)
+          cost += costPerKg * requiredKg
+        }
+        return cost;
+      })()
     : saleItems.reduce((sum, item) => {
       const product = products.find((p: any) => Number(p.id) === Number(item.productId))
       const itemQty = parseQuantity(item.quantity.toString())
@@ -1184,9 +1205,8 @@ function AddSalePage() {
 
     setIsSubmitting(true)
     try {
-    const now = new Date();
-    // Record saleDate as midnight of the local day in UTC to prevent timezone shifts
-    const saleDate = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())).toISOString();
+    // Record saleDate as midnight UTC to prevent any timezone shifts during parsing
+    const saleDate = customSaleDate ? `${customSaleDate}T00:00:00.000Z` : new Date().toISOString();
       const saleData: any = {
         customerId: selectedCustomer?.id,
         shopId: currentShopId,
@@ -1784,7 +1804,75 @@ function AddSalePage() {
                     </div>
                   )}
 
-                  {/* Payment Method for TMT Sale */}
+                  {/* ── Add Item button + Added items list ─────────────── */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-gray-700">Items in this Sale</h4>
+                      <button
+                        type="button"
+                        onClick={addTmtItemToSale}
+                        disabled={!selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit}
+                        className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                        Add Item
+                      </button>
+                    </div>
+
+                    {tmtSaleItems.length > 0 && (
+                      <div className="rounded-xl border border-indigo-100 overflow-hidden">
+                        <table className="min-w-full text-sm">
+                          <thead className="bg-indigo-50">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-semibold text-indigo-700">Product</th>
+                              <th className="px-3 py-2 text-left font-semibold text-indigo-700">Qty</th>
+                              <th className="px-3 py-2 text-left font-semibold text-indigo-700">Rate</th>
+                              <th className="px-3 py-2 text-right font-semibold text-indigo-700">Total</th>
+                              <th className="px-2 py-2"></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tmtSaleItems.map((item: any, idx: number) => (
+                              <tr key={idx} className="border-t border-indigo-50 hover:bg-indigo-50/40">
+                                <td className="px-3 py-2 font-medium">
+                                  {item.productName}
+                                  {item.company && <span className="ml-1 text-xs text-gray-500">({item.company} {item.size}mm)</span>}
+                                </td>
+                                <td className="px-3 py-2">{item.quantity} {item.unitType}</td>
+                                <td className="px-3 py-2">₹{item.pricePerUnit}</td>
+                                <td className="px-3 py-2 text-right font-semibold text-green-700">₹{item.totalAmount.toFixed(2)}</td>
+                                <td className="px-2 py-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTmtItem(idx)}
+                                    className="text-red-400 hover:text-red-600 transition"
+                                    title="Remove item"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                          <tfoot className="bg-gray-50 font-semibold">
+                            <tr>
+                              <td colSpan={3} className="px-3 py-2 text-gray-600">Items total</td>
+                              <td className="px-3 py-2 text-right text-green-700">
+                                ₹{tmtSaleItems.reduce((s: number, i: any) => s + i.totalAmount, 0).toFixed(2)}
+                              </td>
+                              <td />
+                            </tr>
+                          </tfoot>
+                        </table>
+                      </div>
+                    )}
+
+                    {tmtSaleItems.length === 0 && !selectedTmtProduct && (
+                      <p className="text-xs text-gray-400 italic">Select a product above and click "Add Item" to add multiple TMT types to one sale.</p>
+                    )}
+                  </div>
+
+                  {/* ── Payment section ─────────────────────────────────── */}
                   <div className="space-y-4">
                     <h3 className="text-lg font-semibold">{t("Payment Information", "भुगतान की जानकारी")}</h3>
 

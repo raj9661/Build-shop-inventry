@@ -28,7 +28,7 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
     address: "123 Main Road, City, State, 123456",
     phone: "+91-9876543210"
   };
-  const [billDate, setBillDate] = useState(getInitialDate(sale.date));
+  const [billDate, setBillDate] = useState(getInitialDate(sale.saleDate));
   const handlePrint = () => {
     window.print()
   }

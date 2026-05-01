@@ -17,7 +17,8 @@ import {
     Store,
     Languages,
     Menu,
-    LogOut
+    LogOut,
+    FileImage
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/hooks/use-language"
@@ -53,6 +54,7 @@ export function MobileNav() {
         { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN'] },
         { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
         { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+        { href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN'] },
         { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
     ]
 
@@ -75,7 +77,7 @@ export function MobileNav() {
                         <span className="sr-only">Toggle menu</span>
                     </Button>
                 </SheetTrigger>
-                <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0 flex flex-col">
+                <SheetContent side="left" className="w-[300px] sm:w-[400px] p-0 flex flex-col h-full max-h-screen">
                     <SheetHeader className="p-4 border-b text-left">
                         <SheetTitle className="flex items-center gap-2">
                             <Package className="h-6 w-6" />
@@ -96,7 +98,7 @@ export function MobileNav() {
                         </div>
                     )}
 
-                    <div className="flex-1 overflow-y-auto py-4">
+                    <div className="flex-1 overflow-y-auto py-4 min-h-0">
                         <nav className="grid gap-1 px-2">
                             {navItems.map((item) => (
                                 <Link

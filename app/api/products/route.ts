@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 import { serializeBigInt } from '@/app/lib/serializationUtils';
 
-const prisma = new PrismaClient();
 
 // GET - List all products (filtered by user's shop access)
 export async function GET(req: NextRequest) {
@@ -26,14 +25,6 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const shopIdParam = searchParams.get('shopId');
     let whereClause: any = { isActive: true };
-    
-    console.log('🔍 Products API - User role:', decoded.role);
-    console.log('🔍 Products API - User ID:', decoded.userId);
-    console.log('🔍 Products API - Requested shopId:', shopIdParam);
-    console.log('🔍 Products API - Shop filter:', shopFilter);
-    console.log('🔍 Products API - Shop filter keys:', Object.keys(shopFilter));
-    console.log('🔍 Products API - Shop filter type:', typeof shopFilter);
-    console.log('🔍 Products API - Shop filter length:', Object.keys(shopFilter).length);
     
     if (shopIdParam) {
       const shopId = parseInt(shopIdParam);
@@ -70,9 +61,7 @@ export async function GET(req: NextRequest) {
         
         if (hasAccess) {
           whereClause.shopId = shopId;
-          console.log('✅ Products API - Access granted for shopId:', shopId);
         } else {
-          console.log('❌ Products API - Access denied for shopId:', shopId);
           return NextResponse.json({ success: false, message: 'You do not have access to this shop' }, { status: 403 });
         }
       }
@@ -89,15 +78,10 @@ export async function GET(req: NextRequest) {
         });
         const shopIds = createdShops.map(shop => Number(shop.id));
         whereClause.shopId = { in: shopIds };
-        console.log('🔍 Products API - SUPER_DUPER_ADMIN shop filter - shopIds:', shopIds);
       } else if (shopFilter.shopId) {
-        // For other roles, apply shopId filter directly
         whereClause.shopId = shopFilter.shopId;
-        console.log('🔍 Products API - Applied shopId filter:', shopFilter.shopId);
       }
     }
-
-    console.log('🔍 Products API - Final whereClause:', whereClause);
 
     const products = await prisma.product.findMany({ 
       where: whereClause,
@@ -125,43 +109,6 @@ export async function GET(req: NextRequest) {
         }
       }
     });
-    
-    console.log('🔍 Products API - Found products:', products.length);
-    console.log('🔍 Products API - Product names:', products.map(p => p.name));
-    console.log('🔍 Products API - Sample product:', products[0]);
-    console.log('🔍 Products API - Timestamp:', new Date().toISOString());
-    
-    // Debug: Log stock quantities for first few products
-    if (products.length > 0) {
-      console.log('🔍 Products API - Stock quantities:', products.slice(0, 5).map(p => ({
-        id: p.id,
-        name: p.name,
-        stockQuantity: p.stockQuantity,
-        category: p.category?.name,
-        type: p.type?.name
-      })));
-    }
-    
-    // Debug: Check what shops have products
-    if (products.length === 0) {
-      const allProducts = await prisma.product.findMany({
-        where: { isActive: true },
-        select: { id: true, name: true, shopId: true },
-        take: 10
-      });
-      console.log('🔍 Products API - Debug: All products in database:', allProducts.map(p => ({
-        id: p.id,
-        name: p.name,
-        shopId: p.shopId
-      })));
-      
-      const shopsWithProducts = await prisma.product.groupBy({
-        by: ['shopId'],
-        where: { isActive: true },
-        _count: { shopId: true }
-      });
-      console.log('🔍 Products API - Debug: Shops with products:', shopsWithProducts);
-    }
 
     // Fetch today's daily rates for all products
     const today = new Date();
@@ -179,49 +126,50 @@ export async function GET(req: NextRequest) {
     });
     const dailyRateMap = new Map(dailyRates.map(dr => [dr.productId, dr.price]));
 
-    // Use shared serialization utility
+    // For products with no DailyProductPrice today, fall back to the latest StockEntry unitPrice.
+    // This ensures Add Sale always shows the price from the most recently arrived stock batch.
+    const productsWithoutDailyRate = productIds.filter(id => !dailyRateMap.has(id));
+    let latestStockPriceMap = new Map<bigint, any>();
 
-    // Attach dailyRate and the latest conversion CFT to each product and serialize BigInt fields
+    if (productsWithoutDailyRate.length > 0) {
+      // One query: latest stock entry per product using groupBy is not supported in Prisma CockroachDB
+      // so we fetch latest entry per product in a single findMany + group in JS
+      const latestStockEntries = await prisma.stockEntry.findMany({
+        where: {
+          productId: { in: productsWithoutDailyRate },
+          isActive: true,
+        },
+        select: { productId: true, unitPrice: true, entryDate: true },
+        orderBy: { entryDate: 'desc' },
+      });
+      // Keep only the most-recent entry per product
+      for (const entry of latestStockEntries) {
+        if (!latestStockPriceMap.has(entry.productId)) {
+          latestStockPriceMap.set(entry.productId, entry.unitPrice);
+        }
+      }
+    }
+
+    // Attach dailyRate, latestCostPrice, and conversion CFT to each product
     const productsWithDailyRate = products.map(product => {
       const latestStockEntry = product.stockEntries?.[0];
+      const dailyRate = dailyRateMap.has(product.id) ? dailyRateMap.get(product.id) : null;
+      // If no daily rate is set today, use the price from the latest stock arrival
+      const latestCostPrice = dailyRate
+        ? null
+        : (latestStockPriceMap.get(product.id) ?? null);
       return {
         ...product,
-        dailyRate: dailyRateMap.has(product.id) ? dailyRateMap.get(product.id) : null,
-        latestConversionCft: latestStockEntry?.conversionCft ? Number(latestStockEntry.conversionCft) : 1
+        dailyRate,
+        latestCostPrice,          // ← new: frontend should prefer this over product.price
+        latestConversionCft: latestStockEntry?.conversionCft ? Number(latestStockEntry.conversionCft) : 1,
       };
     });
 
-    // Debug: Log stock quantities before serialization
-    console.log('🔍 [Products API] Stock quantities before serialization:', 
-      productsWithDailyRate.slice(0, 3).map(p => ({
-        id: p.id,
-        name: p.name,
-        stockQuantity: p.stockQuantity,
-        stockQuantityType: typeof p.stockQuantity,
-        stockQuantityConstructor: p.stockQuantity?.constructor?.name
-      }))
-    );
-
     // Serialize all BigInt fields in the response
     const serializedProducts = productsWithDailyRate.map(serializeBigInt);
-    
-    // Debug: Log stock quantities after serialization
-    console.log('🔍 [Products API] Stock quantities after serialization:', 
-      serializedProducts.slice(0, 3).map(p => ({
-        id: p.id,
-        name: p.name,
-        stockQuantity: p.stockQuantity,
-        stockQuantityType: typeof p.stockQuantity
-      }))
-    );
-    
-    // Add cache control headers to prevent caching
-    const response = NextResponse.json({ success: true, data: { products: serializedProducts } });
-    response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-    response.headers.set('Pragma', 'no-cache');
-    response.headers.set('Expires', '0');
-    response.headers.set('Surrogate-Control', 'no-store');
-    return response;
+
+    return NextResponse.json({ success: true, data: { products: serializedProducts } });
   } catch (error) {
     console.error('Get products error:', error);
     console.error('Error details:', {

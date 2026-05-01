@@ -22,7 +22,7 @@ function getInitialDate(date?: string) {
 }
 
 const NormalBillPrint: React.FC<NormalBillPrintProps> = ({ sale, onClose, userRole }) => {
-  const [billDate, setBillDate] = useState(getInitialDate(sale.date));
+  const [billDate, setBillDate] = useState(getInitialDate(sale.saleDate));
   const handlePrint = () => {
     window.print()
   }

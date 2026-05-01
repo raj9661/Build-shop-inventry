@@ -300,7 +300,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
                               </div>
                             )}
                             <div className="text-xs text-gray-500 mt-1">
-                              {t('Sale Time', 'बिक्री का समय')}: {dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
+                              {t('Sale Time', 'बिक्री का समय')}: {sale.saleDate ? dayjs(sale.saleDate).format('DD/MM/YYYY') : dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
                             </div>
                           </div>
                           <div className="mt-2 sm:mt-0">
@@ -434,7 +434,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
                               <Badge variant="outline" className="text-xs bg-purple-100 text-purple-800 border-purple-200 w-fit">{t('Account', 'खाता')}</Badge>
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              {t('Sale Time', 'बिक्री का समय')}: {dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
+                              {t('Sale Time', 'बिक्री का समय')}: {sale.saleDate ? dayjs(sale.saleDate).format('DD/MM/YYYY') : dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
                             </div>
                           </div>
                           <div className="mt-2 sm:mt-0">
@@ -522,7 +522,7 @@ export function SalesTabs({ shopId }: { shopId: number }) {
                               <Badge variant="outline" className="text-xs bg-purple-100 text-purple-800 border-purple-200 w-fit">{t('Account', 'खाता')}</Badge>
                             </div>
                             <div className="text-xs text-gray-500 mt-1">
-                              {t('Sale Time', 'बिक्री का समय')}: {dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
+                              {t('Sale Time', 'बिक्री का समय')}: {sale.saleDate ? dayjs(sale.saleDate).format('DD/MM/YYYY') : dayjs(sale.createdAt).format('h:mm:ss A, DD/MM/YYYY')}
                             </div>
                           </div>
                           <div className="mt-2 sm:mt-0">

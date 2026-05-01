@@ -469,7 +469,7 @@ export async function POST(req: NextRequest) {
 
         // 3. Update product inventory and ledger
         const productInfo = await tx.product.findUnique({
-          where: { id: finalProductId },
+          where: { id: BigInt(finalProductId) },
           include: { category: { select: { name: true } } }
         });
 
@@ -732,29 +732,9 @@ export async function PATCH(req: NextRequest) {
           }
         });
 
-        // TMT Ledger Integration: Create Purchase Entry on Completion
-        // Only if customer is linked and sale is being completed
-        if (action === 'complete' && currentTmtSale.customerId) {
-          console.log(`Creating ledger Purchase entry for COMPLETED TMT Sale #${currentTmtSale.id} (Customer: ${currentTmtSale.customerId})`);
-
-          // Construct items list for description
-          const ledgerItems = currentTmtSale.items.map(item => ({
-            name: item.product?.productName || 'TMT Product',
-            quantity: Number(item.quantity),
-            price: Number(item.unitPrice),
-            unit: item.unitType
-          }));
-
-          await createPurchaseEntry(tx, {
-            customerId: currentTmtSale.customerId,
-            amount: Number(currentTmtSale.totalAmount),
-            date: new Date(), // Use current date of completion
-            description: `[COMPLETED] TMT Sale #${currentTmtSale.id}`,
-            items: ledgerItems,
-            shopId: currentTmtSale.shopId,
-            method: currentTmtSale.paymentMethod // Pass the actual payment method from the sale
-          });
-        }
+        // TMT Ledger Integration: Purchase entry is now created at the time of sale (in POST)
+        // so we don't recreate it here. If the sale is marked as completed, the user should 
+        // ideally add a payment entry or it can be handled by a dedicated payment flow.
 
         // Add dummy fields to match Sale interface for response
         resultSale.customer = null;

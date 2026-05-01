@@ -55,14 +55,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const inventory = await prisma.$queryRaw`
-      SELECT "availableQtyKg" 
-      FROM tmt_inventory 
-      WHERE "productId" = ${BigInt(productId)} 
-      AND "shopId" = ${BigInt(parseInt(shopId))}
-    ` as any[]
+    const inventory = await prisma.tmtInventory.findFirst({
+      where: {
+        productId: BigInt(productId),
+        shopId: BigInt(parseInt(shopId))
+      },
+      select: {
+        availableQtyKg: true
+      }
+    })
 
-    const availableKg = inventory.length > 0 ? Number(inventory[0].availableQtyKg) : 0
+    const availableKg = inventory ? Number(inventory.availableQtyKg) : 0
     const available = availableKg >= requiredKg
 
     return NextResponse.json({

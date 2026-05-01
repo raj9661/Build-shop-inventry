@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/database';
+import { prisma } from '@/lib/prisma';
 import { redis } from '@/lib/redis';
 
 export async function GET() {
@@ -12,33 +12,21 @@ export async function GET() {
     
     // Get database metrics
     const dbStart = Date.now();
-    await db.getClient().$queryRaw`SELECT 1`;
+    await prisma.$queryRaw`SELECT 1`;
     const dbResponseTime = Date.now() - dbStart;
     
     // Get Redis metrics
     const redisStart = Date.now();
-    await redis.connect();
+    await redis.exists('__ping__');
     const redisResponseTime = Date.now() - redisStart;
     
-    // Get platform metrics
-    const totalCustomers = await db.getClient().user.count({
-      where: { role: 'SUPER_DUPER_ADMIN' }
-    });
-    
-    const activeSubscriptions = await db.getClient().subscription.count({
-      where: { status: 'ACTIVE' }
-    });
-    
-    const trialSubscriptions = await db.getClient().subscription.count({
-      where: { status: 'TRIAL' }
-    });
-    
-    // Get recent performance metrics from Redis
-    const performanceMetrics = await redis.get('performance_metrics') || {
-      avgResponseTime: 0,
-      totalRequests: 0,
-      errorRate: 0
-    };
+    // Get platform metrics (run in parallel)
+    const [totalCustomers, activeSubscriptions, trialSubscriptions, performanceMetrics] = await Promise.all([
+      prisma.user.count({ where: { role: 'SUPER_DUPER_ADMIN' } }),
+      prisma.subscription.count({ where: { status: 'ACTIVE' } }),
+      prisma.subscription.count({ where: { status: 'TRIAL' } }),
+      redis.get<Record<string, unknown>>('performance_metrics'),
+    ]);
     
     const response = {
       status: 'healthy',
@@ -46,7 +34,7 @@ export async function GET() {
       system: {
         uptime: Math.round(uptime),
         memory: {
-          rss: Math.round(memoryUsage.rss / 1024 / 1024), // MB
+          rss: Math.round(memoryUsage.rss / 1024 / 1024),
           heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024),
           heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
           external: Math.round(memoryUsage.external / 1024 / 1024),
@@ -54,14 +42,8 @@ export async function GET() {
         cpu: process.cpuUsage(),
       },
       services: {
-        database: {
-          status: 'connected',
-          responseTime: `${dbResponseTime}ms`,
-        },
-        redis: {
-          status: 'connected',
-          responseTime: `${redisResponseTime}ms`,
-        },
+        database: { status: 'connected', responseTime: `${dbResponseTime}ms` },
+        redis:    { status: 'connected', responseTime: `${redisResponseTime}ms` },
       },
       platform: {
         totalCustomers,
@@ -70,39 +52,29 @@ export async function GET() {
         totalRevenue: await calculateTotalRevenue(),
       },
       performance: {
-        ...performanceMetrics,
+        ...(performanceMetrics ?? { avgResponseTime: 0, totalRequests: 0, errorRate: 0 }),
         currentResponseTime: `${Date.now() - start}ms`,
       },
     };
     
     return NextResponse.json(response);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Performance monitoring error:', error);
     return NextResponse.json(
-      { 
-        status: 'unhealthy', 
-        error: error.message,
-        timestamp: new Date().toISOString()
-      },
-      { status: 500 }
+      { status: 'unhealthy', error: error.message, timestamp: new Date().toISOString() },
+      { status: 500 },
     );
   }
 }
 
 async function calculateTotalRevenue() {
   try {
-    const result = await db.getClient().subscriptionPayment.aggregate({
-      where: {
-        paymentStatus: 'COMPLETED'
-      },
-      _sum: {
-        amount: true
-      }
+    const result = await prisma.subscriptionPayment.aggregate({
+      where: { paymentStatus: 'COMPLETED' },
+      _sum: { amount: true },
     });
-    
     return result._sum.amount || 0;
-  } catch (error) {
-    console.error('Revenue calculation error:', error);
+  } catch {
     return 0;
   }
 }

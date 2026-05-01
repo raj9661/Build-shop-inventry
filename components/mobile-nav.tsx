@@ -18,6 +18,7 @@ import {
   Menu,
   X,
   ChevronLeft,
+  FileImage,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/hooks/use-language"
@@ -43,6 +44,7 @@ export function MobileNav() {
     { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी") },
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
+    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़") }] : []),
   ]
 
   const currentPage = navItems.find((item) => item.href === pathname)

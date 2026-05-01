@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Loader2, Package, Pencil, RefreshCw } from "lucide-react";
+import { Loader2, Package, Pencil, RefreshCw, Download, CheckCircle2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
 
@@ -47,6 +47,8 @@ export default function InventoryPage() {
   const [stockEntries, setStockEntries] = useState<any[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [refreshLoading, setRefreshLoading] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
+  const [markingPaid, setMarkingPaid] = useState<string | null>(null); // id of entry being updated
 
   const loadProducts = async () => {
     setLoading(true);
@@ -817,9 +819,49 @@ export default function InventoryPage() {
         <TabsContent value="history">
           <Card className="shadow-md border-0 bg-white/90">
             <CardHeader className="pb-2 border-b-0">
-              <div className="flex items-center gap-2">
-                <Package className="h-6 w-6 text-primary" />
-                <CardTitle className="text-2xl font-bold tracking-tight">Stock Entry History</CardTitle>
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Package className="h-6 w-6 text-primary" />
+                  <CardTitle className="text-2xl font-bold tracking-tight">Stock Entry History</CardTitle>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+                  <Input
+                    type="text"
+                    placeholder="Search product or supplier..."
+                    value={historySearch}
+                    onChange={e => setHistorySearch(e.target.value)}
+                    className="w-full sm:w-56 border-gray-300 shadow-sm text-sm"
+                  />
+                  <Button
+                    variant="outline"
+                    className="border-green-500 text-green-700 hover:bg-green-50 flex items-center gap-2"
+                    disabled={stockLoading || stockEntries.length === 0}
+                    onClick={() => {
+                      const filtered = stockEntries.filter((e: any) => {
+                        const q = historySearch.toLowerCase();
+                        return !q ||
+                          (e.product?.name ?? '').toLowerCase().includes(q) ||
+                          (e.supplier?.name ?? '').toLowerCase().includes(q);
+                      });
+                      const headers = ['product', 'supplier', 'quantity', 'unitName', 'unitPrice', 'totalAmount', 'entryDate', 'paymentStatus', 'notes'];
+                      const rows = filtered.map((e: any) => ({
+                        product:       e.product?.name ?? '',
+                        supplier:      e.supplier?.name ?? '',
+                        quantity:      e.quantity,
+                        unitName:      e.unitName ?? '',
+                        unitPrice:     e.unitPrice,
+                        totalAmount:   e.totalAmount,
+                        entryDate:     e.entryDate ? new Date(e.entryDate).toLocaleDateString('en-IN') : '',
+                        paymentStatus: e.paymentStatus ?? '',
+                        notes:         (e.notes ?? '').replace(/,/g, ';'),
+                      }));
+                      exportToCSV(rows, headers, `stock-history-${new Date().toISOString().slice(0,10)}.csv`);
+                    }}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export CSV
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
@@ -833,36 +875,123 @@ export default function InventoryPage() {
                   <div className="text-lg font-medium">No stock entries found</div>
                   <div className="text-sm">No stock history available for this shop.</div>
                 </div>
-              ) : (
-                <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-                  <table className="min-w-full text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-3 py-2 text-left font-semibold">Product</th>
-                        <th className="px-3 py-2 text-left font-semibold">Supplier</th>
-                        <th className="px-3 py-2 text-left font-semibold">Quantity</th>
-                        <th className="px-3 py-2 text-left font-semibold">Unit Price</th>
-                        <th className="px-3 py-2 text-left font-semibold">Total</th>
-                        <th className="px-3 py-2 text-left font-semibold">Date</th>
-                        <th className="px-3 py-2 text-left font-semibold">Notes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {stockEntries.map((entry) => (
-                        <tr key={entry.id} className="transition hover:bg-primary/5">
-                          <td className="px-3 py-2 font-medium">{entry.product?.name ?? '-'}</td>
-                          <td className="px-3 py-2">{entry.supplier?.name ?? '-'}</td>
-                          <td className="px-3 py-2">{entry.quantity}</td>
-                          <td className="px-3 py-2">{entry.unitPrice}</td>
-                          <td className="px-3 py-2">{entry.totalAmount}</td>
-                          <td className="px-3 py-2">{entry.entryDate ? new Date(entry.entryDate).toLocaleString() : '-'}</td>
-                          <td className="px-3 py-2">{entry.notes ?? '-'}</td>
+              ) : (() => {
+                const filteredEntries = stockEntries.filter((e: any) => {
+                  const q = historySearch.toLowerCase();
+                  return !q ||
+                    (e.product?.name ?? '').toLowerCase().includes(q) ||
+                    (e.supplier?.name ?? '').toLowerCase().includes(q);
+                });
+                return filteredEntries.length === 0 ? (
+                  <div className="text-center py-10 text-gray-400 text-sm">
+                    No entries match &ldquo;{historySearch}&rdquo;
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                    <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">
+                      Showing <span className="font-semibold text-gray-700">{filteredEntries.length}</span> of {stockEntries.length} entries
+                    </div>
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold">Product</th>
+                          <th className="px-3 py-2 text-left font-semibold">Supplier</th>
+                          <th className="px-3 py-2 text-left font-semibold">Quantity</th>
+                          <th className="px-3 py-2 text-left font-semibold">Unit Price</th>
+                          <th className="px-3 py-2 text-left font-semibold">Total</th>
+                          <th className="px-3 py-2 text-left font-semibold">Date</th>
+                          <th className="px-3 py-2 text-left font-semibold">
+                            Supplier Payment
+                            <div className="text-xs text-gray-400 font-normal">Did you pay supplier?</div>
+                          </th>
+                          <th className="px-3 py-2 text-left font-semibold">Notes</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
+                      </thead>
+                      <tbody>
+                        {filteredEntries.map((entry: any) => (
+                          <tr key={entry.id} className="transition hover:bg-primary/5 border-b border-gray-100 last:border-0">
+                            <td className="px-3 py-2 font-medium">{entry.product?.name ?? '-'}</td>
+                            <td className="px-3 py-2 text-blue-700">{entry.supplier?.name ?? '-'}</td>
+                            <td className="px-3 py-2">
+                              <span className="font-semibold text-indigo-700">{Number(entry.quantity)}</span>
+                              {entry.unitName && <span className="ml-1 text-xs text-gray-500">{entry.unitName}</span>}
+                            </td>
+                            <td className="px-3 py-2">₹{Number(entry.unitPrice).toLocaleString('en-IN')}</td>
+                            <td className="px-3 py-2 font-semibold text-green-700">₹{Number(entry.totalAmount).toLocaleString('en-IN')}</td>
+                            <td className="px-3 py-2 whitespace-nowrap">
+                              {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                  entry.paymentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                  entry.paymentStatus === 'PENDING'   ? 'bg-yellow-100 text-yellow-700' :
+                                  entry.paymentStatus === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                                  'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {entry.paymentStatus === 'COMPLETED' ? 'Paid ✓' :
+                                   entry.paymentStatus === 'PENDING'   ? 'Unpaid' :
+                                   entry.paymentStatus ?? '-'}
+                                </span>
+                                {entry.paymentStatus === 'PENDING' && (
+                                  <button
+                                    title="Mark supplier as paid"
+                                    disabled={markingPaid === entry.id}
+                                    onClick={async () => {
+                                      setMarkingPaid(entry.id);
+                                      try {
+                                        const token = localStorage.getItem('accessToken');
+                                        if (!token) throw new Error('No token');
+                                        const res = await fetch('/api/stock', {
+                                          method: 'PATCH',
+                                          headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': `Bearer ${token}`,
+                                          },
+                                          body: JSON.stringify({ id: entry.id, paymentStatus: 'COMPLETED' }),
+                                        });
+                                        if (res.ok) {
+                                          setStockEntries(prev =>
+                                            prev.map(e => e.id === entry.id ? { ...e, paymentStatus: 'COMPLETED' } : e)
+                                          );
+                                          toast.success(`Marked as paid: ${entry.product?.name}`);
+                                        } else {
+                                          const d = await res.json();
+                                          toast.error(d.message || 'Failed to update');
+                                        }
+                                      } catch {
+                                        toast.error('Failed to update payment status');
+                                      } finally {
+                                        setMarkingPaid(null);
+                                      }
+                                    }}
+                                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition disabled:opacity-50"
+                                  >
+                                    {markingPaid === entry.id
+                                      ? <Loader2 className="h-3 w-3 animate-spin" />
+                                      : <CheckCircle2 className="h-3 w-3" />}
+                                    Mark Paid
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-gray-500 max-w-xs truncate" title={entry.notes ?? ''}>{entry.notes ?? '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot className="bg-gray-50 font-semibold text-sm">
+                        <tr>
+                          <td colSpan={4} className="px-3 py-2 text-gray-600">Total ({filteredEntries.length} entries)</td>
+                          <td className="px-3 py-2 text-green-700">
+                            ₹{filteredEntries.reduce((s: number, e: any) => s + Number(e.totalAmount || 0), 0).toLocaleString('en-IN')}
+                          </td>
+                          <td colSpan={3} />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                );
+              })()}
             </CardContent>
           </Card>
         </TabsContent>
