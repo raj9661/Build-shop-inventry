@@ -267,18 +267,9 @@ export default function SaleDocuments() {
 
   const [documents,   setDocuments]   = useState<SaleDocument[]>([])
   const [loading,     setLoading]     = useState(true)
-  const [uploading,   setUploading]   = useState(false)
-  const [enhancing,   setEnhancing]   = useState(false)
   const [page,        setPage]        = useState(1)
   const [totalPages,  setTotalPages]  = useState(1)
   const [dateFilter,  setDateFilter]  = useState("")
-
-  const [selectedFile,  setSelectedFile]  = useState<File | null>(null)
-  const [previewUrl,    setPreviewUrl]    = useState<string | null>(null)
-  const [documentDate,  setDocumentDate]  = useState(new Date().toISOString().slice(0, 10))
-  const [description,   setDescription]  = useState("")
-
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // ── Helpers ─────────────────────────────────────────────────────────────
   const formatFileSize = useCallback((bytes: number) => {
@@ -311,85 +302,6 @@ export default function SaleDocuments() {
     if (userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN") fetchDocuments(1)
   }, [currentShop?.id, dateFilter, userRole]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // cleanup preview URL on unmount
-  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
-
-  // ── File pick → validate → enhance & auto-compress ──────────────────────
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const raw = e.target.files?.[0]
-    if (!raw) return
-
-    const validated = await processFile(raw)
-    if (!validated) {
-      if (fileInputRef.current) fileInputRef.current.value = ""
-      return
-    }
-
-    const originalSize = validated.size
-    const wasOversized = originalSize > MAX_SIZE
-
-    setEnhancing(true)
-    toast.info(
-      wasOversized
-        ? `📦 Image is ${formatFileSize(originalSize)} — auto-compressing to ≤2 MB…`
-        : "✨ Enhancing image…",
-      { duration: 2000 }
-    )
-
-    try {
-      const enhanced = await enhanceAndCompress(validated)
-      // show preview
-      if (previewUrl) URL.revokeObjectURL(previewUrl)
-      setPreviewUrl(URL.createObjectURL(enhanced))
-      setSelectedFile(enhanced)
-
-      if (wasOversized) {
-        toast.success(
-          `✅ Compressed ${formatFileSize(originalSize)} → ${formatFileSize(enhanced.size)}`
-        )
-      } else {
-        toast.success(`✅ Image enhanced & ready (${formatFileSize(enhanced.size)})`)
-      }
-    } catch {
-      toast.error("Could not process image. Try another file.")
-      if (fileInputRef.current) fileInputRef.current.value = ""
-    } finally { setEnhancing(false) }
-  }, [previewUrl, formatFileSize])
-
-  // ── Upload ───────────────────────────────────────────────────────────────
-  const handleUpload = useCallback(async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!currentShop?.id) { toast.error("Select a shop first"); return }
-    if (!selectedFile)    { toast.error("Select a file to upload"); return }
-
-    setUploading(true)
-    try {
-      const formData = new FormData()
-      formData.append("file", selectedFile)
-      formData.append("shopId", currentShop.id.toString())
-      formData.append("documentDate", documentDate)
-      if (description) formData.append("description", description)
-
-      const token = localStorage.getItem("accessToken")
-      const res   = await fetch("/api/sale-documents", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      })
-      const data  = await res.json()
-      if (data.success) {
-        toast.success("Document uploaded!")
-        setSelectedFile(null)
-        setDescription("")
-        if (previewUrl) URL.revokeObjectURL(previewUrl)
-        setPreviewUrl(null)
-        if (fileInputRef.current) fileInputRef.current.value = ""
-        fetchDocuments(1)
-      } else toast.error(data.message || "Upload failed")
-    } catch { toast.error("Upload error") }
-    finally   { setUploading(false) }
-  }, [currentShop?.id, selectedFile, documentDate, description, previewUrl, fetchDocuments])
-
   // ── Delete ───────────────────────────────────────────────────────────────
   const handleDelete = useCallback(async (id: string) => {
     if (!confirm("Delete this document?")) return
@@ -404,14 +316,6 @@ export default function SaleDocuments() {
       setDocuments(prev => prev.filter(d => d.id.toString() !== id.toString()))
     } else toast.error(data.message || "Delete failed")
   }, [])
-
-  // ── Clear file ───────────────────────────────────────────────────────────
-  const clearFile = useCallback(() => {
-    setSelectedFile(null)
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    setPreviewUrl(null)
-    if (fileInputRef.current) fileInputRef.current.value = ""
-  }, [previewUrl])
 
   // ── Access guard ─────────────────────────────────────────────────────────
   if (userRole !== "SUPER_DUPER_ADMIN" && userRole !== "SUPER_ADMIN") {
@@ -430,105 +334,6 @@ export default function SaleDocuments() {
   }
 
   // ── Render helpers ───────────────────────────────────────────────────────
-  const UploadForm = (
-    <Card className="shadow-md border-0 bg-white h-full">
-      <CardHeader className="bg-indigo-600 text-white rounded-t-xl py-3 px-4">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <UploadCloud className="h-5 w-5" />
-          {t("Upload Document", "दस्तावेज़ अपलोड करें")}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-4 space-y-4">
-        <form onSubmit={handleUpload} className="space-y-4">
-          <div>
-            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
-              {t("Document Date", "दस्तावेज़ की तारीख")} *
-            </Label>
-            <Input type="date" value={documentDate} onChange={e => setDocumentDate(e.target.value)} required className="mt-1" />
-          </div>
-
-          {/* Security notice */}
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 flex gap-2 text-xs text-amber-800">
-            <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
-            <span>Only real image files (JPG, PNG, WEBP, GIF) are accepted. Max&nbsp;<strong>2&nbsp;MB</strong>.</span>
-          </div>
-
-          <div>
-            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
-              {t("Select Image", "चित्र चुनें")} *
-            </Label>
-            <div
-              className={`mt-1 border-2 border-dashed rounded-xl transition-colors ${
-                selectedFile
-                  ? "border-indigo-400 bg-indigo-50"
-                  : enhancing
-                  ? "border-yellow-400 bg-yellow-50 animate-pulse"
-                  : "border-gray-300 hover:border-indigo-400"
-              }`}
-            >
-              <input
-                type="file" ref={fileInputRef}
-                onChange={handleFileChange}
-                className="hidden" id="file-upload"
-                accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
-                disabled={enhancing || uploading}
-              />
-              <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-2 p-4">
-                {enhancing ? (
-                  <>
-                    <Sparkles className="h-8 w-8 text-yellow-500 animate-bounce" />
-                    <span className="text-sm font-medium text-yellow-700">Enhancing image…</span>
-                  </>
-                ) : previewUrl ? (
-                  <>
-                    <img src={previewUrl} alt="preview" className="h-32 w-full object-cover rounded-lg border" />
-                    <span className="text-xs font-medium text-indigo-700 break-all">{selectedFile?.name}</span>
-                    <span className="text-xs text-indigo-500 flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> Enhanced · {selectedFile ? formatFileSize(selectedFile.size) : ""}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="h-8 w-8 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-600">Tap to pick an image</span>
-                    <span className="text-xs text-gray-400">JPG · PNG · WEBP · GIF — max 2 MB</span>
-                  </>
-                )}
-              </label>
-            </div>
-            {selectedFile && (
-              <Button type="button" variant="ghost" size="sm" className="w-full mt-1 text-red-500 hover:text-red-700 text-xs" onClick={clearFile}>
-                <X className="h-3 w-3 mr-1" /> Remove
-              </Button>
-            )}
-          </div>
-
-          <div>
-            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
-              {t("Description (Optional)", "विवरण (वैकल्पिक)")}
-            </Label>
-            <Textarea
-              value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Bill no., customer name, notes…"
-              className="mt-1 resize-none text-sm" rows={2}
-            />
-          </div>
-
-          <Button
-            type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-700"
-            disabled={uploading || !selectedFile || enhancing}
-          >
-            {uploading ? (
-              <><div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" /> Uploading…</>
-            ) : (
-              <><UploadCloud className="h-4 w-4 mr-2" /> Upload Document</>
-            )}
-          </Button>
-        </form>
-      </CardContent>
-    </Card>
-  )
 
   const ArchiveSection = (
     <Card className="shadow-md border-0 bg-white h-full">
@@ -600,7 +405,9 @@ export default function SaleDocuments() {
 
         {/* Desktop: side-by-side */}
         <div className="hidden lg:grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-1">{UploadForm}</div>
+          <div className="lg:col-span-1">
+            <DocumentUploadForm idPrefix="desktop" onUploadSuccess={() => fetchDocuments(1)} formatFileSize={formatFileSize} />
+          </div>
           <div className="lg:col-span-2">{ArchiveSection}</div>
         </div>
 
@@ -617,10 +424,210 @@ export default function SaleDocuments() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="archive" className="mt-0">{ArchiveSection}</TabsContent>
-            <TabsContent value="upload"  className="mt-0">{UploadForm}</TabsContent>
+            <TabsContent value="upload"  className="mt-0">
+              <DocumentUploadForm idPrefix="mobile" onUploadSuccess={() => fetchDocuments(1)} formatFileSize={formatFileSize} />
+            </TabsContent>
           </Tabs>
         </div>
       </div>
     </div>
+  )
+}
+
+// ─── Upload Form Component ───────────────────────────────────────────────────
+function DocumentUploadForm({ idPrefix, onUploadSuccess, formatFileSize }: { idPrefix: string, onUploadSuccess: () => void, formatFileSize: (n: number) => string }) {
+  const { t } = useLanguage()
+  const { currentShop } = useShop()
+
+  const [selectedFile,  setSelectedFile]  = useState<File | null>(null)
+  const [previewUrl,    setPreviewUrl]    = useState<string | null>(null)
+  const [documentDate,  setDocumentDate]  = useState(new Date().toISOString().slice(0, 10))
+  const [description,   setDescription]  = useState("")
+  const [uploading,     setUploading]     = useState(false)
+  const [enhancing,     setEnhancing]     = useState(false)
+  const [fileInputKey,  setFileInputKey]  = useState(Date.now())
+
+  // cleanup preview URL on unmount
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl) }, [previewUrl])
+
+  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.files?.[0]
+    if (!raw) return
+
+    const validated = await processFile(raw)
+    if (!validated) {
+      setFileInputKey(Date.now())
+      return
+    }
+
+    const originalSize = validated.size
+    const wasOversized = originalSize > MAX_SIZE
+
+    setEnhancing(true)
+    toast.info(
+      wasOversized
+        ? `📦 Image is ${formatFileSize(originalSize)} — auto-compressing to ≤2 MB…`
+        : "✨ Enhancing image…",
+      { duration: 2000 }
+    )
+
+    try {
+      const enhanced = await enhanceAndCompress(validated)
+      // show preview
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      setPreviewUrl(URL.createObjectURL(enhanced))
+      setSelectedFile(enhanced)
+
+      if (wasOversized) {
+        toast.success(
+          `✅ Compressed ${formatFileSize(originalSize)} → ${formatFileSize(enhanced.size)}`
+        )
+      } else {
+        toast.success(`✅ Image enhanced & ready (${formatFileSize(enhanced.size)})`)
+      }
+    } catch {
+      toast.error("Could not process image. Try another file.")
+      setFileInputKey(Date.now())
+    } finally { setEnhancing(false) }
+  }, [previewUrl, formatFileSize])
+
+  const handleUpload = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentShop?.id) { toast.error("Select a shop first"); return }
+    if (!selectedFile)    { toast.error("Select a file to upload"); return }
+
+    setUploading(true)
+    try {
+      const formData = new FormData()
+      formData.append("file", selectedFile)
+      formData.append("shopId", currentShop.id.toString())
+      formData.append("documentDate", documentDate)
+      if (description) formData.append("description", description)
+
+      const token = localStorage.getItem("accessToken")
+      const res   = await fetch("/api/sale-documents", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data  = await res.json()
+      if (data.success) {
+        toast.success("Document uploaded!")
+        setSelectedFile(null)
+        setDescription("")
+        if (previewUrl) URL.revokeObjectURL(previewUrl)
+        setPreviewUrl(null)
+        setFileInputKey(Date.now())
+        onUploadSuccess()
+      } else toast.error(data.message || "Upload failed")
+    } catch { toast.error("Upload error") }
+    finally   { setUploading(false) }
+  }, [currentShop?.id, selectedFile, documentDate, description, previewUrl, onUploadSuccess])
+
+  const clearFile = useCallback(() => {
+    setSelectedFile(null)
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    setPreviewUrl(null)
+    setFileInputKey(Date.now())
+  }, [previewUrl])
+
+  return (
+    <Card className="shadow-md border-0 bg-white h-full">
+      <CardHeader className="bg-indigo-600 text-white rounded-t-xl py-3 px-4">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <UploadCloud className="h-5 w-5" />
+          {t("Upload Document", "दस्तावेज़ अपलोड करें")}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-4 space-y-4">
+        <form onSubmit={handleUpload} className="space-y-4">
+          <div>
+            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
+              {t("Document Date", "दस्तावेज़ की तारीख")} *
+            </Label>
+            <Input type="date" value={documentDate} onChange={e => setDocumentDate(e.target.value)} required className="mt-1" />
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 flex gap-2 text-xs text-amber-800">
+            <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>Only real image files (JPG, PNG, WEBP, GIF) are accepted. Max&nbsp;<strong>2&nbsp;MB</strong>.</span>
+          </div>
+
+          <div>
+            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
+              {t("Select Image", "चित्र चुनें")} *
+            </Label>
+            <div
+              className={`mt-1 border-2 border-dashed rounded-xl transition-colors ${
+                selectedFile
+                  ? "border-indigo-400 bg-indigo-50"
+                  : enhancing
+                  ? "border-yellow-400 bg-yellow-50 animate-pulse"
+                  : "border-gray-300 hover:border-indigo-400"
+              }`}
+            >
+              <input
+                key={fileInputKey}
+                type="file"
+                onChange={handleFileChange}
+                className="hidden" id={`${idPrefix}-file-upload`}
+                accept="image/jpeg,image/png,image/webp,image/gif,image/heic,image/heif"
+                disabled={enhancing || uploading}
+              />
+              <label htmlFor={`${idPrefix}-file-upload`} className="cursor-pointer flex flex-col items-center gap-2 p-4">
+                {enhancing ? (
+                  <>
+                    <Sparkles className="h-8 w-8 text-yellow-500 animate-bounce" />
+                    <span className="text-sm font-medium text-yellow-700">Enhancing image…</span>
+                  </>
+                ) : previewUrl ? (
+                  <>
+                    <img src={previewUrl} alt="preview" className="h-32 w-full object-cover rounded-lg border" />
+                    <span className="text-xs font-medium text-indigo-700 break-all">{selectedFile?.name}</span>
+                    <span className="text-xs text-indigo-500 flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> Enhanced · {selectedFile ? formatFileSize(selectedFile.size) : ""}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="h-8 w-8 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-600">Tap to pick an image</span>
+                    <span className="text-xs text-gray-400">JPG · PNG · WEBP · GIF — max 2 MB</span>
+                  </>
+                )}
+              </label>
+            </div>
+            {selectedFile && (
+              <Button type="button" variant="ghost" size="sm" className="w-full mt-1 text-red-500 hover:text-red-700 text-xs" onClick={clearFile}>
+                <X className="h-3 w-3 mr-1" /> Remove
+              </Button>
+            )}
+          </div>
+
+          <div>
+            <Label className="text-xs text-gray-600 font-semibold uppercase tracking-wide">
+              {t("Description (Optional)", "विवरण (वैकल्पिक)")}
+            </Label>
+            <Textarea
+              value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="Bill no., customer name, notes…"
+              className="mt-1 resize-none text-sm" rows={2}
+            />
+          </div>
+
+          <Button
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-700"
+            disabled={uploading || !selectedFile || enhancing}
+          >
+            {uploading ? (
+              <><div className="h-4 w-4 mr-2 animate-spin rounded-full border-2 border-white border-t-transparent" /> Uploading…</>
+            ) : (
+              <><UploadCloud className="h-4 w-4 mr-2" /> Upload Document</>
+            )}
+          </Button>
+        </form>
+      </CardContent>
+    </Card>
   )
 }
