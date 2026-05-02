@@ -263,7 +263,6 @@ export default function CashSaleHistoryPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
-      <MobileNav />
       <div className="p-4 pb-20 md:pb-6 max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
