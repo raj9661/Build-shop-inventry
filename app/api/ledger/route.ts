@@ -1133,9 +1133,14 @@ export async function POST(req: NextRequest) {
     let dbPaymentMethod = paymentMethod;
     let finalDescription = description || `${type === 'debit' ? 'Purchase' : 'Payment'} - ${paymentMethod || ''}`;
 
-    if (paymentMethod === 'LOAN') {
+    if (paymentMethod === 'LOAN' || paymentMethod === 'LOAN/CREDIT') {
       dbPaymentMethod = 'OTHER';
       finalDescription = '[LOAN] ' + finalDescription;
+    } else {
+      const validEnums = ['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'OTHER', 'STRIPE', 'RAZORPAY', 'PAYPAL'];
+      if (dbPaymentMethod && !validEnums.includes(dbPaymentMethod)) {
+        dbPaymentMethod = 'OTHER';
+      }
     }
 
     // Since there's no CustomerLedgerItem model in the given schema block,

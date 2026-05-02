@@ -1503,11 +1503,12 @@ export default function CustomerLedger() {
                 { key: 'date', label: 'Date', type: 'date', value: adminEditEntry.date },
                 { key: 'amount', label: 'Amount (₹)', type: 'number', value: adminEditEntry.total || adminEditEntry.paid, min: 0, step: 0.01 },
                 { key: 'description', label: 'Description', type: 'textarea', value: adminEditEntry.description || adminEditEntry.items?.map(i => i.name).join(', ') || '' },
-                { key: 'method', label: 'Payment Method', type: 'select', value: adminEditEntry.paymentMode?.toUpperCase() || 'CASH', options: [
+                { key: 'method', label: 'Payment Method', type: 'select', value: (adminEditEntry.paymentMode?.toUpperCase() === 'LOAN/CREDIT' || adminEditEntry.paymentMode?.toUpperCase() === 'LOAN') ? 'LOAN' : adminEditEntry.paymentMode?.toUpperCase() || 'CASH', options: [
                   { value: 'CASH', label: 'Cash' },
                   { value: 'UPI', label: 'UPI' },
                   { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
                   { value: 'CHEQUE', label: 'Cheque' },
+                  { value: 'LOAN', label: 'Loan' },
                   { value: 'OTHER', label: 'Other' },
                 ]},
               ] : []}

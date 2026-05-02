@@ -62,14 +62,36 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // 1. Snapshot before
       const before = { ...entry };
 
+      const validMethods = ['CASH', 'CARD', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'OTHER', 'STRIPE', 'RAZORPAY', 'PAYPAL'];
+      let finalMethod = undefined;
+      let finalDescription = description !== undefined ? description : entry.description;
+
+      if (method) {
+        if (method === 'LOAN' || method === 'LOAN/CREDIT') {
+          finalMethod = 'OTHER';
+          if (finalDescription && !finalDescription.includes('[LOAN]')) {
+             finalDescription = '[LOAN] ' + finalDescription;
+          } else if (!finalDescription) {
+             finalDescription = '[LOAN]';
+          }
+        } else {
+          finalMethod = validMethods.includes(method) ? method : 'OTHER';
+          if (finalDescription && finalDescription.includes('[LOAN] ')) {
+             finalDescription = finalDescription.replace('[LOAN] ', '');
+          } else if (finalDescription === '[LOAN]') {
+             finalDescription = '';
+          }
+        }
+      }
+
       // 2. Update the entry
       const updated = await tx.customerLedgerEntry.update({
         where: { id: entryId },
         data: {
           ...(amount !== undefined && { amount: newAmount }),
           ...(date && { date: new Date(date) }),
-          ...(description !== undefined && { description }),
-          ...(method && { method }),
+          ...(finalDescription !== undefined && { description: finalDescription }),
+          ...(finalMethod && { method: finalMethod }),
           updatedAt: new Date(),
         }
       });
