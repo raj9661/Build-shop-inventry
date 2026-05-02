@@ -228,7 +228,8 @@ class UltraFastDashboard {
             updatedAt: true,
             saleDate: true
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          take: 100
         }),
         this.prisma.tmtSale.findMany({
           where: { shopId: shopId, isActive: true },
@@ -246,7 +247,8 @@ class UltraFastDashboard {
             },
             customer: { select: { name: true, phone: true, address: true } }
           },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          take: 100
         }),
         this.prisma.product.findMany({
           where: { shopId: shopId, isActive: true, stockQuantity: { lte: 10 } },
