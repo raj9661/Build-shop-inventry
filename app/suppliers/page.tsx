@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useLanguage } from "@/hooks/use-language"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { Plus, Edit, Trash2, Phone, MapPin, Truck, Search, Eye, Package, IndianRupee, X, Calendar, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { useShop } from "../contexts/ShopContext"
@@ -644,7 +644,7 @@ export default function Suppliers() {
   if (!currentShop) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        <MobileNav />
+
         <div className="p-4 pb-20 md:pb-4">
           <Card className="shadow-lg border-0 bg-white rounded-2xl">
             <CardContent className="p-6 text-center">
@@ -659,7 +659,7 @@ export default function Suppliers() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Mobile Navigation */}
-      <MobileNav />
+
 
       {/* Main Content with Bottom Padding for Mobile Nav */}
       <div className="p-4 space-y-4 md:space-y-6 max-w-7xl mx-auto pb-20 md:pb-4">

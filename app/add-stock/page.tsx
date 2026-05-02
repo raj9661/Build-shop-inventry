@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card"
 import { useLanguage } from "@/hooks/use-language"
 import { useOfflineSync } from "@/hooks/use-offline-sync"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { toast } from "sonner"
 import { Calendar, Loader2, RotateCcw, CheckCircle } from "lucide-react"
 import { useShop } from "../contexts/ShopContext"
@@ -710,7 +710,7 @@ export default function AddStock() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Mobile Navigation */}
-      <MobileNav />
+
 
       {/* Main Content with Mobile Padding */}
       <div className="p-4 pb-20 md:pb-4">

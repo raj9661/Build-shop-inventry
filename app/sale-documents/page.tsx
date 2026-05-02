@@ -9,7 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { UploadCloud, FileImage, Trash2, Download, RefreshCw, Eye, X, Sparkles, ShieldAlert } from "lucide-react"
 import { toast } from "sonner"
 import { format } from "date-fns"
@@ -321,7 +321,7 @@ export default function SaleDocuments() {
   if (userRole !== "SUPER_DUPER_ADMIN" && userRole !== "SUPER_ADMIN") {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <MobileNav />
+
         <Card className="max-w-md w-full">
           <CardHeader>
             <CardTitle className="text-red-600 text-center flex items-center justify-center gap-2">
@@ -389,7 +389,7 @@ export default function SaleDocuments() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-50 pb-20 md:pb-8">
-      <MobileNav />
+
 
       <div className="p-4 max-w-6xl mx-auto space-y-5">
         {/* Header */}

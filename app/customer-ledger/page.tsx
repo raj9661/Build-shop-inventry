@@ -13,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useLanguage } from "@/hooks/use-language"
-import { MobileNav } from "@/components/mobile-nav"
+
 import {
   Plus,
   Search,
@@ -788,7 +788,7 @@ export default function CustomerLedger() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100">
       {/* Mobile Navigation */}
-      <MobileNav />
+
 
       {/* Main Content with Bottom Padding for Mobile Nav */}
       <div className="p-4 space-y-4 md:space-y-6 max-w-7xl mx-auto pb-20 md:pb-4">

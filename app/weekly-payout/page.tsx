@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { useLanguage } from "@/hooks/use-language"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { Calendar, CreditCard, Users, Package, CheckCircle, Clock, IndianRupee } from "lucide-react"
 import { toast } from "sonner"
 import { useShop } from '../contexts/ShopContext'
@@ -71,7 +71,7 @@ export default function WeeklyPayout() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-      <MobileNav />
+
       <div className="p-4 space-y-4 md:space-y-6 max-w-7xl mx-auto pb-20 md:pb-4">
         <Card className="shadow-lg border-0 bg-white/95 backdrop-blur">
           <CardHeader className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-t-lg">

@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { useShop } from "../contexts/ShopContext"
 import { toast } from "sonner"
 import {
@@ -244,7 +244,7 @@ export default function CashSaleHistoryPage() {
   if (accessDenied) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <MobileNav />
+
         <Card className="max-w-md mx-auto bg-white/10 backdrop-blur-sm border-white/20 text-white">
           <CardContent className="p-8 text-center">
             <AlertTriangle className="h-16 w-16 text-yellow-400 mx-auto mb-4" />

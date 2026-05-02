@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { useLanguage } from "@/hooks/use-language"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { Plus, Minus, Phone, MapPin, User } from "lucide-react"
 import { toast } from "sonner"
 import { Switch } from "@/components/ui/switch"
@@ -468,7 +468,7 @@ export default function CashSale() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
-      <MobileNav />
+
       <div className="p-4 pb-20 md:pb-4">
         <div className="grid gap-6 md:gap-8 md:grid-cols-2 h-full max-w-6xl mx-auto">
           <div className="space-y-6">

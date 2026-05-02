@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { useLanguage } from "@/hooks/use-language"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { Search, Phone, MapPin, Calendar, IndianRupee } from "lucide-react"
 import { useShop } from "../contexts/ShopContext"
 import { toast } from "sonner"
@@ -92,7 +92,7 @@ export default function CustomerDetails() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
       {/* Mobile Navigation */}
-      <MobileNav />
+
 
       {/* Desktop Header */}
       <div className="hidden md:flex flex-col sm:flex-row items-center justify-between gap-4 p-6">

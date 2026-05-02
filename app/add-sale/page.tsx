@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useLanguage } from "@/hooks/use-language"
 import { useOfflineSync } from "@/hooks/use-offline-sync"
-import { MobileNav } from "@/components/mobile-nav"
+
 import { ShopSelector } from "../components/shop-selector"
 import { PlusCircle, Trash2, Search, User, Plus, Phone, MapPin, Loader2 } from "lucide-react"
 import { toast } from "sonner"
@@ -1441,7 +1441,7 @@ function AddSalePage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
       {/* Mobile Navigation */}
-      <MobileNav />
+
 
       {/* Main Content with Mobile Padding */}
       <div className="p-4 pb-32 md:pb-4">
