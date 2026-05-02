@@ -16,6 +16,7 @@ import {
   Truck,
   BarChart3,
   FileImage,
+  Receipt,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useLanguage } from "@/hooks/use-language"
@@ -38,6 +39,7 @@ export function Sidebar() {
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
     ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़") }] : []),
+    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/cash-sale-history", icon: Receipt, label: t("Cash Sale History", "कैश बिक्री इतिहास") }] : []),
     { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन") },
   ]
 

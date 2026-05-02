@@ -27,26 +27,28 @@ export function SalesTabs({ shopId }: { shopId: number }) {
   const [cancelIsTmt, setCancelIsTmt] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
 
-  // Helper: is within today's window (robust across timezones)
+  // Helper: is within today's window (robust across timezones, handles UTC midnight cash sale dates)
   const isToday = (d: any) => {
     if (!d) return false;
-    // Use dayjs for robust comparison - matches current calendar day
     const saleDate = dayjs(d);
     const now = dayjs();
     
-    // If it's the same calendar day, it's today
+    // Primary: same calendar day in local timezone
     if (saleDate.isSame(now, 'day')) return true;
     
-    // Fallback: Also show if it was within the last 18 hours 
-    // (handles late night sales or early morning viewing better)
+    // Secondary: within 30 hours to handle UTC midnight dates (cash sales store UTC midnight
+    // which in IST is 5:30am - could appear as yesterday's date locally)
     const hoursDiff = Math.abs(now.diff(saleDate, 'hour'));
-    return hoursDiff < 18;
+    return hoursDiff <= 30;
   };
 
-  // Show only sales that are not cancelled and not completed as active (unchanged)
+  // Show only sales that are not cancelled and not completed as active
   const activeSales = sales?.filter((s: any) => !s.isCancelled && !s.isCompleted) || [];
-  // Completed/Cancelled should disappear after midnight => show only today's
-  const completedSales = sales?.filter((s: any) => s.isCompleted && isToday(s.saleDate || s.updatedAt || s.createdAt)) || [];
+  // Completed sales: paymentStatus === COMPLETED or isCompleted flag, filtered to today
+  const completedSales = sales?.filter((s: any) => 
+    (s.isCompleted || s.paymentStatus === 'COMPLETED') && 
+    isToday(s.saleDate || s.updatedAt || s.createdAt)
+  ) || [];
   const cancelledSales = sales?.filter((s: any) => s.isCancelled && isToday(s.saleDate || s.updatedAt || s.createdAt)) || [];
   // Pagination state for active sales
   const [activeSalesPage, setActiveSalesPage] = useState(1);

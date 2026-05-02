@@ -145,17 +145,35 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Employee not found or access denied' }, { status: 404 });
     }
 
-    // Create payment
-    const payment = await prisma.employeePayment.create({
-      data: {
-        employeeId: BigInt(employeeId),
-        amount,
-        paymentMethod: paymentMethod as PaymentMethod,
-        paymentDate: new Date(paymentDate),
-        shopId: BigInt(shopId),
-        notes: notes || null,
-        isActive: true
-      }
+    // Create payment AND matching Expense(SALARY) in a transaction so analytics chart picks it up
+    const { payment } = await prisma.$transaction(async (tx) => {
+      const payment = await tx.employeePayment.create({
+        data: {
+          employeeId: BigInt(employeeId),
+          amount,
+          paymentMethod: paymentMethod as PaymentMethod,
+          paymentDate: new Date(paymentDate),
+          shopId: BigInt(shopId),
+          notes: notes || null,
+          isActive: true
+        }
+      });
+
+      // Mirror payment as a SALARY expense so it appears in analytics
+      await tx.expense.create({
+        data: {
+          shopId: BigInt(shopId),
+          amount,
+          category: 'SALARY' as any,
+          description: notes
+            ? `Salary – ${employee.name}: ${notes}`
+            : `Salary – ${employee.name}`,
+          date: new Date(paymentDate),
+          isActive: true
+        }
+      });
+
+      return { payment };
     });
 
     // Fix BigInt serialization

@@ -161,6 +161,8 @@ export async function POST(req: NextRequest) {
 
       // 2. Create the sale
       console.log('Creating sale with customer ID:', finalCustomerId);
+      // SaleStatus mirrors paymentStatus: COMPLETED when fully paid, PENDING otherwise
+      const saleStatus = salePaymentStatus === PaymentStatus.COMPLETED ? 'COMPLETED' : 'PENDING';
       const createdSale = await tx.sale.create({
         data: {
           customerId: finalCustomerId,
@@ -173,8 +175,11 @@ export async function POST(req: NextRequest) {
           vehicleNumber: vehicleNumber || null,
           driverName: driverName || null,
           paymentStatus: salePaymentStatus,
+          status: saleStatus as any,
           paymentMethod: mapPaymentMethodToPrisma(payment_type) as any,
-          notes: notes || '',
+          // [CASH_SALE] tag marks sales created from the Cash Sale section
+          // This lets us reliably filter them apart from regular Add Sale records
+          notes: notes ? `[CASH_SALE] ${notes}` : '[CASH_SALE]',
           isActive: true
         }
       });

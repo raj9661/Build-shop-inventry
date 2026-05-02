@@ -979,16 +979,23 @@ export default function AnalyticsDashboard() {
                       </div>
                     )}
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Total Expenses</CardTitle>
-                      <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                      <CardTitle className="text-sm font-medium">Total Expenses (All)</CardTitle>
+                      <TrendingDown className="h-4 w-4 text-red-500" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
-                        {analyticsData?.totalExpenses !== undefined ? formatCurrency(analyticsData.totalExpenses) : '₹0'}
+                      <div className="text-2xl font-bold text-red-600">
+                        {analyticsData?.totalAllExpenses !== undefined ? formatCurrency(analyticsData.totalAllExpenses) : (analyticsData?.totalExpenses !== undefined ? formatCurrency(analyticsData.totalExpenses) : '₹0')}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Last {timeRange} days
+                        Expenses + Salary + Supplier
                       </p>
+                      {analyticsData?.totalExpenses !== undefined && (
+                        <div className="mt-1 space-y-0.5 text-xs text-gray-500">
+                          <div>🔧 Shop: {formatCurrency(analyticsData.totalExpenses)}</div>
+                          <div>👷 Salary: {formatCurrency(analyticsData.totalEmployeePayments || 0)}</div>
+                          <div>🚚 Supplier: {formatCurrency(analyticsData.totalSupplierPayments || 0)}</div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 )
@@ -1071,13 +1078,16 @@ export default function AnalyticsDashboard() {
                       </div>
                     )}
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                      <CardTitle className="text-sm font-medium">Employee Payments</CardTitle>
-                      <UserCheck className="h-4 w-4 text-muted-foreground" />
+                      <CardTitle className="text-sm font-medium">Salary / Employee Pay</CardTitle>
+                      <UserCheck className="h-4 w-4 text-orange-500" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className="text-2xl font-bold text-orange-600">
                         {analyticsData?.totalEmployeePayments !== undefined ? formatCurrency(analyticsData.totalEmployeePayments) : '₹0'}
                       </div>
+                      <p className="text-xs text-orange-500 font-medium">
+                        ✅ Counted as expense
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         Last {timeRange} days
                       </p>
@@ -1259,11 +1269,11 @@ export default function AnalyticsDashboard() {
                       <Target className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                      <div className="text-2xl font-bold">
+                      <div className={`text-2xl font-bold ${analyticsData?.netProfit !== undefined && analyticsData.netProfit < 0 ? 'text-red-600' : 'text-green-600'}`}>
                         {analyticsData?.netProfit !== undefined ? formatCurrency(analyticsData.netProfit) : '₹0'}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Revenue - Expenses
+                        Revenue − (Expenses + Salary + Supplier)
                       </p>
                     </CardContent>
                   </Card>

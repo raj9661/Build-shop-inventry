@@ -414,17 +414,36 @@ export async function GET(req: NextRequest) {
       include: { user: { select: { name: true, email: true } } }
     });
 
+    const rawExpenses = Number(totalExpenses._sum.amount || 0);
+    const salaryExpenseObj = expensesByCategory.find(e => e.category === 'SALARY');
+    const salaryExpenses = Number(salaryExpenseObj?._sum?.amount || 0);
+    const shopExpenses = Math.max(0, rawExpenses - salaryExpenses);
+    const employeePayments = salaryExpenses;
+    const supplierPaymentsAmt = Number(totalSupplierPayments._sum.amount || 0);
+
+    const totalAllExpenses = rawExpenses + supplierPaymentsAmt;
+    const totalRevenueValue = Number(totalRevenueObj._sum.finalAmount || 0);
+    const netProfit = totalRevenueValue - totalAllExpenses;
+    const roi = totalAllExpenses > 0 ? (netProfit / totalAllExpenses) * 100 : 0;
+    const ros = totalRevenueValue > 0 ? (netProfit / totalRevenueValue) * 100 : 0;
+    const grossMargin = totalRevenueValue > 0 ? ((totalRevenueValue - totalAllExpenses) / totalRevenueValue) * 100 : 0;
+
     // Format the response data
     const analyticsData = {
-      totalRevenue: Number(totalRevenueObj._sum.finalAmount || 0),
+      totalRevenue: totalRevenueValue,
       totalSales,
       totalProducts,
       totalCustomers,
       totalEmployees,
       totalSuppliers,
-      totalExpenses: Number(totalExpenses._sum.amount || 0),
-      totalSupplierPayments: Number(totalSupplierPayments._sum.amount || 0),
-      totalEmployeePayments: Number(totalEmployeePayments._sum.amount || 0),
+      totalExpenses: shopExpenses,
+      totalSupplierPayments: supplierPaymentsAmt,
+      totalEmployeePayments: employeePayments,
+      totalAllExpenses,
+      netProfit,
+      roi: Number(roi.toFixed(2)),
+      ros: Number(ros.toFixed(2)),
+      grossMargin: Number(grossMargin.toFixed(2)),
       shops: shops.map(shop => ({ id: Number(shop.id), name: shop.name, location: shop.location })),
       salesByMonth,
       expensesByMonth,

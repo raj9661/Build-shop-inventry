@@ -1022,10 +1022,26 @@ function serializeBigInt(obj: any): string {
     // We also need to map individual sales if they are ever needed in system analytics
     // (currently it seems to focus on aggregates, but let's ensure the logic is there or robust)
     const revenue = Number(totalRevenueObj._sum.finalAmount || 0);
-    const expenses = Number(totalExpenses._sum.amount || 0);
-    const employeePayments = Number(totalEmployeePayments._sum.amount || 0);
+    
+    // Extract salary specifically from the Expense table grouping
+    const salaryExpenseObj = expensesByCategory.find(e => e.category === 'SALARY');
+    const salaryExpenses = Number(salaryExpenseObj?._sum?.amount || 0);
+    
+    // Total raw expenses from Expense table (includes SALARY)
+    const rawExpenses = Number(totalExpenses._sum.amount || 0);
+    
+    // "Shop" expenses = all expenses EXCEPT salary
+    const shopExpenses = Math.max(0, rawExpenses - salaryExpenses);
+    
+    // employeePayments for the UI metric card should use the accurate salaryExpenses 
+    // to include both auto-generated and manual salary records
+    const employeePayments = salaryExpenses;
+    
     const supplierPayments = Number(totalSupplierPayments._sum.amount || 0);
-    const totalAllExpenses = expenses + employeePayments + supplierPayments;
+    
+    // Total = Shop (raw - salary) + Salary + Supplier 
+    // Which simplifies to: rawExpenses + supplierPayments
+    const totalAllExpenses = rawExpenses + supplierPayments;
     const netProfit = revenue - totalAllExpenses;
 
     // ROI (Return on Investment) = (Net Profit / Total Expenses) * 100
@@ -1039,7 +1055,7 @@ function serializeBigInt(obj: any): string {
 
     console.log('📊 Business Metrics calculated:', {
       revenue,
-      expenses,
+      shopExpenses,
       employeePayments,
       supplierPayments,
       totalAllExpenses,
@@ -1062,7 +1078,7 @@ function serializeBigInt(obj: any): string {
         totalCustomers: Number(totalCustomers),
         totalEmployees: Number(totalEmployees),
         totalSuppliers: Number(totalSuppliers),
-        totalExpenses: expenses,
+        totalExpenses: shopExpenses,
         totalEmployeePayments: employeePayments,
         totalSupplierPayments: supplierPayments,
         totalAllExpenses: totalAllExpenses,
