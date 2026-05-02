@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { usePathname } from "next/navigation";
 import { ShopProvider } from "../contexts/ShopContext";
 import { CompactModeProvider } from "./compact-mode-provider";
-import { MobileNav } from "./mobile-nav";
+import { MobileNav } from "@/components/mobile-nav";
 import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 
