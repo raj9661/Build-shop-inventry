@@ -36,20 +36,24 @@ export function MobileNav() {
   const [isOpen, setIsOpen] = useState(false)
   const { currentShop, shops, switchShop, userRole, switchToAllShops } = useShop()
 
-  const navItems = [
-    { href: "/super-admin", icon: LayoutDashboard, label: t("Super Admin", "सुपर एडमिन") },
-    { href: "/dashboard", icon: Home, label: t("Dashboard", "डैशबोर्ड") },
-    { href: "/add-sale", icon: ShoppingCart, label: t("Add Sale", "बिक्री जोड़ें") },
-    { href: "/add-stock", icon: PackagePlus, label: t("Add Stock", "स्टॉक जोड़ें") },
-    { href: "/inventory", icon: Package, label: t("Inventory", "इन्वेंटरी") },
-    { href: "/suppliers", icon: Truck, label: t("Suppliers", "सप्लायर") },
-    { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी") },
-    { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
-    { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
-    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़") }] : []),
-    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/cash-sale-history", icon: Receipt, label: t("Cash Sale History", "कैश बिक्री इतिहास") }] : []),
-    { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन") },
+  const allNavItems = [
+    { href: "/super-admin", icon: LayoutDashboard, label: t("Super Admin", "सुपर एडमिन"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN'] },
+    { href: "/dashboard", icon: Home, label: t("Dashboard", "डैशबोर्ड"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
+    { href: "/add-sale", icon: ShoppingCart, label: t("Add Sale", "बिक्री जोड़ें"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+    { href: "/add-stock", icon: PackagePlus, label: t("Add Stock", "स्टॉक जोड़ें"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+    { href: "/inventory", icon: Package, label: t("Stock (Inventory)", "स्टॉक (इन्वेंट्री)"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
+    { href: "/suppliers", icon: Truck, label: t("Suppliers", "सप्लायर"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+    { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN'] },
+    { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
+    { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF'] },
+    { href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN'] },
+    { href: "/cash-sale-history", icon: Receipt, label: t("Sale History", "बिक्री इतिहास"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN'] },
+    { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन"), roles: ['SUPER_DUPER_ADMIN', 'SUPER_ADMIN', 'ADMIN', 'STAFF', 'USER'] },
   ]
+
+  const navItems = allNavItems.filter(item =>
+    !userRole || item.roles.includes(userRole)
+  )
 
   const currentPage = navItems.find((item) => item.href === pathname)
 
