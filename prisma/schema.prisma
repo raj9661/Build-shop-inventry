@@ -515,6 +515,8 @@ model EmployeePayment {
   @@index([shopId])
   @@index([paymentDate])
   @@index([isActive])
+  // Composite index for fast analytics queries
+  @@index([shopId, isActive, paymentDate])
 }
 
 model EmployeeSalaryDue {
@@ -710,6 +712,8 @@ model Expense {
   @@index([date])
   @@index([category])
   @@index([isActive])
+  // Composite index for fast analytics queries
+  @@index([shopId, isActive, date])
 }
 
 model AnalyticsSummary {
@@ -957,6 +961,8 @@ model TmtSale {
   @@index([paymentMethod])
   @@index([paymentStatus])
   @@index([isActive])
+  // Composite index for fast analytics queries
+  @@index([shopId, isActive, saleDate])
 }
 
 model TmtSaleItem {

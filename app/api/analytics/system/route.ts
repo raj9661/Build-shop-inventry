@@ -725,31 +725,26 @@ export async function GET(req: NextRequest) {
     }
 
     // Sales by month - dynamically calculate number of months based on days parameter
-    const salesByMonth = [];
     // Calculate how many months to show (default to 6 months if not specified)
     const numMonths = Math.max(1, Math.ceil(days / 30));
     const monthsToShow = Math.min(numMonths, 12); // Cap at 12 months
 
-    for (let i = monthsToShow - 1; i >= 0; i--) {
+    const monthIndices = Array.from({ length: monthsToShow }, (_, i) => monthsToShow - 1 - i);
+    
+    // Execute all month queries in parallel to avoid N+1 sequential bottlenecks
+    const monthPromises = monthIndices.map(async (i) => {
       const now = new Date();
-      // Calculate the target month by subtracting i months from now (using UTC)
       const targetYear = now.getUTCFullYear();
       const targetMonth = now.getUTCMonth() - i;
 
-      // Create month start (first day of month, 00:00:00 UTC)
       const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-
-      // Create month end (last day of month, 23:59:59.999 UTC)
       const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
 
-      const [monthSales, monthTmtSales] = await Promise.all([
+      const [monthSales, monthTmtSales, monthExpenses] = await Promise.all([
         prisma.sale.aggregate({
           where: {
             isActive: true,
-            saleDate: {
-              gte: monthStart,
-              lte: monthEnd
-            },
+            saleDate: { gte: monthStart, lte: monthEnd },
             ...shopFilter
           },
           _sum: { finalAmount: true },
@@ -758,62 +753,49 @@ export async function GET(req: NextRequest) {
         prisma.tmtSale.aggregate({
           where: {
             isActive: true,
-            saleDate: {
-              gte: monthStart,
-              lte: monthEnd
-            },
+            saleDate: { gte: monthStart, lte: monthEnd },
             ...shopFilter
           },
           _sum: { totalAmount: true },
           _count: { id: true }
+        }),
+        prisma.expense.aggregate({
+          where: {
+            isActive: true,
+            date: { gte: monthStart, lte: monthEnd },
+            ...shopFilter
+          },
+          _sum: { amount: true }
         })
       ]);
 
-      // Format month as "MMM YYYY"
       const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-
       const revenue = Number(monthSales._sum.finalAmount || 0) + Number(monthTmtSales._sum.totalAmount || 0);
       const salesCount = (monthSales._count.id || 0) + (monthTmtSales._count.id || 0);
-      
-      console.log(`📊 Month ${monthLabel}: ${salesCount} sales, ₹${revenue}`);
+      const expenses = Number(monthExpenses._sum.amount || 0);
 
-      salesByMonth.push({
+      return {
         month: monthLabel,
-        sales: salesCount,
-        revenue: revenue
-      });
-    }
-    console.log('📊 Total sales by month data:', salesByMonth);
+        salesCount,
+        revenue,
+        expenses
+      };
+    });
 
-    // Expenses by month - same logic as sales by month
-    const expensesByMonth = [];
-    for (let i = monthsToShow - 1; i >= 0; i--) {
-      const now = new Date();
-      const targetYear = now.getUTCFullYear();
-      const targetMonth = now.getUTCMonth() - i;
+    const monthlyData = await Promise.all(monthPromises);
+    
+    const salesByMonth = monthlyData.map(d => ({
+      month: d.month,
+      sales: d.salesCount,
+      revenue: d.revenue
+    }));
+    
+    const expensesByMonth = monthlyData.map(d => ({
+      month: d.month,
+      expenses: d.expenses
+    }));
 
-      const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
-
-      const monthExpenses = await prisma.expense.aggregate({
-        where: {
-          isActive: true,
-          date: {
-            gte: monthStart,
-            lte: monthEnd
-          },
-          ...shopFilter
-        },
-        _sum: { amount: true }
-      });
-
-      const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-
-      expensesByMonth.push({
-        month: monthLabel,
-        expenses: Number(monthExpenses._sum.amount || 0)
-      });
-    }
+    console.log('📊 Total monthly analytics processed in parallel');
 
     // Expenses by category
     const expensesByCategory = await prisma.expense.groupBy({

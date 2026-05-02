@@ -44,6 +44,10 @@ const nextConfig = {
       'redis',
       '@aws-sdk/client-s3',
       '@aws-sdk/s3-request-presigner',
+      '@hookform/resolvers',
+      'zod',
+      'framer-motion',
+      'recharts'
     ],
   },
 
