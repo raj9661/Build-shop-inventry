@@ -30,8 +30,11 @@ import {
 } from "lucide-react"
 import { toast } from "sonner"
 import { useShop } from '../contexts/ShopContext'
-import AdminEditModal, { AdminEditField } from '../components/admin/AdminEditModal'
-import AdminDeleteConfirm from '../components/admin/AdminDeleteConfirm'
+import dynamic from "next/dynamic"
+import type { AdminEditField } from '../components/admin/AdminEditModal'
+
+const AdminEditModal = dynamic(() => import('../components/admin/AdminEditModal'), { ssr: false, loading: () => <div className="hidden" /> })
+const AdminDeleteConfirm = dynamic(() => import('../components/admin/AdminDeleteConfirm'), { ssr: false, loading: () => <div className="hidden" /> })
 
 
 type LedgerItem = {

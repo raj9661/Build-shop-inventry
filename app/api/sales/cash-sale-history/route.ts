@@ -100,13 +100,39 @@ export async function GET(req: NextRequest) {
     if (saleTypeParam === 'cash')    tmtSaleTypeFilter = { paymentMethod: 'CASH' as any };
     else if (saleTypeParam === 'regular') tmtSaleTypeFilter = { NOT: { paymentMethod: 'CASH' as any } };
 
+    // ─── Search conditions ─────────────────────────────────────────────────────
+    let searchCondition: any = {};
+    let tmtSearchCondition: any = {};
+    if (searchParam) {
+      searchCondition = {
+        OR: [
+          { customer: { name: { contains: searchParam, mode: 'insensitive' } } },
+          { customer: { phone: { contains: searchParam, mode: 'insensitive' } } },
+          { customer: { address: { contains: searchParam, mode: 'insensitive' } } },
+          { shop: { name: { contains: searchParam, mode: 'insensitive' } } },
+        ]
+      };
+      tmtSearchCondition = {
+        OR: [
+          { customerName: { contains: searchParam, mode: 'insensitive' } },
+          { customer: { name: { contains: searchParam, mode: 'insensitive' } } },
+          { customer: { phone: { contains: searchParam, mode: 'insensitive' } } },
+          { customer: { address: { contains: searchParam, mode: 'insensitive' } } },
+          { shop: { name: { contains: searchParam, mode: 'insensitive' } } },
+        ]
+      };
+    }
+
+    const fetchLimit = skip + limit;
+
     // ─── Parallel queries ──────────────────────────────────────────────────────
-    const [sales, tmtSales, shopsList] = await Promise.all([
+    const [sales, tmtSales, salesCount, tmtSalesCount, shopsList] = await Promise.all([
       prisma.sale.findMany({
         where: {
           shopId: shopIdFilter,
           isActive: true,
           ...saleSaleTypeFilter,
+          ...searchCondition,
           ...(hasDateFilter ? { saleDate: dateFilter } : {})
         },
         include: {
@@ -114,13 +140,15 @@ export async function GET(req: NextRequest) {
           shop: { select: { id: true, name: true, location: true } },
           items: { include: { product: { select: { name: true, sku: true, unit: true } } } }
         },
-        orderBy: { saleDate: 'desc' }
+        orderBy: { saleDate: 'desc' },
+        take: fetchLimit
       }),
       prisma.tmtSale.findMany({
         where: {
           shopId: shopIdFilter,
           isActive: true,
           ...tmtSaleTypeFilter,
+          ...tmtSearchCondition,
           ...(hasDateFilter ? { saleDate: dateFilter } : {})
         },
         include: {
@@ -128,7 +156,26 @@ export async function GET(req: NextRequest) {
           shop: { select: { id: true, name: true, location: true } },
           items: { include: { product: { select: { productName: true } } } }
         },
-        orderBy: { saleDate: 'desc' }
+        orderBy: { saleDate: 'desc' },
+        take: fetchLimit
+      }),
+      prisma.sale.count({
+        where: {
+          shopId: shopIdFilter,
+          isActive: true,
+          ...saleSaleTypeFilter,
+          ...searchCondition,
+          ...(hasDateFilter ? { saleDate: dateFilter } : {})
+        }
+      }),
+      prisma.tmtSale.count({
+        where: {
+          shopId: shopIdFilter,
+          isActive: true,
+          ...tmtSaleTypeFilter,
+          ...tmtSearchCondition,
+          ...(hasDateFilter ? { saleDate: dateFilter } : {})
+        }
       }),
       decoded.role === 'SUPER_DUPER_ADMIN'
         ? prisma.shop.findMany({
@@ -216,22 +263,12 @@ export async function GET(req: NextRequest) {
       createdAt: sale.createdAt
     }));
 
-    // ─── Merge → search → sort → paginate ─────────────────────────────────────
+    // ─── Merge → sort → paginate ─────────────────────────────────────
     let combined = [...mappedSales, ...mappedTmtSales];
-
-    if (searchParam) {
-      const q = searchParam.toLowerCase();
-      combined = combined.filter(s =>
-        s.customerName.toLowerCase().includes(q) ||
-        s.customerPhone.includes(q) ||
-        s.shopName.toLowerCase().includes(q) ||
-        s.customerAddress.toLowerCase().includes(q)
-      );
-    }
 
     combined.sort((a, b) => new Date(b.saleDate).getTime() - new Date(a.saleDate).getTime());
 
-    const totalCount  = combined.length;
+    const totalCount  = salesCount + tmtSalesCount;
     const pagedSales  = combined.slice(skip, skip + limit);
 
     const responseData = {
