@@ -41,12 +41,14 @@ export function MobileNav() {
     { href: "/dashboard", icon: Home, label: t("Dashboard", "डैशबोर्ड") },
     { href: "/add-sale", icon: ShoppingCart, label: t("Add Sale", "बिक्री जोड़ें") },
     { href: "/add-stock", icon: PackagePlus, label: t("Add Stock", "स्टॉक जोड़ें") },
+    { href: "/inventory", icon: Package, label: t("Inventory", "इन्वेंटरी") },
     { href: "/suppliers", icon: Truck, label: t("Suppliers", "सप्लायर") },
     { href: "/employees", icon: UserPlus, label: t("Employees", "कर्मचारी") },
     { href: "/customer-ledger", icon: BookUser, label: t("Customer Ledger", "ग्राहक खाता") },
     { href: "/cash-sale", icon: IndianRupee, label: t("Cash Sale", "नकद बिक्री") },
     ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/sale-documents", icon: FileImage, label: t("Sale Documents", "बिक्री दस्तावेज़") }] : []),
-    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/cash-sale-history", icon: Receipt, label: t("Sale History", "बिक्री इतिहास") }] : []),
+    ...(userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN" ? [{ href: "/cash-sale-history", icon: Receipt, label: t("Cash Sale History", "कैश बिक्री इतिहास") }] : []),
+    { href: "/subscription", icon: CreditCard, label: t("Subscription", "सब्सक्रिप्शन") },
   ]
 
   const currentPage = navItems.find((item) => item.href === pathname)
