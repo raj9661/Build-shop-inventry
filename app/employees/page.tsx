@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { useLanguage } from "@/hooks/use-language"
 import { MobileNav } from "@/components/mobile-nav"
 import {
@@ -44,12 +45,29 @@ const roles = [
   { value: "Accountant", label: "Accountant", labelHi: "लेखाकार" },
 ]
 
+type PaymentRecord = {
+  id: number
+  amount: number
+  paymentDate: string
+  paymentMethod: string
+  notes?: string
+}
+
+type AttendanceRecord = {
+  id: number
+  date: string
+  status: "present" | "absent" | "half_day"
+  notes?: string
+}
+
 type WeeklySalary = {
+  weekKey: string
   week: string
   hours: number
   amount: number
   status: "paid" | "unpaid"
-  date: string
+  startDate: string
+  endDate: string
 }
 
 type SalaryType = "hourly" | "daily" | "weekly" | "monthly";
@@ -62,12 +80,17 @@ type Employee = {
   roles: string[]
   notes: string
   salaryType: SalaryType
+  paymentDayOfWeek?: string
   salaryAmount: number
   salaryPaid: boolean
   hourlyRate: number
   joinDate: string
   totalEarnings: number
-  weeklySalaries: WeeklySalary[]
+  currentWeekHours?: number
+  currentWeekSalary?: number
+  paymentHistory?: PaymentRecord[]
+  attendanceRecords?: AttendanceRecord[]
+  weeklySalaries?: WeeklySalary[]
 }
 
 const salaryTypeOptions = [
@@ -76,6 +99,8 @@ const salaryTypeOptions = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
 ];
+
+const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function Employees() {
   const { language, toggleLanguage, t } = useLanguage()
@@ -94,9 +119,12 @@ export default function Employees() {
     roles: ["Helper"],
     notes: "",
     salaryType: "hourly" as SalaryType,
+    paymentDayOfWeek: "Saturday",
     salaryAmount: 0,
     joinDate: new Date().toISOString().split('T')[0],
   })
+  const [editingAttendance, setEditingAttendance] = useState<{ id?: number, date: string, status: string, notes?: string } | null>(null)
+  const [editingPayment, setEditingPayment] = useState<PaymentRecord | null>(null)
   const isProcessingPaymentRef = useRef(false);
 
   // Fetch employees from API
@@ -145,6 +173,7 @@ export default function Employees() {
           address: formData.address,
           notes: formData.notes,
           salaryType: formData.salaryType,
+          paymentDayOfWeek: formData.salaryType === 'weekly' ? formData.paymentDayOfWeek : null,
           joinDate: formData.joinDate,
         })
       })
@@ -193,15 +222,18 @@ export default function Employees() {
             address: employee.address || '',
             roles: employee.position ? employee.position.split(',') : ['Helper'], // Split joined position string into roles array
             notes: employee.notes || '',
-            salaryType: 'monthly' as SalaryType, // Default to monthly
             salaryAmount: employee.salary ? Number(employee.salary) : 0,
             salaryPaid: employee.hasPaidThisMonth || false, // Use hasPaidThisMonth from API
             hourlyRate: employee.salary ? Number(employee.salary) / 160 : 100, // Assuming 160 hours per month
             joinDate: employee.joinDate ? new Date(employee.joinDate).toISOString().split('T')[0] : (employee.createdAt ? new Date(employee.createdAt).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
             salaryType: employee.salaryType || 'monthly',
-            notes: employee.notes || '',
+            paymentDayOfWeek: employee.paymentDayOfWeek || "Saturday",
             totalEarnings: employee.totalPaid || 0, // Use totalPaid from API
-            weeklySalaries: [] // Will be populated from salary records
+            currentWeekHours: employee.currentWeekHours || 0,
+            currentWeekSalary: employee.currentWeekSalary || 0,
+            paymentHistory: [],
+            attendanceRecords: [],
+            weeklySalaries: []
           }))
           setEmployees(convertedEmployees)
         } else {
@@ -231,6 +263,7 @@ export default function Employees() {
       roles: employee.roles || ['Helper'],
       notes: employee.notes || '',
       salaryType: employee.salaryType || 'monthly',
+      paymentDayOfWeek: employee.paymentDayOfWeek || 'Saturday',
       salaryAmount: Number(employee.salaryAmount),
       joinDate: employee.joinDate || new Date().toISOString().split('T')[0],
     })
@@ -262,8 +295,8 @@ export default function Employees() {
           address: formData.address,
           notes: formData.notes,
           salaryType: formData.salaryType,
+          paymentDayOfWeek: formData.salaryType === 'weekly' ? formData.paymentDayOfWeek : null,
           joinDate: formData.joinDate,
-          email: formData.email,
         })
       })
 
@@ -312,7 +345,7 @@ export default function Employees() {
   }
 
   const resetForm = () => {
-    setFormData({ name: "", phone: "", email: "", address: "", roles: ["Helper"], notes: "", salaryType: "hourly", salaryAmount: 0, joinDate: new Date().toISOString().split('T')[0] })
+    setFormData({ name: "", phone: "", email: "", address: "", roles: ["Helper"], notes: "", salaryType: "hourly" as SalaryType, paymentDayOfWeek: "Saturday", salaryAmount: 0, joinDate: new Date().toISOString().split('T')[0] })
     setEditingEmployee(null)
   }
 
@@ -354,35 +387,128 @@ export default function Employees() {
     )
   }
 
-  const markSalaryPaid = (employeeId: number, weekIndex: number) => {
-    setEmployees(
-      employees.map((employee) =>
-        employee.id === employeeId
-          ? {
-            ...employee,
-            weeklySalaries: employee.weeklySalaries.map((salary, index) =>
-              index === weekIndex ? { ...salary, status: "paid" as const } : salary,
-            ),
-            totalEarnings: employee.totalEarnings + employee.weeklySalaries[weekIndex].amount,
-          }
-          : employee,
-      ),
-    )
-    toast.success(t("Salary marked as paid!", "वेतन भुगतान के रूप में चिह्नित!"))
-  }
+  // Handle viewing detailed employee profile
+  const handleViewEmployee = async (employee: Employee) => {
+    setViewingEmployee(employee);
+    setActiveTab("view");
+    
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) return;
 
-  // Calculate current week salary due for display
-  const getCurrentWeekSalary = (employee: Employee) => {
-    const currentWeek = employee.weeklySalaries.find((salary) => salary.week === "Dec 23-28")
-    return currentWeek?.amount || 0
-  }
+      // Fetch full details with payment history
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      
+      // Fetch current month attendance
+      const d = new Date();
+      const attRes = await fetch(`/api/employee-attendance?employeeId=${employee.id}&month=${d.getMonth()+1}&year=${d.getFullYear()}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const attData = await attRes.json();
 
-  const getCurrentWeekHours = (employee: Employee) => {
-    const currentWeek = employee.weeklySalaries.find((salary) => salary.week === "Dec 23-28")
-    return currentWeek?.hours || 0
-  }
+      // Fetch weekly salaries
+      const weekRes = await fetch(`/api/employees/${employee.id}/weekly-summary`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const weekData = await weekRes.json();
 
-  const handlePayNow = async (employeeId: number) => {
+      if (data.success && data.data?.employee) {
+        setViewingEmployee(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            paymentHistory: data.data.employee.paymentHistory || [],
+            attendanceRecords: attData.data?.records || [],
+            weeklySalaries: weekData.data?.weeklySalaries || []
+          };
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch employee details", error);
+    }
+  };
+
+  const markAttendance = async (status: "present" | "absent" | "half_day") => {
+    if (!viewingEmployee || !currentShop) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const today = new Date().toISOString().split('T')[0];
+      const res = await fetch('/api/employee-attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          employeeId: viewingEmployee.id,
+          date: today,
+          status,
+          shopId: currentShop.id
+        })
+      });
+      if (res.ok) {
+        toast.success(t(`Marked as ${status}`, `${status} के रूप में चिह्नित`));
+        handleViewEmployee(viewingEmployee); // Refresh data
+      }
+    } catch (error) {
+      console.error("Failed to mark attendance", error);
+    }
+  };
+
+  const handleUpdateAttendance = async () => {
+    if (!editingAttendance || !viewingEmployee || !currentShop) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/employee-attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          employeeId: viewingEmployee.id,
+          date: editingAttendance.date,
+          status: editingAttendance.status,
+          notes: editingAttendance.notes,
+          shopId: currentShop.id
+        })
+      });
+      if (res.ok) {
+        toast.success(t(`Attendance updated`, `उपस्थिति अपडेट की गई`));
+        setEditingAttendance(null);
+        handleViewEmployee(viewingEmployee);
+        await fetchEmployees(true);
+      }
+    } catch (error) {
+      console.error("Failed to update attendance", error);
+    }
+  };
+
+  const handleUpdatePayment = async () => {
+    if (!editingPayment || !viewingEmployee) return;
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch(`/api/admin/employee-payments/${editingPayment.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          amount: Number(editingPayment.amount),
+          paymentDate: editingPayment.paymentDate,
+          notes: editingPayment.notes
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(t(`Payment updated`, `भुगतान अपडेट किया गया`));
+        setEditingPayment(null);
+        handleViewEmployee(viewingEmployee);
+        await fetchEmployees(true);
+      } else {
+        toast.error(data.message || 'Failed to update payment');
+      }
+    } catch (error) {
+      console.error("Failed to update payment", error);
+    }
+  };
+
+  const handlePayNow = async (employeeId: number, amount?: number, notes?: string) => {
     // Prevent duplicate submissions
     if (isProcessingPaymentRef.current) {
       toast.error('Payment is already being processed');
@@ -413,11 +539,11 @@ export default function Employees() {
         },
         body: JSON.stringify({
           employeeId: employeeId,
-          amount: employee.salaryAmount,
+          amount: amount || employee.salaryAmount,
           paymentMethod: 'CASH',
           paymentDate: new Date().toISOString().split('T')[0],
           shopId: currentShop.id,
-          notes: 'Salary payment'
+          notes: notes || 'Salary payment'
         })
       });
 
@@ -428,6 +554,9 @@ export default function Employees() {
         toast.success(t("Salary marked as paid!", "वेतन भुगतान के रूप में चिह्नित!"))
         console.log('🔍 [Employee Payment] Refreshing employees list...');
         await fetchEmployees(true); // Silent refresh to avoid blocking UI
+        if (viewingEmployee && viewingEmployee.id === employeeId) {
+            handleViewEmployee(employees.find(emp => emp.id === employeeId)!);
+        }
         console.log('🔍 [Employee Payment] Employees list refreshed');
       } else {
         toast.error(data.message || 'Failed to record payment');
@@ -439,6 +568,32 @@ export default function Employees() {
       isProcessingPaymentRef.current = false;
     }
   }
+
+  const handleDeletePayment = async (paymentId: number) => {
+    if (!confirm(t("Are you sure you want to delete this payment?", "क्या आप वाकई इस भुगतान को हटाना चाहते हैं?"))) return;
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await fetch(`/api/admin/employee-payments/${paymentId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        toast.success(t("Payment deleted successfully!", "भुगतान सफलतापूर्वक हटाया गया!"));
+        await fetchEmployees(true);
+        if (viewingEmployee) {
+          handleViewEmployee(employees.find(emp => emp.id === viewingEmployee.id)!);
+        }
+      } else {
+        toast.error(data.message || 'Failed to delete payment');
+      }
+    } catch (error) {
+      console.error('Delete payment error:', error);
+      toast.error('Failed to delete payment');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">
@@ -580,6 +735,24 @@ export default function Employees() {
                     </SelectContent>
                   </Select>
                 </div>
+                {/* Payment Day (only if Weekly) */}
+                {formData.salaryType === "weekly" && (
+                  <div className="space-y-3">
+                    <Label className="text-lg font-medium text-gray-800">{t("Payment Day", "भुगतान का दिन")}</Label>
+                    <Select value={formData.paymentDayOfWeek} onValueChange={value => setFormData({ ...formData, paymentDayOfWeek: value })}>
+                      <SelectTrigger className="h-14 text-base rounded-xl border-gray-200">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {daysOfWeek.map(day => (
+                          <SelectItem key={day} value={day} className="text-base py-3">
+                            {t(day, day)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {/* Salary Amount */}
                 <div className="space-y-3">
                   <Label className="text-lg font-medium text-gray-800">{t("Salary Amount", "वेतन राशि")}</Label>
@@ -653,9 +826,7 @@ export default function Employees() {
                       <TableHead className="font-semibold text-base">{t("Name", "नाम")}</TableHead>
                       <TableHead className="font-semibold text-base">{t("Role", "भूमिका")}</TableHead>
                       <TableHead className="font-semibold text-base">{t("Salary", "वेतन")}</TableHead>
-                      <TableHead className="font-semibold text-base text-right">
-                        {t("Current Week Salary", "इस सप्ताह वेतन")}
-                      </TableHead>
+                      <TableHead className="font-semibold text-base">{t("Current Week Salary", "इस सप्ताह वेतन")}</TableHead>
                       <TableHead className="font-semibold text-base">{t("Hours", "कार्य घंटे")}</TableHead>
                       <TableHead className="font-semibold text-base">{t("Actions", "एक्शन")}</TableHead>
                     </TableRow>
@@ -684,26 +855,32 @@ export default function Employees() {
                             )}
                           </div>
                         </TableCell>
-                        <TableCell className="text-right">
-                          <div className="font-bold text-lg text-green-600">
-                            ₹{getCurrentWeekSalary(employee).toLocaleString()}
-                          </div>
+                        <TableCell>
+                          {(employee.salaryType === "weekly" || employee.salaryType === "hourly") ? (
+                            <span className="font-semibold text-green-600">₹{employee.currentWeekSalary?.toLocaleString() || 0}</span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-4 w-4 text-muted-foreground" />
-                            {getCurrentWeekHours(employee)}h
-                          </div>
+                          {(employee.salaryType === "weekly" || employee.salaryType === "hourly") ? (
+                            <div className="flex items-center gap-1 text-gray-600">
+                              <Clock className="h-4 w-4" />
+                              {employee.currentWeekHours || 0}h
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1 text-gray-400">
+                              <Clock className="h-4 w-4" />
+                              -
+                            </div>
+                          )}
                         </TableCell>
                         <TableCell>
                           <div className="flex gap-2">
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => {
-                                setViewingEmployee(employee)
-                                setActiveTab("view")
-                              }}
+                              onClick={() => handleViewEmployee(employee)}
                               className="h-8 w-8 p-0"
                             >
                               <Eye className="h-4 w-4" />
@@ -818,31 +995,115 @@ export default function Employees() {
                           </div>
                         </div>
                         <div>
-                          <p className="text-sm text-muted-foreground">{t("Hourly Rate", "घंटे की दर")}</p>
-                          <p className="font-semibold text-lg text-green-600">₹{viewingEmployee.hourlyRate}/hr</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t("Total Earnings", "कुल कमाई")}</p>
-                          <p className="font-semibold text-lg text-green-600">₹{viewingEmployee.totalEarnings.toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t("Current Week Salary", "इस सप्ताह वेतन")}</p>
-                          <p className="font-semibold text-lg text-green-600">₹{getCurrentWeekSalary(viewingEmployee).toLocaleString()}</p>
-                        </div>
-                        <div>
-                          <p className="text-sm text-muted-foreground">{t("Current Week Hours", "इस सप्ताह घंटे")}</p>
-                          <p className="font-semibold text-lg">{getCurrentWeekHours(viewingEmployee)}h</p>
+                          <p className="text-sm text-muted-foreground">{t("Total Paid Earnings", "कुल भुगतान कमाई")}</p>
+                          <p className="font-semibold text-xl text-green-600">₹{viewingEmployee.totalEarnings?.toLocaleString() || '0'}</p>
                         </div>
                       </CardContent>
                     </Card>
                   </div>
 
+                  {/* Attendance Section */}
+                  <Card className="shadow-lg border-0 bg-white">
+                    <CardHeader className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-t-lg">
+                      <div className="flex justify-between items-center">
+                        <CardTitle className="flex items-center gap-2">
+                          <UserPlus className="h-5 w-5" />
+                          Today's Attendance (आज की उपस्थिति)
+                        </CardTitle>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="secondary" className="bg-white text-green-600 hover:bg-green-50" onClick={() => markAttendance('present')}>Present</Button>
+                          <Button size="sm" variant="secondary" className="bg-white text-orange-600 hover:bg-orange-50" onClick={() => markAttendance('half_day')}>Half Day</Button>
+                          <Button size="sm" variant="secondary" className="bg-white text-red-600 hover:bg-red-50" onClick={() => markAttendance('absent')}>Absent</Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="p-6">
+                      <div className="flex flex-wrap gap-2">
+                        {viewingEmployee.attendanceRecords?.map((record, index) => (
+                          <div 
+                            key={index} 
+                            onClick={() => setEditingAttendance({ id: record.id, date: record.date.split('T')[0], status: record.status, notes: record.notes })}
+                            className={`flex flex-col items-center p-2 rounded-lg border cursor-pointer hover:opacity-80 transition-opacity ${record.status === 'present' ? 'bg-green-50 border-green-200' : record.status === 'absent' ? 'bg-red-50 border-red-200' : 'bg-orange-50 border-orange-200'}`}
+                          >
+                            <span className="text-xs text-gray-500">{new Date(record.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</span>
+                            <span className="font-bold text-sm">
+                              {record.status === 'present' ? 'P' : record.status === 'absent' ? 'A' : 'HD'}
+                            </span>
+                          </div>
+                        ))}
+                        {(!viewingEmployee.attendanceRecords || viewingEmployee.attendanceRecords.length === 0) && (
+                          <div className="text-muted-foreground text-sm py-2">No attendance marked this month.</div>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+
                   {/* Weekly Salary History */}
+                  {(viewingEmployee.salaryType?.toLowerCase() === 'weekly' || viewingEmployee.salaryType?.toLowerCase() === 'hourly') && (
+                    <Card className="shadow-lg border-0 bg-white">
+                      <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-t-lg">
+                        <CardTitle className="flex items-center gap-2">
+                          <Calendar className="h-5 w-5" />
+                          {t("Weekly Salary History", "साप्ताहिक वेतन इतिहास")}
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="p-0">
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader className="bg-gray-50">
+                              <TableRow>
+                                <TableHead className="font-semibold">{t("Week", "सप्ताह")}</TableHead>
+                                <TableHead className="font-semibold">{t("Hours", "घंटे")}</TableHead>
+                                <TableHead className="font-semibold text-right">{t("Amount", "राशि")}</TableHead>
+                                <TableHead className="font-semibold">{t("Status", "स्थिति")}</TableHead>
+                                <TableHead className="font-semibold">{t("Action", "एक्शन")}</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {viewingEmployee.weeklySalaries?.map((salary, index) => (
+                                <TableRow key={index} className="hover:bg-gray-50">
+                                  <TableCell className="font-medium">{salary.week}</TableCell>
+                                  <TableCell>{salary.hours}h</TableCell>
+                                  <TableCell className="text-right font-bold">₹{salary.amount.toLocaleString()}</TableCell>
+                                  <TableCell>
+                                    {salary.status === "paid" ? (
+                                      <Badge className="bg-green-100 text-green-800 border-green-200">{t("Paid", "भुगतान किया गया")}</Badge>
+                                    ) : (
+                                      <Badge className="bg-red-100 text-red-800 border-red-200">{t("Unpaid", "भुगतान बाकी")}</Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell>
+                                    {salary.status === "unpaid" && (
+                                      <Button
+                                        size="sm"
+                                        className="bg-green-600 hover:bg-green-700"
+                                        onClick={() => handlePayNow(viewingEmployee.id, salary.amount, `Weekly Salary - ${salary.week}`)}
+                                      >
+                                        <CheckCircle className="h-4 w-4 mr-1" />
+                                        {t("Pay Now", "अभी भुगतान करें")}
+                                      </Button>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                        {(!viewingEmployee.weeklySalaries || viewingEmployee.weeklySalaries.length === 0) && (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>{t("No weekly records found", "कोई साप्ताहिक रिकॉर्ड नहीं मिला")}</p>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Payment History */}
                   <Card className="shadow-lg border-0 bg-white">
                     <CardHeader className="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-t-lg">
                       <CardTitle className="flex items-center gap-2">
-                        <Calendar className="h-5 w-5" />
-                        {t("Weekly Salary History", "साप्ताहिक वेतन इतिहास")}
+                        <IndianRupee className="h-5 w-5" />
+                        {t("Payment History", "भुगतान इतिहास")}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-0">
@@ -850,40 +1111,40 @@ export default function Employees() {
                         <Table>
                           <TableHeader className="bg-gray-50">
                             <TableRow>
-                              <TableHead className="font-semibold">{t("Week", "सप्ताह")}</TableHead>
-                              <TableHead className="font-semibold">{t("Hours", "घंटे")}</TableHead>
+                              <TableHead className="font-semibold">{t("Date", "तारीख")}</TableHead>
+                              <TableHead className="font-semibold">{t("Method", "तरीका")}</TableHead>
                               <TableHead className="font-semibold text-right">{t("Amount", "राशि")}</TableHead>
-                              <TableHead className="font-semibold">{t("Status", "स्थिति")}</TableHead>
-                              <TableHead className="font-semibold">{t("Action", "एक्शन")}</TableHead>
+                              <TableHead className="font-semibold">{t("Notes", "नोट्स")}</TableHead>
+                              <TableHead className="font-semibold text-right">{t("Action", "एक्शन")}</TableHead>
                             </TableRow>
                           </TableHeader>
                           <TableBody>
-                            {viewingEmployee.weeklySalaries.map((salary, index) => (
+                            {viewingEmployee.paymentHistory?.map((payment, index) => (
                               <TableRow key={index} className="hover:bg-gray-50">
-                                <TableCell className="font-medium">{salary.week}</TableCell>
-                                <TableCell>{salary.hours}h</TableCell>
-                                <TableCell className="text-right font-bold">₹{salary.amount.toLocaleString()}</TableCell>
-                                <TableCell>{getSalaryStatusBadge(salary.status)}</TableCell>
+                                <TableCell className="font-medium">{new Date(payment.paymentDate).toLocaleDateString()}</TableCell>
                                 <TableCell>
-                                  {salary.status === "unpaid" && (
-                                    <Button
-                                      size="sm"
-                                      className="bg-green-600 hover:bg-green-700"
-                                      onClick={() => markSalaryPaid(viewingEmployee.id, index)}
-                                    >
-                                      <CheckCircle className="h-4 w-4 mr-1" />
-                                      {t("Mark Paid", "भुगतान किया गया")}
+                                  <Badge variant="outline">{payment.paymentMethod}</Badge>
+                                </TableCell>
+                                <TableCell className="text-right font-bold text-green-600">₹{payment.amount.toLocaleString()}</TableCell>
+                                <TableCell className="text-gray-500 text-sm max-w-[200px] truncate">{payment.notes || '-'}</TableCell>
+                                <TableCell className="text-right">
+                                  <div className="flex justify-end gap-2">
+                                    <Button size="icon" variant="ghost" className="text-blue-500 hover:text-blue-700 hover:bg-blue-50" onClick={() => setEditingPayment({ ...payment, paymentDate: payment.paymentDate.split('T')[0] })}>
+                                      <Edit className="h-4 w-4" />
                                     </Button>
-                                  )}
+                                    <Button size="icon" variant="ghost" className="text-red-500 hover:text-red-700 hover:bg-red-50" onClick={() => handleDeletePayment(payment.id)}>
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </TableCell>
                               </TableRow>
                             ))}
                           </TableBody>
                         </Table>
                       </div>
-                      {viewingEmployee.weeklySalaries.length === 0 && (
+                      {(!viewingEmployee.paymentHistory || viewingEmployee.paymentHistory.length === 0) && (
                         <div className="text-center py-8 text-muted-foreground">
-                          <p>{t("No salary records found", "कोई वेतन रिकॉर्ड नहीं मिला")}</p>
+                          <p>{t("No payment records found", "कोई भुगतान रिकॉर्ड नहीं मिला")}</p>
                         </div>
                       )}
                     </CardContent>
@@ -894,6 +1155,73 @@ export default function Employees() {
           </Tabs>
         </Card>
       </div>
+
+      {/* Edit Attendance Dialog */}
+      <Dialog open={!!editingAttendance} onOpenChange={(open) => !open && setEditingAttendance(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("Edit Attendance", "उपस्थिति संपादित करें")}</DialogTitle>
+          </DialogHeader>
+          {editingAttendance && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>{t("Date", "तारीख")}</Label>
+                <Input type="date" value={editingAttendance.date} disabled className="bg-gray-50" />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Status", "स्थिति")}</Label>
+                <Select value={editingAttendance.status} onValueChange={(val) => setEditingAttendance({ ...editingAttendance, status: val })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="present">Present (उपस्थित)</SelectItem>
+                    <SelectItem value="half_day">Half Day (आधा दिन)</SelectItem>
+                    <SelectItem value="absent">Absent (अनुपस्थित)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Notes", "नोट्स")}</Label>
+                <Input value={editingAttendance.notes || ''} onChange={(e) => setEditingAttendance({ ...editingAttendance, notes: e.target.value })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingAttendance(null)}>{t("Cancel", "रद्द करें")}</Button>
+            <Button onClick={handleUpdateAttendance} className="bg-green-600 hover:bg-green-700">{t("Save", "सहेजें")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Payment Dialog */}
+      <Dialog open={!!editingPayment} onOpenChange={(open) => !open && setEditingPayment(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t("Edit Payment", "भुगतान संपादित करें")}</DialogTitle>
+          </DialogHeader>
+          {editingPayment && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>{t("Amount", "राशि")}</Label>
+                <Input type="number" value={editingPayment.amount} onChange={(e) => setEditingPayment({ ...editingPayment, amount: Number(e.target.value) })} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Date", "तारीख")}</Label>
+                <Input type="date" value={editingPayment.paymentDate} onChange={(e) => setEditingPayment({ ...editingPayment, paymentDate: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>{t("Notes", "नोट्स")}</Label>
+                <Input value={editingPayment.notes || ''} onChange={(e) => setEditingPayment({ ...editingPayment, notes: e.target.value })} />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingPayment(null)}>{t("Cancel", "रद्द करें")}</Button>
+            <Button onClick={handleUpdatePayment} className="bg-green-600 hover:bg-green-700">{t("Save", "सहेजें")}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

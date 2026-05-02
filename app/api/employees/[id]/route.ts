@@ -5,14 +5,13 @@ import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
 const prisma = new PrismaClient();
 
-// GET - Get a specific employee
+// GET - Get a specific employee with full payment history
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const authHeader = req.headers.get('authorization');
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return NextResponse.json({ success: false, message: 'Access token required' }, { status: 401 });
     }
-    
     const token = authHeader.substring(7);
     const decoded = await validateToken(token);
     if (!decoded) {
@@ -25,23 +24,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, message: 'Invalid employee ID' }, { status: 400 });
     }
 
-    // Get user's accessible shops
     const shopFilter = await getShopFilter(token);
 
-    // Find employee with access check
     const employee = await prisma.employee.findFirst({
-      where: {
-        id: BigInt(employeeId),
-        isActive: true,
-        ...shopFilter
-      },
+      where: { id: BigInt(employeeId), isActive: true, ...shopFilter },
       include: {
-        shop: {
-          select: {
-            id: true,
-            name: true
-          }
-        }
+        shop: { select: { id: true, name: true } },
+        payments: { where: { isActive: true }, orderBy: { paymentDate: 'desc' } }
       }
     });
 
@@ -49,35 +38,46 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ success: false, message: 'Employee not found or access denied' }, { status: 404 });
     }
 
-    // Convert BigInt fields to numbers for JSON serialization
-    const serializedEmployee = {
-      id: Number(employee.id),
-      name: employee.name,
-      phone: employee.phone,
-      email: employee.email,
-      address: employee.address,
-      position: employee.position,
-      salary: employee.salary,
-      joinDate: employee.joinDate,
-      isActive: employee.isActive,
-      shopId: employee.shopId ? Number(employee.shopId) : null,
-      createdAt: employee.createdAt,
-      updatedAt: employee.updatedAt,
-      shop: employee.shop ? {
-        ...employee.shop,
-        id: Number(employee.shop.id)
-      } : null
-    };
+    const totalPaid = employee.payments.reduce((s, p) => s + Number(p.amount), 0);
+    const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+    const hasPaidThisMonth = employee.payments.some(p => new Date(p.paymentDate) >= monthStart);
 
-    return NextResponse.json({ 
-      success: true, 
-      data: { employee: serializedEmployee } 
+    return NextResponse.json({
+      success: true,
+      data: {
+        employee: {
+          id: Number(employee.id),
+          name: employee.name,
+          phone: employee.phone,
+          email: employee.email,
+          address: employee.address,
+          position: employee.position,
+          salary: employee.salary,
+          salaryType: employee.salaryType,
+          paymentDayOfWeek: employee.paymentDayOfWeek,
+          joinDate: employee.joinDate,
+          notes: employee.notes,
+          isActive: employee.isActive,
+          shopId: employee.shopId ? Number(employee.shopId) : null,
+          shop: employee.shop ? { id: Number(employee.shop.id), name: employee.shop.name } : null,
+          totalPaid,
+          hasPaidThisMonth,
+          paymentHistory: employee.payments.map(p => ({
+            id: Number(p.id),
+            amount: Number(p.amount),
+            paymentDate: p.paymentDate,
+            paymentMethod: p.paymentMethod,
+            notes: p.notes,
+          }))
+        }
+      }
     });
   } catch (error) {
     console.error('Get employee error:', error);
     return NextResponse.json({ success: false, message: 'Failed to fetch employee' }, { status: 500 });
   }
 }
+
 
 // PUT - Update an employee
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -100,7 +100,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     }
 
     const body = await req.json();
-    const { name, phone, email, address, salary, positions, joinDate, salaryType, notes } = body;
+    const { name, phone, email, address, salary, positions, joinDate, salaryType, paymentDayOfWeek, notes } = body;
 
     // Get user's accessible shops
     const shopFilter = await getShopFilter(token);
@@ -130,6 +130,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         ...(positions !== undefined && Array.isArray(positions) && { position: positions.join(',') }),
         ...(joinDate && { joinDate: new Date(joinDate) }),
         ...(salaryType !== undefined && { salaryType }),
+        ...(paymentDayOfWeek !== undefined && { paymentDayOfWeek }),
         ...(notes !== undefined && { notes })
       },
       include: {

@@ -188,6 +188,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       lastSupply: lastSupply instanceof Date ? lastSupply.toISOString() : lastSupply,
       weeklySupplies,
       paymentHistory: payments.map(p => ({
+        id: p.id.toString(),
         amount: Number(p.amount),
         paymentDate: p.paymentDate instanceof Date ? p.paymentDate.toISOString() : p.paymentDate,
         paymentMethod: (p as any).paymentMethod || 'CASH',

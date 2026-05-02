@@ -65,47 +65,63 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const sales = await prisma.$queryRaw`
-      SELECT 
-        ts.id,
-        ts."productId",
-        ts."soldQuantity",
-        ts."unitType",
-        ts."equivalentKg",
-        ts."pricePerUnit",
-        ts."totalAmount",
-        ts."saleDate",
-        ts."customerName",
-        ts."createdAt",
-        tp."productName",
-        tc.name as "companyName",
-        ts2."sizeMm"
-      FROM tmt_sales ts
-      JOIN tmt_products tp ON ts."productId" = tp.id
-      JOIN tmt_companies tc ON tp."companyId" = tc.id
-      JOIN tmt_sizes ts2 ON tp."sizeId" = ts2.id
-      WHERE ts."shopId" = ${parseInt(shopId)}
-      AND ts."isActive" = true
-      ORDER BY ts."saleDate" DESC
-    ` as any[];
+    const sales = await prisma.tmtSale.findMany({
+      where: {
+        shopId: BigInt(shopId),
+        isActive: true
+      },
+      include: {
+        items: {
+          include: {
+            product: {
+              include: {
+                company: true,
+                size: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { saleDate: 'desc' }
+    });
 
     return NextResponse.json({
       success: true,
-      data: sales.map(s => ({
-        id: Number(s.id),
-        productId: Number(s.productId),
-        productName: s.productName,
-        companyName: s.companyName,
-        sizeMm: Number(s.sizeMm),
-        soldQuantity: Number(s.soldQuantity),
-        unitType: s.unitType,
-        equivalentKg: Number(s.equivalentKg),
-        pricePerUnit: Number(s.pricePerUnit),
-        totalAmount: Number(s.totalAmount),
-        saleDate: s.saleDate,
-        customerName: s.customerName,
-        createdAt: s.createdAt
-      }))
+      data: sales.map(s => {
+        // Find the first item to fall back for legacy fields if frontend expects flat structure
+        const firstItem = s.items?.[0] || null;
+
+        return {
+          id: Number(s.id),
+          // Provide flat fields from the first item to avoid breaking older UI, 
+          // but also provide the items array for the updated UI
+          productId: firstItem ? Number(firstItem.productId) : null,
+          productName: firstItem?.product?.productName || null,
+          companyName: firstItem?.product?.company?.name || null,
+          sizeMm: firstItem?.product?.size?.sizeMm ? Number(firstItem.product.size.sizeMm) : null,
+          soldQuantity: firstItem ? Number(firstItem.quantity) : 0,
+          unitType: firstItem?.unitType || '',
+          equivalentKg: 0,
+          pricePerUnit: firstItem ? Number(firstItem.unitPrice) : 0,
+
+          totalAmount: Number(s.totalAmount),
+          saleDate: s.saleDate,
+          customerName: s.customerName,
+          createdAt: s.createdAt,
+          items: s.items.map(item => ({
+            id: Number(item.id),
+            productId: Number(item.productId),
+            productName: item.product?.productName || null,
+            companyName: item.product?.company?.name || null,
+            sizeMm: item.product?.size?.sizeMm ? Number(item.product.size.sizeMm) : null,
+            quantity: Number(item.quantity),
+            unitType: item.unitType,
+            equivalentKg: 0,
+            pricePerUnit: Number(item.unitPrice),
+            totalAmount: Number(item.totalPrice)
+          }))
+        };
+      })
     });
 
   } catch (error) {

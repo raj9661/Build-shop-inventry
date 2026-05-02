@@ -13,16 +13,18 @@ interface NormalBillPrintProps {
   userRole?: string
 }
 
-function getInitialDate(date?: string) {
-  if (date) {
-    const d = new Date(date)
-    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10)
+function getInitialDate(sale?: any) {
+  // Prefer saleDate (TMT sale) over date (regular sale)
+  const raw = sale?.saleDate || sale?.date;
+  if (raw) {
+    const d = new Date(raw);
+    if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
   }
-  return new Date().toISOString().slice(0, 10)
+  return new Date().toISOString().slice(0, 10);
 }
 
 const NormalBillPrint: React.FC<NormalBillPrintProps> = ({ sale, onClose, userRole }) => {
-  const [billDate, setBillDate] = useState(getInitialDate(sale.saleDate));
+  const [billDate, setBillDate] = useState(getInitialDate(sale));
   const handlePrint = () => {
     window.print()
   }
@@ -62,14 +64,26 @@ const NormalBillPrint: React.FC<NormalBillPrintProps> = ({ sale, onClose, userRo
           </tr>
         </thead>
         <tbody>
-          {sale.items.map((item: any, i: number) => (
-            <tr key={i}>
-              <td>{item.name}</td>
-              <td className="text-center">{item.quantity}</td>
-              <td className="text-right">₹{item.price_per_unit || item.pricePerUnit || 0}</td>
-              <td className="text-right">₹{(item.quantity * (item.price_per_unit || item.pricePerUnit || 0)).toFixed(2)}</td>
-            </tr>
-          ))}
+          {sale.items.map((item: any, i: number) => {
+            // Support both regular (price_per_unit) and TMT (pricePerUnit) items
+            const price = item.price_per_unit || item.pricePerUnit || 0;
+            // Support both name and productName
+            const itemName = item.name || item.productName || '-';
+            // Support both quantity and soldQuantity
+            const qty = item.quantity ?? item.soldQuantity ?? 0;
+            const unit = item.unitType || item.unit || '';
+            return (
+              <tr key={i}>
+                <td>
+                  {itemName}
+                  {item.company && <span style={{ fontSize: 9, color: '#888' }}> ({item.company}{item.size ? ` ${item.size}mm` : ''})</span>}
+                </td>
+                <td className="text-center">{qty} {unit}</td>
+                <td className="text-right">₹{Number(price).toFixed(2)}</td>
+                <td className="text-right">₹{(qty * price).toFixed(2)}</td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
       <div className="text-right text-xs" style={{ fontSize: 12 }}>

@@ -6,9 +6,11 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { Loader2, Package, Pencil, RefreshCw, Download, CheckCircle2 } from "lucide-react";
+import { Loader2, Package, Pencil, RefreshCw, Download, CheckCircle2, Trash2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { useRouter } from "next/navigation";
+import AdminEditModal from '../components/admin/AdminEditModal';
+import AdminDeleteConfirm from '../components/admin/AdminDeleteConfirm';
 
 function exportToCSV(rows: any[], headers: string[], filename: string) {
   const csv = [headers.join(","), ...rows.map(row => headers.map(h => row[h] ?? "").join(","))].join("\n");
@@ -33,7 +35,8 @@ function formatTmtStockDisplay(prod: any & { latestConversionCft?: number }) {
 
 export default function InventoryPage() {
   const router = useRouter();
-  const { currentShopId } = useShop();
+  const { currentShopId, userRole } = useShop();
+  const isAdmin = userRole === 'SUPER_DUPER_ADMIN';
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -48,7 +51,42 @@ export default function InventoryPage() {
   const [stockLoading, setStockLoading] = useState(false);
   const [refreshLoading, setRefreshLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
-  const [markingPaid, setMarkingPaid] = useState<string | null>(null); // id of entry being updated
+  const [markingPaid, setMarkingPaid] = useState<string | null>(null);
+
+  // Admin stock edit/delete state
+  const [adminStockEdit, setAdminStockEdit] = useState<any | null>(null);
+  const [adminStockDelete, setAdminStockDelete] = useState<any | null>(null);
+
+  const handleAdminStockEdit = async (changes: Record<string, any>, reason: string) => {
+    if (!adminStockEdit) return;
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch(`/api/admin/stock/${adminStockEdit.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ...changes, reason })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Edit failed');
+    toast.success('Stock entry updated successfully');
+    // Refresh stock entries
+    setStockEntries(prev => prev.map(e => e.id === adminStockEdit.id
+      ? { ...e, ...changes } : e
+    ));
+  };
+
+  const handleAdminStockDelete = async (reason: string) => {
+    if (!adminStockDelete) return;
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch(`/api/admin/stock/${adminStockDelete.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Delete failed');
+    toast.success('Stock entry deleted');
+    setStockEntries(prev => prev.filter(e => e.id !== adminStockDelete.id));
+  };
 
   const loadProducts = async () => {
     setLoading(true);
@@ -887,115 +925,203 @@ export default function InventoryPage() {
                     No entries match &ldquo;{historySearch}&rdquo;
                   </div>
                 ) : (
-                  <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+                  <div className="rounded-lg border border-gray-200 bg-white">
                     <div className="px-3 py-2 text-xs text-gray-500 border-b bg-gray-50">
                       Showing <span className="font-semibold text-gray-700">{filteredEntries.length}</span> of {stockEntries.length} entries
                     </div>
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-semibold">Product</th>
-                          <th className="px-3 py-2 text-left font-semibold">Supplier</th>
-                          <th className="px-3 py-2 text-left font-semibold">Quantity</th>
-                          <th className="px-3 py-2 text-left font-semibold">Unit Price</th>
-                          <th className="px-3 py-2 text-left font-semibold">Total</th>
-                          <th className="px-3 py-2 text-left font-semibold">Date</th>
-                          <th className="px-3 py-2 text-left font-semibold">
-                            Supplier Payment
-                            <div className="text-xs text-gray-400 font-normal">Did you pay supplier?</div>
-                          </th>
-                          <th className="px-3 py-2 text-left font-semibold">Notes</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredEntries.map((entry: any) => (
-                          <tr key={entry.id} className="transition hover:bg-primary/5 border-b border-gray-100 last:border-0">
-                            <td className="px-3 py-2 font-medium">{entry.product?.name ?? '-'}</td>
-                            <td className="px-3 py-2 text-blue-700">{entry.supplier?.name ?? '-'}</td>
-                            <td className="px-3 py-2">
-                              <span className="font-semibold text-indigo-700">{Number(entry.quantity)}</span>
-                              {entry.unitName && <span className="ml-1 text-xs text-gray-500">{entry.unitName}</span>}
-                            </td>
-                            <td className="px-3 py-2">₹{Number(entry.unitPrice).toLocaleString('en-IN')}</td>
-                            <td className="px-3 py-2 font-semibold text-green-700">₹{Number(entry.totalAmount).toLocaleString('en-IN')}</td>
-                            <td className="px-3 py-2 whitespace-nowrap">
-                              {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                                  entry.paymentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
-                                  entry.paymentStatus === 'PENDING'   ? 'bg-yellow-100 text-yellow-700' :
-                                  entry.paymentStatus === 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                  'bg-gray-100 text-gray-600'
-                                }`}>
-                                  {entry.paymentStatus === 'COMPLETED' ? 'Paid ✓' :
-                                   entry.paymentStatus === 'PENDING'   ? 'Unpaid' :
-                                   entry.paymentStatus ?? '-'}
-                                </span>
-                                {entry.paymentStatus === 'PENDING' && (
-                                  <button
-                                    title="Mark supplier as paid"
-                                    disabled={markingPaid === entry.id}
-                                    onClick={async () => {
-                                      setMarkingPaid(entry.id);
-                                      try {
-                                        const token = localStorage.getItem('accessToken');
-                                        if (!token) throw new Error('No token');
-                                        const res = await fetch('/api/stock', {
-                                          method: 'PATCH',
-                                          headers: {
-                                            'Content-Type': 'application/json',
-                                            'Authorization': `Bearer ${token}`,
-                                          },
-                                          body: JSON.stringify({ id: entry.id, paymentStatus: 'COMPLETED' }),
-                                        });
-                                        if (res.ok) {
-                                          setStockEntries(prev =>
-                                            prev.map(e => e.id === entry.id ? { ...e, paymentStatus: 'COMPLETED' } : e)
-                                          );
-                                          toast.success(`Marked as paid: ${entry.product?.name}`);
-                                        } else {
-                                          const d = await res.json();
-                                          toast.error(d.message || 'Failed to update');
-                                        }
-                                      } catch {
-                                        toast.error('Failed to update payment status');
-                                      } finally {
-                                        setMarkingPaid(null);
-                                      }
-                                    }}
-                                    className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition disabled:opacity-50"
-                                  >
-                                    {markingPaid === entry.id
-                                      ? <Loader2 className="h-3 w-3 animate-spin" />
-                                      : <CheckCircle2 className="h-3 w-3" />}
-                                    Mark Paid
-                                  </button>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 max-w-xs truncate" title={entry.notes ?? ''}>{entry.notes ?? '-'}</td>
+
+                    {/* ── Desktop table ── */}
+                    <div className="hidden sm:block overflow-x-auto">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold">Product</th>
+                            <th className="px-3 py-2 text-left font-semibold">Supplier</th>
+                            <th className="px-3 py-2 text-left font-semibold">Quantity</th>
+                            <th className="px-3 py-2 text-left font-semibold">Unit Price</th>
+                            <th className="px-3 py-2 text-left font-semibold">Total</th>
+                            <th className="px-3 py-2 text-left font-semibold">Date</th>
+                            <th className="px-3 py-2 text-left font-semibold">
+                              Supplier Payment
+                              <div className="text-xs text-gray-400 font-normal">Did you pay supplier?</div>
+                            </th>
+                            <th className="px-3 py-2 text-left font-semibold">Notes</th>
                           </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-gray-50 font-semibold text-sm">
-                        <tr>
-                          <td colSpan={4} className="px-3 py-2 text-gray-600">Total ({filteredEntries.length} entries)</td>
-                          <td className="px-3 py-2 text-green-700">
-                            ₹{filteredEntries.reduce((s: number, e: any) => s + Number(e.totalAmount || 0), 0).toLocaleString('en-IN')}
-                          </td>
-                          <td colSpan={3} />
-                        </tr>
-                      </tfoot>
-                    </table>
+                        </thead>
+                        <tbody>
+                          {filteredEntries.map((entry: any) => (
+                            <tr key={entry.id} className="transition hover:bg-primary/5 border-b border-gray-100 last:border-0">
+                              <td className="px-3 py-2 font-medium">
+                                <div>{entry.product?.name ?? '-'}</div>
+                                {isAdmin && (
+                                  <div className="flex gap-1 mt-1">
+                                    <button onClick={() => setAdminStockEdit(entry)} className="p-0.5 rounded text-amber-600 hover:bg-amber-50" title="Admin: Edit">
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                    <button onClick={() => setAdminStockDelete(entry)} className="p-0.5 rounded text-red-500 hover:bg-red-50" title="Admin: Delete">
+                                      <Trash2 className="h-3 w-3" />
+                                    </button>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-blue-700">{entry.supplier?.name ?? '-'}</td>
+                              <td className="px-3 py-2">
+                                <span className="font-semibold text-indigo-700">{Number(entry.quantity)}</span>
+                                {entry.unitName && <span className="ml-1 text-xs text-gray-500">{entry.unitName}</span>}
+                              </td>
+                              <td className="px-3 py-2">₹{Number(entry.unitPrice).toLocaleString('en-IN')}</td>
+                              <td className="px-3 py-2 font-semibold text-green-700">₹{Number(entry.totalAmount).toLocaleString('en-IN')}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                                    entry.paymentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                    entry.paymentStatus === 'PENDING'   ? 'bg-yellow-100 text-yellow-700' :
+                                    entry.paymentStatus === 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                                    'bg-gray-100 text-gray-600'
+                                  }`}>
+                                    {entry.paymentStatus === 'COMPLETED' ? 'Paid ✓' :
+                                     entry.paymentStatus === 'PENDING'   ? 'Unpaid' :
+                                     entry.paymentStatus ?? '-'}
+                                  </span>
+                                  {entry.paymentStatus === 'PENDING' && (
+                                    <button
+                                      title="Mark supplier as paid"
+                                      disabled={markingPaid === entry.id}
+                                      onClick={async () => {
+                                        setMarkingPaid(entry.id);
+                                        try {
+                                          const token = localStorage.getItem('accessToken');
+                                          if (!token) throw new Error('No token');
+                                          const res = await fetch('/api/stock', {
+                                            method: 'PATCH',
+                                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                                            body: JSON.stringify({ id: entry.id, paymentStatus: 'COMPLETED' }),
+                                          });
+                                          if (res.ok) {
+                                            setStockEntries(prev => prev.map(e => e.id === entry.id ? { ...e, paymentStatus: 'COMPLETED' } : e));
+                                            toast.success(`Marked as paid: ${entry.product?.name}`);
+                                          } else {
+                                            const d = await res.json();
+                                            toast.error(d.message || 'Failed to update');
+                                          }
+                                        } catch { toast.error('Failed to update payment status'); }
+                                        finally { setMarkingPaid(null); }
+                                      }}
+                                      className="flex items-center gap-1 text-xs px-2 py-0.5 rounded border border-green-400 text-green-700 bg-green-50 hover:bg-green-100 transition disabled:opacity-50"
+                                    >
+                                      {markingPaid === entry.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                                      Mark Paid
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 max-w-xs truncate" title={entry.notes ?? ''}>{entry.notes ?? '-'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-gray-50 font-semibold text-sm">
+                          <tr>
+                            <td colSpan={4} className="px-3 py-2 text-gray-600">Total ({filteredEntries.length} entries)</td>
+                            <td className="px-3 py-2 text-green-700">
+                              ₹{filteredEntries.reduce((s: number, e: any) => s + Number(e.totalAmount || 0), 0).toLocaleString('en-IN')}
+                            </td>
+                            <td colSpan={3} />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+
+                    {/* ── Mobile card list ── */}
+                    <div className="sm:hidden divide-y divide-gray-100">
+                      {filteredEntries.map((entry: any) => (
+                        <div key={entry.id} className="px-4 py-3 bg-white">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-800 text-sm">{entry.product?.name ?? '-'}</p>
+                              <p className="text-xs text-blue-600 mt-0.5">{entry.supplier?.name ?? '-'}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {entry.entryDate ? new Date(entry.entryDate).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '-'}
+                              </p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-bold text-green-700 text-sm">₹{Number(entry.totalAmount).toLocaleString('en-IN')}</p>
+                              <p className="text-xs text-gray-500">{Number(entry.quantity)} {entry.unitName || ''} × ₹{Number(entry.unitPrice).toLocaleString('en-IN')}</p>
+                              <span className={`inline-block mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                                entry.paymentStatus === 'COMPLETED' ? 'bg-green-100 text-green-700' :
+                                entry.paymentStatus === 'PENDING'   ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-600'
+                              }`}>
+                                {entry.paymentStatus === 'COMPLETED' ? 'Paid ✓' : entry.paymentStatus === 'PENDING' ? 'Unpaid' : entry.paymentStatus ?? '-'}
+                              </span>
+                            </div>
+                          </div>
+                          {/* Admin controls on mobile */}
+                          {isAdmin && (
+                            <div className="flex gap-2 mt-2">
+                              <button
+                                onClick={() => setAdminStockEdit(entry)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 font-medium"
+                              >
+                                <Pencil className="h-3 w-3" /> Edit Entry
+                              </button>
+                              <button
+                                onClick={() => setAdminStockDelete(entry)}
+                                className="flex items-center gap-1 px-3 py-1.5 text-xs rounded-lg bg-red-50 text-red-600 border border-red-200 font-medium"
+                              >
+                                <Trash2 className="h-3 w-3" /> Delete
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      <div className="px-4 py-3 bg-gray-50 font-semibold text-sm flex justify-between">
+                        <span className="text-gray-600">Total ({filteredEntries.length})</span>
+                        <span className="text-green-700">₹{filteredEntries.reduce((s: number, e: any) => s + Number(e.totalAmount || 0), 0).toLocaleString('en-IN')}</span>
+                      </div>
+                    </div>
                   </div>
                 );
               })()}
+
             </CardContent>
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* ── SUPER_DUPER_ADMIN Stock Modals ── */}
+      {isAdmin && (
+        <>
+          <AdminEditModal
+            open={!!adminStockEdit}
+            title="Edit Stock Entry"
+            fields={adminStockEdit ? [
+              { key: 'entryDate', label: 'Entry Date', type: 'date', value: adminStockEdit.entryDate ? new Date(adminStockEdit.entryDate).toISOString().split('T')[0] : '' },
+              { key: 'quantity', label: 'Quantity', type: 'number', value: Number(adminStockEdit.quantity), min: 0, step: 0.001 },
+              { key: 'unitPrice', label: 'Unit Price (₹)', type: 'number', value: Number(adminStockEdit.unitPrice), min: 0, step: 0.01 },
+              { key: 'notes', label: 'Notes', type: 'textarea', value: adminStockEdit.notes || '' },
+              { key: 'paymentStatus', label: 'Payment Status', type: 'select', value: adminStockEdit.paymentStatus || 'PENDING', options: [
+                { value: 'PENDING', label: 'Pending (Unpaid)' },
+                { value: 'COMPLETED', label: 'Completed (Paid)' },
+                { value: 'CANCELLED', label: 'Cancelled' },
+              ]},
+            ] : []}
+            onSave={handleAdminStockEdit}
+            onClose={() => setAdminStockEdit(null)}
+          />
+          <AdminDeleteConfirm
+            open={!!adminStockDelete}
+            title="Delete Stock Entry"
+            description={adminStockDelete
+              ? `${adminStockDelete.product?.name ?? 'Stock'} — ${Number(adminStockDelete.quantity)} units @ ₹${Number(adminStockDelete.unitPrice).toLocaleString('en-IN')} (Total: ₹${Number(adminStockDelete.totalAmount).toLocaleString('en-IN')})`
+              : ''}
+            onConfirm={handleAdminStockDelete}
+            onClose={() => setAdminStockDelete(null)}
+          />
+        </>
+      )}
     </div>
   );
 } 

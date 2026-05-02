@@ -247,6 +247,7 @@ model Shop {
   employees             Employee[]
   employeePayments      EmployeePayment[]
   employeeSalaryDues    EmployeeSalaryDue[]
+  employeeAttendances   EmployeeAttendance[]
   expenses              Expense[]
   inventoryAnalytics    InventoryAnalytics[]
   payments              Payment[]
@@ -479,14 +480,16 @@ model Employee {
   salary     Decimal?            @db.Decimal(10, 2)
   joinDate   DateTime?
   isActive   Boolean             @default(true)
-  salaryType String              @default("monthly")
-  notes      String?
-  createdAt  DateTime            @default(now())
+  salaryType       String              @default("monthly")
+  paymentDayOfWeek String?             // e.g., "Monday", "Saturday"
+  notes            String?
+  createdAt        DateTime            @default(now())
   updatedAt  DateTime            @updatedAt
   shopId     BigInt
   shop       Shop                @relation(fields: [shopId], references: [id])
-  payments   EmployeePayment[]
-  salaryDues EmployeeSalaryDue[]
+  payments    EmployeePayment[]
+  salaryDues  EmployeeSalaryDue[]
+  attendances EmployeeAttendance[]
 
   @@index([shopId])
   @@index([isActive])
@@ -531,6 +534,24 @@ model EmployeeSalaryDue {
   @@index([shopId])
   @@index([dueDate])
   @@index([isActive])
+}
+
+model EmployeeAttendance {
+  id         BigInt   @id @default(sequence())
+  employeeId BigInt
+  date       DateTime @db.Date
+  status     String   @default("present") // present | absent | half_day
+  hoursWorked Decimal? @default(8) @db.Decimal(4, 2)
+  notes      String?
+  shopId     BigInt
+  createdAt  DateTime @default(now())
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  shop       Shop     @relation(fields: [shopId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([employeeId])
+  @@index([shopId])
+  @@index([date])
 }
 
 model Customer {
@@ -1178,6 +1199,24 @@ enum TmtUnitType {
   TON
   PIECE
   BUNDLE
+}
+
+model AdminAuditLog {
+  id         BigInt   @id @default(sequence())
+  adminId    BigInt
+  action     String   // "EDIT" | "DELETE"
+  tableName  String   // "CustomerLedgerEntry" | "StockEntry" | "SupplierPayment"
+  recordId   BigInt
+  beforeData String   // JSON snapshot BEFORE change
+  afterData  String?  // JSON snapshot AFTER change (null for DELETE)
+  reason     String?  // Admin-provided reason
+  shopId     BigInt
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([tableName, recordId])
+  @@index([shopId])
+  @@index([createdAt])
 }
 
 enum TmtPaymentStatus {

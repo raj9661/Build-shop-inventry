@@ -371,6 +371,11 @@ function AddSalePage() {
       return
     }
 
+    if (customerType === 'new' && !newCustomer.name) {
+      toast.error('Please enter a customer name')
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const token = localStorage.getItem('accessToken')
@@ -378,20 +383,15 @@ function AddSalePage() {
         throw new Error('No access token')
       }
 
-      // Calculate total amount
+      // Calculate total amount from all items (respecting discount/tax)
       const totalAmount = finalAmount
 
-      // Create TMT sale item from current selection
-      const tmtSaleItem = {
-        productId: selectedTmtProduct.id,
-        productName: selectedTmtProduct.productName,
-        company: selectedTmtProduct.company?.name,
-        size: selectedTmtProduct.size?.sizeMm,
-        quantity: parseFloat(tmtQuantity),
-        unitType: tmtUnit,
-        pricePerUnit: parseFloat(tmtPricePerUnit),
-        totalAmount: parseFloat(tmtQuantity) * parseFloat(tmtPricePerUnit)
-      }
+      // Determine the sale date string
+      const saleDateStr = customSaleDate ? `${customSaleDate}T00:00:00.000Z` : new Date().toISOString();
+
+      // Resolve customer info
+      const resolvedCustomerName = customerType === 'new' ? newCustomer.name : selectedCustomer?.name;
+      const resolvedCustomerId = customerType === 'existing' && selectedCustomer?.id ? selectedCustomer.id : undefined;
 
       // Create TMT sale
       const response = await fetch('/api/tmt/sales', {
@@ -401,49 +401,71 @@ function AddSalePage() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          productId: selectedTmtProduct.id,
-          soldQuantity: parseFloat(tmtQuantity),
-          unitType: tmtUnit,
-          pricePerUnit: parseFloat(tmtPricePerUnit),
-          saleDate: customSaleDate ? `${customSaleDate}T00:00:00.000Z` : new Date().toISOString(),
-          customerName: customerType === 'new' ? newCustomer.name : selectedCustomer?.name,
+          items: allItems.map(item => ({
+            productId: item.productId,
+            soldQuantity: item.quantity,
+            unitType: item.unitType,
+            pricePerUnit: item.pricePerUnit
+          })),
+          saleDate: saleDateStr,
+          // Pass both customerId (for existing) and customerName (for display / new customer fallback)
+          customerId: resolvedCustomerId,
+          customerName: resolvedCustomerName,
+          customerPhone: customerType === 'new' ? newCustomer.phone : selectedCustomer?.phone,
+          customerAddress: customerType === 'new' ? newCustomer.address : selectedCustomer?.address,
           shopId: currentShopId,
           paymentMethod: paymentMethod,
-          paidAmount: paymentMethod === 'partial' ? partialAmount : totalAmount,
+          paidAmount: paymentMethod === 'partial' ? partialAmount : (paymentMethod === 'loan' ? 0 : totalAmount),
           partialPaymentMethod: paymentMethod === 'partial' ? partialPaymentMethod : null
         })
       })
 
       if (!response.ok) {
         const errorData = await response.json()
-        throw new Error(errorData.message || 'Failed to create TMT sale')
+        throw new Error(errorData.message || errorData.error || 'Failed to create TMT sale')
       }
-
 
       const result = await response.json()
 
       // Show payment status in success message
       const paymentStatusMsg = result.data?.paymentStatus === 'PARTIAL'
         ? ` | Paid: ₹${result.data?.paidAmount || 0}, Due: ₹${result.data?.dueAmount || 0}`
-        : ''
+        : result.data?.paymentStatus === 'UNPAID' ? ' | Loan/Credit (full amount due)' : ''
       toast.success(`TMT sale completed successfully!${paymentStatusMsg}`)
 
-      // Prepare sale data for print bill
+      // Compute bill amounts (with discount/tax applied)
+      const billSubtotal = allItems.reduce((s, i) => s + i.totalAmount, 0);
+      const billDiscountAmt = discountType === 'percent' ? (billSubtotal * discount) / 100 : discount;
+      const billCgst = ((billSubtotal - billDiscountAmt) * (tax / 2)) / 100;
+      const billSgst = ((billSubtotal - billDiscountAmt) * (tax / 2)) / 100;
+      const billFinal = billSubtotal - billDiscountAmt + billCgst + billSgst;
+      const billPaid = paymentMethod === 'partial' ? partialAmount : (paymentMethod === 'loan' ? 0 : billFinal);
+
+      // Prepare sale data for print bill — use the actual sale date for the bill header
       const tmtSaleData = {
         billNo: result.data?.saleId,
-        date: new Date().toISOString(),
+        saleDate: saleDateStr,
+        date: saleDateStr,
         shop: currentShop,
-        customerName: customerType === 'new' ? newCustomer.name : selectedCustomer?.name,
-        totalAmount: totalAmount,
-        finalAmount: totalAmount,
+        customerName: resolvedCustomerName,
+        customerPhone: customerType === 'new' ? newCustomer.phone : selectedCustomer?.phone,
+        totalAmount: billSubtotal,
+        discount: billDiscountAmt,
+        cgst: billCgst,
+        sgst: billSgst,
+        finalAmount: billFinal,
         payment_type: paymentMethod,
-        paid_amount: paymentMethod === 'partial' ? partialAmount : totalAmount,
-        dueAmount: result.data?.dueAmount || 0,
+        paid_amount: billPaid,
+        dueAmount: result.data?.dueAmount || (billFinal - billPaid),
         paymentStatus: result.data?.paymentStatus || 'PAID',
-        items: [{
-          ...tmtSaleItem,
-          name: tmtSaleItem.productName
-        }]
+        items: allItems.map(item => ({
+          ...item,
+          // Ensure 'name' field is always set for bill components
+          name: item.productName || item.name || 'TMT Product',
+          // Ensure standard price fields exist for bill components
+          price_per_unit: item.pricePerUnit,
+          pricePerUnit: item.pricePerUnit
+        }))
       }
 
       setLastSaleData(tmtSaleData)
@@ -2101,7 +2123,14 @@ function AddSalePage() {
                     <Button
                       type="button"
                       onClick={handleTmtSaleSubmit}
-                      disabled={isSubmitting || !selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit}
+                      disabled={
+                        isSubmitting ||
+                        // Allow submit if there are queued items OR the current form is filled
+                        (
+                          tmtSaleItems.length === 0 &&
+                          (!selectedTmtProduct || !tmtQuantity || !tmtPricePerUnit)
+                        )
+                      }
                       className="w-full h-14 text-lg font-bold shadow-md"
                     >
                       {isSubmitting ? (
@@ -2110,7 +2139,9 @@ function AddSalePage() {
                           {t("Creating Sale...", "बिक्री बनाई जा रही है...")}
                         </>
                       ) : (
-                        t("Create Sale", "बिक्री बनाएं")
+                        tmtSaleItems.length > 0
+                          ? t("Create Sale", "बिक्री बनाएं") + ` (${tmtSaleItems.length} items)`
+                          : t("Create Sale", "बिक्री बनाएं")
                       )}
                     </Button>
                   </div>

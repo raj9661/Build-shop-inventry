@@ -12,11 +12,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Textarea } from "@/components/ui/textarea"
 import { useLanguage } from "@/hooks/use-language"
 import { MobileNav } from "@/components/mobile-nav"
-import { Plus, Edit, Trash2, Phone, MapPin, Truck, Search, Eye, Package, IndianRupee, X, Calendar, Loader2 } from "lucide-react"
+import { Plus, Edit, Trash2, Phone, MapPin, Truck, Search, Eye, Package, IndianRupee, X, Calendar, Loader2, Pencil } from "lucide-react"
 import { toast } from "sonner"
 import { useShop } from "../contexts/ShopContext"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getAvailableUnits } from "../lib/tmtUtils";
+import AdminEditModal from '../components/admin/AdminEditModal';
+import AdminDeleteConfirm from '../components/admin/AdminDeleteConfirm';
 
 // Real suppliers will be loaded from API
 
@@ -88,6 +90,44 @@ export default function Suppliers() {
   const [fareDate, setFareDate] = useState(new Date().toISOString().split("T")[0]);
   const [fareLoading, setFareLoading] = useState(false);
   const [userRole, setUserRole] = useState("");
+
+  // Admin supplier payment edit/delete state
+  const [adminPayEdit, setAdminPayEdit] = useState<any | null>(null);
+  const [adminPayDelete, setAdminPayDelete] = useState<any | null>(null);
+
+  const handleAdminPayEdit = async (changes: Record<string, any>, reason: string) => {
+    if (!adminPayEdit) return;
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch(`/api/admin/supplier-payments/${adminPayEdit.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ...changes, reason })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Edit failed');
+    toast.success('Supplier payment updated');
+    if (viewingSupplier) {
+      await loadSupplierDetails(viewingSupplier.id);
+      await loadSuppliers(true);
+    }
+  };
+
+  const handleAdminPayDelete = async (reason: string) => {
+    if (!adminPayDelete) return;
+    const token = localStorage.getItem('accessToken');
+    const res = await fetch(`/api/admin/supplier-payments/${adminPayDelete.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ reason })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Delete failed');
+    toast.success('Supplier payment deleted');
+    if (viewingSupplier) {
+      await loadSupplierDetails(viewingSupplier.id);
+      await loadSuppliers(true);
+    }
+  };
 
   // Load user role from localStorage on mount
   useEffect(() => {
@@ -1045,7 +1085,7 @@ export default function Suppliers() {
                     <CardContent className="p-0">
                       {(() => {
                         const ob = viewingSupplier.openingBalance || 0;
-                        type LedgerRow = { date: string; debit: number; credit: number; label: string; type: 'opening' | 'supply' | 'charge' | 'payment' | 'week_header'; balance: number };
+                        type LedgerRow = { date: string; debit: number; credit: number; label: string; type: 'opening' | 'supply' | 'charge' | 'payment' | 'week_header'; balance: number; paymentId?: number; paymentRaw?: any };
 
                         const rows: Omit<LedgerRow, 'balance'>[] = [];
 
@@ -1104,6 +1144,8 @@ export default function Suppliers() {
                               credit: Math.abs(Number(p.amount || 0)),
                               label: `💳 ${p.paymentMethod || 'CASH'}${p.notes ? ' · ' + p.notes : ''}`,
                               type: 'payment',
+                              paymentId: Number(p.id),
+                              paymentRaw: p,
                             });
                           }
                         });
@@ -1198,6 +1240,7 @@ export default function Suppliers() {
                                   <th className="text-right px-4 py-3 font-semibold text-red-600 w-28">🔴 {t("Debit", "उधार")}</th>
                                   <th className="text-right px-4 py-3 font-semibold text-green-600 w-28">🟢 {t("Paid", "भुगतान")}</th>
                                   <th className="text-right px-4 py-3 font-semibold text-indigo-700 w-32">⚖️ {t("Balance", "बकाया")}</th>
+                                  {userRole === 'SUPER_DUPER_ADMIN' && <th className="px-4 py-3 w-16 text-center">Admin</th>}
                                 </tr>
                               </thead>
                               <tbody>
@@ -1234,6 +1277,20 @@ export default function Suppliers() {
                                             <span className="ml-1 font-normal text-[10px]">{row.balance > 0 ? 'Dr' : 'Cr'}</span>
                                           </span>
                                         </td>
+                                        {userRole === 'SUPER_DUPER_ADMIN' && (
+                                          <td className="px-4 py-3 text-center">
+                                            {row.type === 'payment' && row.paymentId ? (
+                                              <div className="flex gap-1 justify-center">
+                                                <button onClick={() => setAdminPayEdit(row.paymentRaw)} className="p-0.5 rounded text-amber-600 hover:bg-amber-50" title="Admin: Edit">
+                                                  <Pencil className="h-3 w-3" />
+                                                </button>
+                                                <button onClick={() => setAdminPayDelete(row.paymentRaw)} className="p-0.5 rounded text-red-500 hover:bg-red-50" title="Admin: Delete">
+                                                  <Trash2 className="h-3 w-3" />
+                                                </button>
+                                              </div>
+                                            ) : '—'}
+                                          </td>
+                                        )}
                                       </>
                                     )}
                                   </tr>
@@ -1283,6 +1340,23 @@ export default function Suppliers() {
                                         <p className="text-xs text-gray-400 mt-0.5">
                                           {row.date ? new Date(row.date).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                                         </p>
+                                        {/* Admin controls on mobile — payment rows only */}
+                                        {userRole === 'SUPER_DUPER_ADMIN' && row.type === 'payment' && row.paymentId && (
+                                          <div className="flex gap-2 mt-1.5">
+                                            <button
+                                              onClick={() => setAdminPayEdit(row.paymentRaw)}
+                                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 active:bg-amber-200 transition-colors font-medium"
+                                            >
+                                              <Pencil className="h-3 w-3" /> Edit
+                                            </button>
+                                            <button
+                                              onClick={() => setAdminPayDelete(row.paymentRaw)}
+                                              className="flex items-center gap-1 px-2 py-1 text-xs rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 active:bg-red-200 transition-colors font-medium"
+                                            >
+                                              <Trash2 className="h-3 w-3" /> Delete
+                                            </button>
+                                          </div>
+                                        )}
                                       </div>
                                       <div className="text-right shrink-0">
                                         {row.debit > 0 && <p className="text-sm font-bold text-red-600">-₹{row.debit.toLocaleString('en-IN')}</p>}
@@ -1295,6 +1369,7 @@ export default function Suppliers() {
                                   )}
                                 </div>
                               ))}
+
                               
                               {/* Mobile footer */}
                               {(() => {
@@ -1533,6 +1608,39 @@ export default function Suppliers() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* ── SUPER_DUPER_ADMIN Supplier Payment Modals ── */}
+      {userRole === 'SUPER_DUPER_ADMIN' && (
+        <>
+          <AdminEditModal
+            open={!!adminPayEdit}
+            title="Edit Supplier Payment"
+            fields={adminPayEdit ? [
+              { key: 'paymentDate', label: 'Payment Date', type: 'date', value: adminPayEdit.paymentDate ? new Date(adminPayEdit.paymentDate).toISOString().split('T')[0] : '' },
+              { key: 'amount', label: 'Amount (₹)', type: 'number', value: Number(adminPayEdit.amount), min: 0, step: 0.01 },
+              { key: 'paymentMethod', label: 'Payment Method', type: 'select', value: adminPayEdit.paymentMethod || 'CASH', options: [
+                { value: 'CASH', label: 'Cash' },
+                { value: 'UPI', label: 'UPI' },
+                { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+                { value: 'CHEQUE', label: 'Cheque' },
+                { value: 'OTHER', label: 'Other' },
+              ]},
+              { key: 'notes', label: 'Notes', type: 'textarea', value: adminPayEdit.notes || '' },
+            ] : []}
+            onSave={handleAdminPayEdit}
+            onClose={() => setAdminPayEdit(null)}
+          />
+          <AdminDeleteConfirm
+            open={!!adminPayDelete}
+            title="Delete Supplier Payment"
+            description={adminPayDelete
+              ? `Payment of ₹${Number(adminPayDelete.amount).toLocaleString('en-IN')} via ${adminPayDelete.paymentMethod || 'CASH'} on ${adminPayDelete.paymentDate ? new Date(adminPayDelete.paymentDate).toLocaleDateString('en-IN') : '-'}`
+              : ''}
+            onConfirm={handleAdminPayDelete}
+            onClose={() => setAdminPayDelete(null)}
+          />
+        </>
+      )}
     </div>
   )
 }

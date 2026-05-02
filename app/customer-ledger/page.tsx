@@ -25,9 +25,13 @@ import {
   MapPin,
   Loader2,
   Pencil,
+  Trash2,
+  Shield,
 } from "lucide-react"
 import { toast } from "sonner"
 import { useShop } from '../contexts/ShopContext'
+import AdminEditModal, { AdminEditField } from '../components/admin/AdminEditModal'
+import AdminDeleteConfirm from '../components/admin/AdminDeleteConfirm'
 
 
 type LedgerItem = {
@@ -73,6 +77,11 @@ interface Customer {
 export default function CustomerLedger() {
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShop, userRole } = useShop()
+  const isAdmin = userRole === 'SUPER_DUPER_ADMIN'
+
+  // Admin edit/delete state
+  const [adminEditEntry, setAdminEditEntry] = useState<LedgerEntry | null>(null)
+  const [adminDeleteEntry, setAdminDeleteEntry] = useState<LedgerEntry | null>(null)
   const [selectedCustomer, setSelectedCustomer] = useState<number | null>(null)
   const [ledgerEntries, setLedgerEntries] = useState<LedgerEntry[]>([])
   const [searchTerm, setSearchTerm] = useState("")
@@ -630,6 +639,36 @@ export default function CustomerLedger() {
     setIsAddEntryOpen(true);
   };
 
+  // Admin ledger entry edit handler
+  const handleAdminLedgerEdit = async (changes: Record<string, any>, reason: string) => {
+    if (!adminEditEntry) return
+    const token = localStorage.getItem('accessToken')
+    const res = await fetch(`/api/admin/ledger/${adminEditEntry.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ ...changes, reason })
+    })
+    const data = await res.json()
+    if (!data.success) throw new Error(data.message || 'Edit failed')
+    toast.success('Ledger entry updated successfully')
+    await fetchLedgerEntries()
+  }
+
+  // Admin ledger entry delete handler
+  const handleAdminLedgerDelete = async (reason: string) => {
+    if (!adminDeleteEntry) return
+    const token = localStorage.getItem('accessToken')
+    const res = await fetch(`/api/admin/ledger/${adminDeleteEntry.id}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ reason })
+    })
+    const data = await res.json()
+    if (!data.success) throw new Error(data.message || 'Delete failed')
+    toast.success('Ledger entry deleted')
+    await fetchLedgerEntries()
+  }
+
   // Add a single row rendering function for all tabs
   function renderLedgerRow(entry: LedgerEntry) {
     return (
@@ -639,6 +678,25 @@ export default function CustomerLedger() {
           <div>
             <div className="font-medium">{entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '-'}</div>
             <div className="text-gray-500 text-xs">{entry.time || '-'}</div>
+            {/* Admin Controls */}
+            {isAdmin && (
+              <div className="flex gap-1 mt-1">
+                <button
+                  onClick={() => setAdminEditEntry(entry)}
+                  className="p-0.5 rounded text-amber-600 hover:bg-amber-50 transition-colors"
+                  title="Admin: Edit this entry"
+                >
+                  <Pencil className="h-3 w-3" />
+                </button>
+                <button
+                  onClick={() => setAdminDeleteEntry(entry)}
+                  className="p-0.5 rounded text-red-500 hover:bg-red-50 transition-colors"
+                  title="Admin: Delete this entry"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </button>
+              </div>
+            )}
           </div>
         </TableCell>
         {/* Items */}
@@ -1431,6 +1489,39 @@ export default function CustomerLedger() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* ── SUPER_DUPER_ADMIN Modals ── */}
+        {isAdmin && (
+          <>
+            <AdminEditModal
+              open={!!adminEditEntry}
+              title="Edit Ledger Entry"
+              fields={adminEditEntry ? [
+                { key: 'date', label: 'Date', type: 'date', value: adminEditEntry.date },
+                { key: 'amount', label: 'Amount (₹)', type: 'number', value: adminEditEntry.total || adminEditEntry.paid, min: 0, step: 0.01 },
+                { key: 'description', label: 'Description', type: 'textarea', value: adminEditEntry.description || adminEditEntry.items?.map(i => i.name).join(', ') || '' },
+                { key: 'method', label: 'Payment Method', type: 'select', value: adminEditEntry.paymentMode?.toUpperCase() || 'CASH', options: [
+                  { value: 'CASH', label: 'Cash' },
+                  { value: 'UPI', label: 'UPI' },
+                  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+                  { value: 'CHEQUE', label: 'Cheque' },
+                  { value: 'OTHER', label: 'Other' },
+                ]},
+              ] : []}
+              onSave={handleAdminLedgerEdit}
+              onClose={() => setAdminEditEntry(null)}
+            />
+            <AdminDeleteConfirm
+              open={!!adminDeleteEntry}
+              title="Delete Ledger Entry"
+              description={adminDeleteEntry
+                ? `${adminDeleteEntry.type === 'credit' ? 'Payment' : 'Purchase'} of ₹${(adminDeleteEntry.total || adminDeleteEntry.paid || 0).toLocaleString('en-IN')} on ${adminDeleteEntry.date ? new Date(adminDeleteEntry.date).toLocaleDateString('en-IN') : '-'}`
+                : ''}
+              onConfirm={handleAdminLedgerDelete}
+              onClose={() => setAdminDeleteEntry(null)}
+            />
+          </>
+        )}
       </div>
     </div>
   )

@@ -109,6 +109,31 @@ export async function GET(req: NextRequest) {
       paymentsByEmployee[empId].push(payment);
     }
 
+    // Get current week range (Monday to Sunday)
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diffToMonday = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    const currentWeekStart = new Date(now.getFullYear(), now.getMonth(), diffToMonday, 0, 0, 0, 0);
+    const currentWeekEnd = new Date(currentWeekStart);
+    currentWeekEnd.setDate(currentWeekStart.getDate() + 6);
+    currentWeekEnd.setHours(23, 59, 59, 999);
+    const currentWeekLabel = `${currentWeekStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${currentWeekEnd.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+
+    // Fetch attendance for the current week to calculate hours
+    const attendances = await prisma.employeeAttendance.findMany({
+      where: {
+        employeeId: { in: employeeIds },
+        date: { gte: currentWeekStart, lte: currentWeekEnd }
+      }
+    });
+
+    const attendanceByEmployee: { [employeeId: number]: typeof attendances } = {};
+    for (const att of attendances) {
+      const empId = Number(att.employeeId);
+      if (!attendanceByEmployee[empId]) attendanceByEmployee[empId] = [];
+      attendanceByEmployee[empId].push(att);
+    }
+
     // Get current month's payments to determine if employee is paid this month
     const currentMonth = new Date();
     const currentMonthStart = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
@@ -125,13 +150,41 @@ export async function GET(req: NextRequest) {
         ? employeePayments.reduce((latest, p) => new Date(p.paymentDate) > new Date(latest) ? p.paymentDate : latest, employeePayments[0].paymentDate)
         : null;
       
-      // Check if employee has been paid this month
-      const hasPaidThisMonth = employeePayments.some(p => {
-        const paymentDate = new Date(p.paymentDate);
-        return paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd;
-      });
+      // Check if employee has been paid this month or this week
+      let hasPaidThisMonth = false;
+      let hasPaidThisWeek = false;
 
-      console.log(`🔍 [Employees API] Employee ${employee.name} (${employeeId}): hasPaidThisMonth=${hasPaidThisMonth}, totalPaid=${totalPaid}, payments count=${employeePayments.length}`);
+      if (employee.salaryType === 'weekly' || employee.salaryType === 'hourly') {
+        // For weekly, check if any payment notes contain the current week label, OR if there's a payment made this week
+        hasPaidThisWeek = employeePayments.some(p => {
+          // If notes are tracked, we could check notes, but we didn't fetch notes in the query!
+          // So let's check if the payment date falls in the current week.
+          const paymentDate = new Date(p.paymentDate);
+          return paymentDate >= currentWeekStart && paymentDate <= currentWeekEnd;
+        });
+        hasPaidThisMonth = hasPaidThisWeek; // map it to the same prop for backward compatibility or ease of use
+      } else {
+        hasPaidThisMonth = employeePayments.some(p => {
+          const paymentDate = new Date(p.paymentDate);
+          return paymentDate >= currentMonthStart && paymentDate <= currentMonthEnd;
+        });
+      }
+
+      // Calculate current week hours and salary
+      let currentWeekHours = 0;
+      let currentWeekSalary = 0;
+      if (employee.salaryType === 'weekly' || employee.salaryType === 'hourly') {
+        const empAttendances = attendanceByEmployee[employeeId] || [];
+        currentWeekHours = empAttendances.reduce((sum, a) => sum + Number(a.hoursWorked || 0), 0);
+        
+        if (employee.salaryType === 'weekly') {
+          currentWeekSalary = Number(employee.salary) || 0;
+        } else {
+          currentWeekSalary = currentWeekHours * (Number(employee.salary) || 0);
+        }
+      }
+
+      console.log(`🔍 [Employees API] Employee ${employee.name} (${employeeId}): hasPaidThisMonth=${hasPaidThisMonth}, totalPaid=${totalPaid}, payments count=${employeePayments.length}, weeklyHours=${currentWeekHours}`);
 
       return {
         id: employeeId,
@@ -150,7 +203,9 @@ export async function GET(req: NextRequest) {
         updatedAt: employee.updatedAt,
         totalPaid,
         lastPaymentDate,
-        hasPaidThisMonth
+        hasPaidThisMonth,
+        currentWeekHours,
+        currentWeekSalary
       };
     });
     
