@@ -88,23 +88,11 @@ export async function POST(req: NextRequest) {
         paidAmount = paid_amount || 0;
       } // loan/credit remains 0
       let dueAmount = finalAmount - paidAmount;
-      let salePaymentStatus: PaymentStatus = PaymentStatus.PENDING;
 
-      if (paidAmount >= finalAmount) {
-        salePaymentStatus = PaymentStatus.COMPLETED;
-      } else if (paidAmount > 0) {
-        // Check if enum supports PARTIAL, if not use PENDING or handling it accordingly.
-        // Based on TmtPaymentStatus having PARTIAL, meaningful check is irrelevant if PaymentStatus doesn't.
-        // But ledger checks for COMPLETED.
-        // Let's assume for now partial is PENDING or PARTIAL if exists.
-        // Safest is to rely on amount logic.
-        // However, the ledger route filters by 'COMPLETED'.
-        // So fully paid MUST be COMPLETED.
-        salePaymentStatus = PaymentStatus.PENDING;
-        // Note: If PaymentStatus has PARTIAL, we should use it. 
-        // But without seeing enum, I'll stick to PENDING for partials unless I verify.
-        // But for FULL payment, it MUST be COMPLETED.
-      }
+      // Always create cash sales as PENDING (Active Sales) so they appear on dashboard.
+      // The user will explicitly mark them as Complete from the Active Sales tab.
+      // This is consistent with how /api/sales works for regular sales.
+      let salePaymentStatus: PaymentStatus = PaymentStatus.PENDING;
 
       // 1. Find or create customer
       console.log('Finding/creating customer for cash sale');
@@ -161,8 +149,8 @@ export async function POST(req: NextRequest) {
 
       // 2. Create the sale
       console.log('Creating sale with customer ID:', finalCustomerId);
-      // SaleStatus mirrors paymentStatus: COMPLETED when fully paid, PENDING otherwise
-      const saleStatus = salePaymentStatus === PaymentStatus.COMPLETED ? 'COMPLETED' : 'PENDING';
+      // Always start as PENDING so the sale shows in Active Sales on dashboard
+      const saleStatus = 'PENDING';
       const createdSale = await tx.sale.create({
         data: {
           customerId: finalCustomerId,

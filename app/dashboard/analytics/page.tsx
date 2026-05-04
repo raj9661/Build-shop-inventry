@@ -9,12 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { 
-  Building2, 
-  Users, 
-  TrendingUp, 
-  DollarSign, 
-  Package, 
+import {
+  Building2,
+  Users,
+  TrendingUp,
+  DollarSign,
+  Package,
   ShoppingCart,
   BarChart3,
   Activity,
@@ -40,6 +40,7 @@ import {
   LineChart,
   Pie,
   PieChart,
+  ComposedChart,
   ResponsiveContainer,
   XAxis,
   YAxis,
@@ -229,9 +230,9 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between pt-2">
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
             disabled={currentPage === 1}
           >
@@ -240,9 +241,9 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
           <span className="text-xs text-muted-foreground">
             Page {currentPage} of {totalPages}
           </span>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
             disabled={currentPage === totalPages}
           >
@@ -282,6 +283,16 @@ export default function AnalyticsDashboard() {
     shopId: ""
   })
 
+  // ── Cement Analytics ──
+  interface CementBrandSales { quantity: number; revenue: number }
+  interface CementBrandPurchase { quantity: number; totalCost: number; avgBuyingPrice: number; entryCount: number }
+  interface CementMonthSales { month: string; brands: Record<string, CementBrandSales>; totalQuantity: number; totalRevenue: number }
+  interface CementMonthPurchase { month: string; brands: Record<string, CementBrandPurchase>; totalQuantity: number; totalCost: number }
+  interface CementData { salesByMonth: CementMonthSales[]; purchasesByMonth: CementMonthPurchase[]; allBrands: string[] }
+  const [cementData, setCementData] = useState<CementData | null>(null)
+  const [cementLoading, setCementLoading] = useState(false)
+  const [cementLoaded, setCementLoaded] = useState(false)
+
   // Chart configuration with proper colors
   const chartConfig = {
     revenue: {
@@ -316,7 +327,7 @@ export default function AnalyticsDashboard() {
 
       // Determine which analytics endpoint to use based on user role
       let endpoint = '/api/analytics'
-      
+
       // SUPER_DUPER_ADMIN uses system analytics, other users use their assigned shops
       if (userRole === 'SUPER_DUPER_ADMIN') {
         endpoint = '/api/analytics/system'
@@ -329,7 +340,7 @@ export default function AnalyticsDashboard() {
         endpoint = '/api/analytics/user'
         endpoint += `?days=${timeRange}`
       }
-      
+
       const response = await fetch(endpoint, {
         headers: {
           'Authorization': `Bearer ${token}`
@@ -361,17 +372,52 @@ export default function AnalyticsDashboard() {
     }
   }, [currentShopId, timeRange, userRole])
 
+  // Load cement analytics (lazy — only when Cement tab is first opened)
+  const loadCementAnalytics = useCallback(async () => {
+    if (userRole !== 'SUPER_DUPER_ADMIN') return
+    setCementLoading(true)
+    try {
+      const token = localStorage.getItem('accessToken')
+      if (!token) return
+      const shopParam = (currentShopId && currentShopId !== ALL_SHOPS_ID) ? `&shopId=${currentShopId}` : ''
+      const res = await fetch(`/api/analytics/cement?t=${Date.now()}${shopParam}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (data.success) {
+        setCementData(data.data)
+        setCementLoaded(true)
+      } else {
+        toast.error(data.message || 'Failed to load cement analytics')
+      }
+    } catch (err) {
+      console.error('Cement analytics error:', err)
+      toast.error('Error loading cement analytics')
+    } finally {
+      setCementLoading(false)
+    }
+  }, [currentShopId, userRole])
+
+
   useEffect(() => {
     console.log('🔄 Analytics: Shop or time range changed', { currentShopId, timeRange, userRole })
     setSalesPage(1) // Reset to first page when data changes
     loadAnalytics()
   }, [loadAnalytics])
 
+  // Re-load cement when shop changes (if already loaded)
+  useEffect(() => {
+    if (cementLoaded && userRole === 'SUPER_DUPER_ADMIN') {
+      setCementLoaded(false) // force re-fetch next time tab is opened
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentShopId])
+
   // Load widget preferences from localStorage
   useEffect(() => {
     const savedWidgets = localStorage.getItem('analyticsWidgets')
     const savedChartWidgets = localStorage.getItem('analyticsChartWidgets')
-    
+
     if (savedWidgets) {
       try {
         const parsed = JSON.parse(savedWidgets)
@@ -399,7 +445,7 @@ export default function AnalyticsDashboard() {
     } else {
       setWidgets(DEFAULT_WIDGETS)
     }
-    
+
     if (savedChartWidgets) {
       try {
         const parsed = JSON.parse(savedChartWidgets)
@@ -443,7 +489,7 @@ export default function AnalyticsDashboard() {
 
   // Toggle widget visibility
   const toggleWidgetVisibility = (widgetId: string) => {
-    const updated = widgets.map(w => 
+    const updated = widgets.map(w =>
       w.id === widgetId ? { ...w, visible: !w.visible } : w
     )
     saveWidgetPreferences(updated)
@@ -451,7 +497,7 @@ export default function AnalyticsDashboard() {
 
   // Toggle chart widget visibility
   const toggleChartWidgetVisibility = (widgetId: string) => {
-    const updated = chartWidgets.map(w => 
+    const updated = chartWidgets.map(w =>
       w.id === widgetId ? { ...w, visible: !w.visible } : w
     )
     saveChartWidgetPreferences(updated)
@@ -482,7 +528,7 @@ export default function AnalyticsDashboard() {
   const handleDrop = (e: React.DragEvent, targetWidgetId: string) => {
     e.preventDefault()
     setDragOverWidget(null)
-    
+
     if (!draggedWidget || draggedWidget === targetWidgetId) {
       setDraggedWidget(null)
       return
@@ -568,7 +614,7 @@ export default function AnalyticsDashboard() {
   const getPaymentMethodData = () => {
     const paymentData = analyticsData?.paymentMethodBreakdown || analyticsData?.salesByPaymentMethod || []
     console.log('🔍 Payment method data:', paymentData)
-    
+
     // Filter out methods with zero amount and format for chart
     const filteredData = paymentData
       .filter(item => item.amount > 0)
@@ -585,7 +631,7 @@ export default function AnalyticsDashboard() {
   const getPaymentMethodColor = (method: string) => {
     const colors: { [key: string]: string } = {
       'CASH': '#10B981',
-      'CARD': '#3B82F6', 
+      'CARD': '#3B82F6',
       'UPI': '#8B5CF6',
       'BANK_TRANSFER': '#F59E0B',
       'CHEQUE': '#EF4444',
@@ -667,20 +713,20 @@ export default function AnalyticsDashboard() {
       const token = localStorage.getItem('accessToken')
       const url = editingGoal ? '/api/business-goals' : '/api/business-goals'
       const method = editingGoal ? 'PUT' : 'POST'
-      
+
       const payload = editingGoal
         ? {
-            id: editingGoal.id,
-            metricName: goalFormData.metricName,
-            targetValue: parseFloat(goalFormData.targetValue),
-            period: goalFormData.period
-          }
+          id: editingGoal.id,
+          metricName: goalFormData.metricName,
+          targetValue: parseFloat(goalFormData.targetValue),
+          period: goalFormData.period
+        }
         : {
-            metricName: goalFormData.metricName,
-            targetValue: parseFloat(goalFormData.targetValue),
-            period: goalFormData.period,
-            shopId: parseInt(goalFormData.shopId)
-          }
+          metricName: goalFormData.metricName,
+          targetValue: parseFloat(goalFormData.targetValue),
+          period: goalFormData.period,
+          shopId: parseInt(goalFormData.shopId)
+        }
 
       const response = await fetch(url, {
         method,
@@ -898,12 +944,12 @@ export default function AnalyticsDashboard() {
         {visibleWidgets.map((widget, widgetIndex) => {
           const isDragging = draggedWidget === widget.id
           const isDragOver = dragOverWidget === widget.id && !isDragging
-          
+
           const renderWidget = () => {
             switch (widget.id) {
               case 'totalRevenue':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -911,13 +957,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -946,10 +989,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalExpenses':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -957,13 +1000,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -999,10 +1039,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalSupplierPayments':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1010,13 +1050,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1045,10 +1082,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalEmployeePayments':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1056,13 +1093,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1094,10 +1128,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalSales':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1105,13 +1139,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1140,10 +1171,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalProducts':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1151,13 +1182,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1186,10 +1214,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalCustomers':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1197,13 +1225,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1232,10 +1257,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'netProfit':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1243,13 +1268,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1278,10 +1300,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'roi':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1289,13 +1311,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1324,10 +1343,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'ros':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1335,13 +1354,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1370,10 +1386,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'grossMargin':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1381,13 +1397,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1416,10 +1429,10 @@ export default function AnalyticsDashboard() {
                     </CardContent>
                   </Card>
                 )
-              
+
               case 'totalCustomerBalance':
                 return (
-                  <Card 
+                  <Card
                     draggable={isEditMode}
                     onDragStart={(e) => handleDragStart(e, widget.id)}
                     onDragOver={(e) => handleDragOver(e, widget.id)}
@@ -1427,13 +1440,10 @@ export default function AnalyticsDashboard() {
                     onDrop={(e) => handleDrop(e, widget.id)}
                     onDragEnd={handleDragEnd}
                     style={isEditMode && !isDragging ? { '--widget-index': widgetIndex } as React.CSSProperties : undefined}
-                    className={`relative transition-all border-red-100 bg-red-50/10 ${
-                      isDragging ? 'opacity-50 scale-95' : '' 
-                    } ${
-                      isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-                    } ${
-                      isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-                    }`}
+                    className={`relative transition-all border-red-100 bg-red-50/10 ${isDragging ? 'opacity-50 scale-95' : ''
+                      } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                      } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                      }`}
                   >
                     {isEditMode && (
                       <div className="absolute top-2 right-2 flex gap-1">
@@ -1474,27 +1484,37 @@ export default function AnalyticsDashboard() {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5">
-          <TabsTrigger value="overview" className="flex items-center gap-2">
+        <TabsList className="flex flex-wrap w-full h-auto gap-1 bg-muted p-1 rounded-lg justify-start overflow-hidden">
+          <TabsTrigger value="overview" className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2">
             <BarChart3 className="h-4 w-4" />
             Overview
           </TabsTrigger>
-          <TabsTrigger value="charts" className="flex items-center gap-2">
+          <TabsTrigger value="charts" className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2">
             <PieChartIcon className="h-4 w-4" />
             Charts
           </TabsTrigger>
-          <TabsTrigger value="shops" className="flex items-center gap-2">
+          <TabsTrigger value="shops" className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2">
             <Building2 className="h-4 w-4" />
             Shops
           </TabsTrigger>
-          <TabsTrigger value="products" className="flex items-center gap-2">
+          <TabsTrigger value="products" className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2">
             <Package className="h-4 w-4" />
             Products
           </TabsTrigger>
-          <TabsTrigger value="trends" className="flex items-center gap-2">
+          <TabsTrigger value="trends" className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2">
             <TrendingUp className="h-4 w-4" />
             Trends
           </TabsTrigger>
+          {userRole === 'SUPER_DUPER_ADMIN' && (
+            <TabsTrigger
+              value="cement"
+              className="flex-1 min-w-[120px] flex items-center justify-center gap-2 py-2 text-orange-600 data-[state=active]:text-orange-700"
+              onClick={() => { if (!cementLoaded && !cementLoading) loadCementAnalytics() }}
+            >
+              <BarChart3 className="h-4 w-4" />
+              🏗️ Cement
+            </TabsTrigger>
+          )}
         </TabsList>
 
         {/* Overview Tab */}
@@ -1524,7 +1544,7 @@ export default function AnalyticsDashboard() {
                         <div className="text-right">
                           <p className="font-bold">{formatCurrency(shop.revenue)}</p>
                           <p className="text-sm text-gray-500">
-                            {analyticsData.totalRevenue > 0 
+                            {analyticsData.totalRevenue > 0
                               ? ((shop.revenue / analyticsData.totalRevenue) * 100).toFixed(1)
                               : '0'}%
                           </p>
@@ -1572,7 +1592,7 @@ export default function AnalyticsDashboard() {
                     </div>
                   ))}
                 </div>
-                
+
                 {/* Pagination Controls */}
                 {getTotalPages() > 1 && (
                   <div className="flex items-center justify-between mt-4 pt-4 border-t">
@@ -1618,8 +1638,8 @@ export default function AnalyticsDashboard() {
               </CardHeader>
               <CardContent>
                 {analyticsData?.highestBalanceCustomers ? (
-                  <HighestBalanceCustomersList 
-                    customers={analyticsData.highestBalanceCustomers} 
+                  <HighestBalanceCustomersList
+                    customers={analyticsData.highestBalanceCustomers}
                     totalBalance={analyticsData.totalCustomerBalance}
                   />
                 ) : (
@@ -1644,72 +1664,69 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Revenue by Shop</CardTitle>
-                <CardDescription>Revenue from all shops</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <BarChart data={analyticsData.revenueByShop} layout="vertical" margin={{ left: 80, right: 20, top: 10, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis type="number" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <YAxis
-                          dataKey="shopName"
-                          type="category"
-                          tickLine={false}
-                          axisLine={false}
-                          tick={{ fontSize: 11 }}
-                          width={80}
-                        />
-                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
-                        <Bar dataKey="revenue" radius={[0, 8, 8, 0]} fill="var(--color-revenue)" />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <Building2 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No shop data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Revenue by Shop</CardTitle>
+                    <CardDescription>Revenue from all shops</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <BarChart data={analyticsData.revenueByShop} layout="vertical" margin={{ left: 80, right: 20, top: 10, bottom: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis type="number" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <YAxis
+                              dataKey="shopName"
+                              type="category"
+                              tickLine={false}
+                              axisLine={false}
+                              tick={{ fontSize: 11 }}
+                              width={80}
+                            />
+                            <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                            <Bar dataKey="revenue" radius={[0, 8, 8, 0]} fill="var(--color-revenue)" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <Building2 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No shop data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Sales Trend - Line Chart */}
@@ -1718,66 +1735,63 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Sales Trend</CardTitle>
-                <CardDescription>Sales over the last 6 months</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <LineChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
-                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                        <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No sales data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Sales Trend</CardTitle>
+                    <CardDescription>Sales over the last 6 months</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <LineChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                            <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                            <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No sales data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Top Products - Pie Chart */}
@@ -1786,75 +1800,72 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Top Products</CardTitle>
-                <CardDescription>Best selling products</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.topProducts && analyticsData.topProducts.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
-                        <Pie 
-                          data={analyticsData.topProducts} 
-                          dataKey="revenue" 
-                          nameKey="name" 
-                          cx="50%" 
-                          cy="45%" 
-                          outerRadius={100}
-                          innerRadius={30}
-                        >
-                          {analyticsData.topProducts.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No product data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Top Products</CardTitle>
+                    <CardDescription>Best selling products</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.topProducts && analyticsData.topProducts.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Tooltip content={<ChartTooltipContent />} />
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                            <Pie
+                              data={analyticsData.topProducts}
+                              dataKey="revenue"
+                              nameKey="name"
+                              cx="50%"
+                              cy="45%"
+                              outerRadius={100}
+                              innerRadius={30}
+                            >
+                              {analyticsData.topProducts.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No product data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Sales by Month - Bar Chart */}
@@ -1863,65 +1874,62 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Sales by Month</CardTitle>
-                <CardDescription>Monthly sales comparison</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <BarChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
-                        <Bar dataKey="sales" fill="var(--color-sales)" radius={[8, 8, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No sales data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Sales by Month</CardTitle>
+                    <CardDescription>Monthly sales comparison</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <BarChart data={analyticsData.salesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                            <Bar dataKey="sales" fill="var(--color-sales)" radius={[8, 8, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No sales data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Revenue Distribution - Donut Chart */}
@@ -1930,75 +1938,72 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Revenue Distribution</CardTitle>
-                <CardDescription>Revenue share by shop</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
-                        <Pie 
-                          data={analyticsData.revenueByShop} 
-                          dataKey="revenue" 
-                          nameKey="shopName" 
-                          cx="50%" 
-                          cy="45%" 
-                          innerRadius={60}
-                          outerRadius={100}
-                        >
-                          {analyticsData.revenueByShop.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No revenue data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Revenue Distribution</CardTitle>
+                    <CardDescription>Revenue share by shop</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Tooltip content={<ChartTooltipContent />} />
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                            <Pie
+                              data={analyticsData.revenueByShop}
+                              dataKey="revenue"
+                              nameKey="shopName"
+                              cx="50%"
+                              cy="45%"
+                              innerRadius={60}
+                              outerRadius={100}
+                            >
+                              {analyticsData.revenueByShop.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No revenue data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Shop Performance - Line Chart */}
@@ -2007,67 +2012,64 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Shop Performance</CardTitle>
-                <CardDescription>Revenue trend by shop</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <LineChart data={analyticsData.revenueByShop} margin={{ top: 5, right: 20, left: 20, bottom: 80 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="shopName" angle={-45} textAnchor="end" height={80} stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 10 }} />
-                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
-                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                        <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
-                        <Line type="monotone" dataKey="sales" stroke="var(--color-sales)" strokeWidth={3} dot={{ fill: "var(--color-sales)", r: 4 }} activeDot={{ r: 6 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No shop data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Shop Performance</CardTitle>
+                    <CardDescription>Revenue trend by shop</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <LineChart data={analyticsData.revenueByShop} margin={{ top: 5, right: 20, left: 20, bottom: 80 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="shopName" angle={-45} textAnchor="end" height={80} stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 10 }} />
+                            <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#3b82f6', strokeWidth: 1 }} />
+                            <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                            <Line type="monotone" dataKey="revenue" stroke="var(--color-revenue)" strokeWidth={3} dot={{ fill: "var(--color-revenue)", r: 4 }} activeDot={{ r: 6 }} />
+                            <Line type="monotone" dataKey="sales" stroke="var(--color-sales)" strokeWidth={3} dot={{ fill: "var(--color-sales)", r: 4 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No shop data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Payment Methods - Pie Chart */}
@@ -2076,80 +2078,77 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Payment Methods</CardTitle>
-                <CardDescription>Payment method distribution</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {getPaymentMethodData().length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Legend 
-                          layout="horizontal" 
-                          verticalAlign="bottom" 
-                          align="center" 
-                          wrapperStyle={{ paddingTop: '20px' }} 
-                        />
-                        <Pie 
-                          data={getPaymentMethodData()} 
-                          dataKey="value" 
-                          nameKey="name" 
-                          cx="50%" 
-                          cy="45%" 
-                          outerRadius={100}
-                          innerRadius={30}
-                        >
-                          {getPaymentMethodData().map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No payment data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Payment Methods</CardTitle>
+                    <CardDescription>Payment method distribution</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {getPaymentMethodData().length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Tooltip content={<ChartTooltipContent />} />
+                            <Legend
+                              layout="horizontal"
+                              verticalAlign="bottom"
+                              align="center"
+                              wrapperStyle={{ paddingTop: '20px' }}
+                            />
+                            <Pie
+                              data={getPaymentMethodData()}
+                              dataKey="value"
+                              nameKey="name"
+                              cx="50%"
+                              cy="45%"
+                              outerRadius={100}
+                              innerRadius={30}
+                            >
+                              {getPaymentMethodData().map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No payment data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Expense Trend - Line Chart */}
@@ -2158,66 +2157,63 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Expense Trend</CardTitle>
-                <CardDescription>Expenses over the last 6 months</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.expensesByMonth && analyticsData.expensesByMonth.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <LineChart data={analyticsData.expensesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                        <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
-                        <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#ef4444', strokeWidth: 1 }} />
-                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                        <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={3} dot={{ fill: "#ef4444", r: 4 }} activeDot={{ r: 6 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No expense data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Expense Trend</CardTitle>
+                    <CardDescription>Expenses over the last 6 months</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.expensesByMonth && analyticsData.expensesByMonth.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <LineChart data={analyticsData.expensesByMonth} margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <YAxis stroke="#6b7280" tick={{ fill: '#6b7280', fontSize: 12 }} />
+                            <Tooltip content={<ChartTooltipContent />} cursor={{ stroke: '#ef4444', strokeWidth: 1 }} />
+                            <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                            <Line type="monotone" dataKey="expenses" stroke="#ef4444" strokeWidth={3} dot={{ fill: "#ef4444", r: 4 }} activeDot={{ r: 6 }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <LineChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No expense data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
 
             {/* Expenses by Category - Pie Chart */}
@@ -2226,75 +2222,72 @@ export default function AnalyticsDashboard() {
               if (!widget) return null;
               const isDragging = draggedWidget === widget.id;
               const isDragOver = dragOverWidget === widget.id && !isDragging;
-              
+
               return (
-            <Card 
-              draggable={isEditMode}
-              onDragStart={(e) => handleDragStart(e, widget.id)}
-              onDragOver={(e) => handleDragOver(e, widget.id)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, widget.id)}
-              onDragEnd={handleDragEnd}
-              style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
-              className={`xl:col-span-1 relative transition-all ${
-                isDragging ? 'opacity-50 scale-95' : '' 
-              } ${
-                isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : '' 
-              } ${
-                isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
-              }`}
-            >
-              {isEditMode && (
-                <div className="absolute top-2 right-2 z-10 flex gap-1">
-                  <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => toggleChartWidgetVisibility(widget.id)}
-                    className="h-6 w-6 p-0"
-                  >
-                    <EyeOff className="h-3 w-3" />
-                  </Button>
-                </div>
-              )}
-              <CardHeader>
-                <CardTitle>Expenses by Category</CardTitle>
-                <CardDescription>Distribution by expense category</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {analyticsData?.expensesByCategory && analyticsData.expensesByCategory.length > 0 ? (
-                  <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
-                    <ResponsiveContainer>
-                      <PieChart>
-                        <Tooltip content={<ChartTooltipContent />} />
-                        <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
-                        <Pie 
-                          data={analyticsData.expensesByCategory} 
-                          dataKey="amount" 
-                          nameKey="category" 
-                          cx="50%" 
-                          cy="45%" 
-                          outerRadius={100}
-                          innerRadius={30}
-                        >
-                          {analyticsData.expensesByCategory.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </ChartContainer>
-                ) : (
-                  <div className="flex items-center justify-center h-[350px] text-gray-500">
-                    <div className="text-center">
-                      <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                      <p>No expense data available</p>
+                <Card
+                  draggable={isEditMode}
+                  onDragStart={(e) => handleDragStart(e, widget.id)}
+                  onDragOver={(e) => handleDragOver(e, widget.id)}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, widget.id)}
+                  onDragEnd={handleDragEnd}
+                  style={isEditMode && !isDragging ? { '--widget-index': visibleChartWidgets.indexOf(widget) } as React.CSSProperties : undefined}
+                  className={`xl:col-span-1 relative transition-all ${isDragging ? 'opacity-50 scale-95' : ''
+                    } ${isDragOver ? 'ring-2 ring-blue-500 scale-105 bg-blue-50' : ''
+                    } ${isEditMode && !isDragging ? 'cursor-move hover:ring-2 hover:ring-blue-300 widget-edit-wobble' : ''
+                    }`}
+                >
+                  {isEditMode && (
+                    <div className="absolute top-2 right-2 z-10 flex gap-1">
+                      <GripVertical className="h-4 w-4 text-gray-400 cursor-move" />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => toggleChartWidgetVisibility(widget.id)}
+                        className="h-6 w-6 p-0"
+                      >
+                        <EyeOff className="h-3 w-3" />
+                      </Button>
                     </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-            );
+                  )}
+                  <CardHeader>
+                    <CardTitle>Expenses by Category</CardTitle>
+                    <CardDescription>Distribution by expense category</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {analyticsData?.expensesByCategory && analyticsData.expensesByCategory.length > 0 ? (
+                      <ChartContainer config={chartConfig} className="h-[350px] w-full min-h-[300px] overflow-hidden">
+                        <ResponsiveContainer>
+                          <PieChart>
+                            <Tooltip content={<ChartTooltipContent />} />
+                            <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ paddingTop: '20px' }} />
+                            <Pie
+                              data={analyticsData.expensesByCategory}
+                              dataKey="amount"
+                              nameKey="category"
+                              cx="50%"
+                              cy="45%"
+                              outerRadius={100}
+                              innerRadius={30}
+                            >
+                              {analyticsData.expensesByCategory.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={`hsl(${index * 60}, 70%, 50%)`} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </ChartContainer>
+                    ) : (
+                      <div className="flex items-center justify-center h-[350px] text-gray-500">
+                        <div className="text-center">
+                          <PieChartIcon className="h-12 w-12 mx-auto mb-2 text-gray-400" />
+                          <p>No expense data available</p>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
             })()}
           </div>
         </TabsContent>
@@ -2454,7 +2447,7 @@ export default function AnalyticsDashboard() {
                       <div className="text-right">
                         <p className="font-bold">{formatCurrency(shop.revenue)}</p>
                         <p className="text-sm text-gray-500">
-                          {analyticsData.totalRevenue > 0 
+                          {analyticsData.totalRevenue > 0
                             ? ((shop.revenue / analyticsData.totalRevenue) * 100).toFixed(1)
                             : '0'}%
                         </p>
@@ -2561,17 +2554,17 @@ export default function AnalyticsDashboard() {
                           )}
                         </div>
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleEditGoal(goal)}
                             className="h-8 w-8 p-0"
                           >
                             Edit
                           </Button>
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleDeleteGoal(goal.id)}
                             className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
                           >
@@ -2595,6 +2588,381 @@ export default function AnalyticsDashboard() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {/* ─────── Cement Analytics Tab ─────── */}
+        {userRole === 'SUPER_DUPER_ADMIN' && (
+          <TabsContent value="cement" className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">🏗️ Cement Analytics</h2>
+                <p className="text-gray-500 text-sm mt-1">12-month view — sales &amp; purchases by brand</p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={loadCementAnalytics}
+                disabled={cementLoading}
+                className="flex items-center gap-2"
+              >
+                {cementLoading ? (
+                  <span className="animate-spin">⟳</span>
+                ) : '⟳'} Refresh
+              </Button>
+            </div>
+
+            {cementLoading ? (
+              <div className="flex items-center justify-center py-24">
+                <div className="text-center space-y-3">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto" />
+                  <p className="text-gray-500">Loading cement analytics…</p>
+                </div>
+              </div>
+            ) : !cementData ? (
+              <div className="text-center py-20 text-gray-400">
+                <BarChart3 className="h-14 w-14 mx-auto mb-4 opacity-40" />
+                <p className="text-lg font-medium">No cement data loaded</p>
+                <p className="text-sm mt-1">Click the Cement tab to load data</p>
+              </div>
+            ) : cementData.allBrands.length === 0 ? (
+              <div className="text-center py-20 text-gray-400">
+                <Package className="h-14 w-14 mx-auto mb-4 opacity-40" />
+                <p className="text-lg font-medium">No cement products found</p>
+                <p className="text-sm mt-1">Add products under a "Cement" category to see analytics here</p>
+              </div>
+            ) : (() => {
+              // ── Color palette ──
+              const CEMENT_COLORS = [
+                '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6',
+                '#EF4444', '#EC4899', '#06B6D4', '#84CC16',
+                '#F97316', '#6366F1',
+              ]
+              const brandColor = (idx: number) => CEMENT_COLORS[idx % CEMENT_COLORS.length]
+
+              // ── Build sales chart data: [{month, BrandA, BrandB, ...}, ...] ──
+              const salesChartData = cementData.salesByMonth.map(m => {
+                const row: any = { month: m.month, _total: m.totalQuantity, _revenue: m.totalRevenue }
+                for (const brand of cementData.allBrands) {
+                  row[brand] = m.brands[brand]?.quantity || 0
+                  row[`${brand}_rev`] = m.brands[brand]?.revenue || 0
+                }
+                return row
+              })
+
+              // ── Build purchase chart data: [{month, BrandA_qty, BrandA_price, ...}] ──
+              const purchaseChartData = cementData.purchasesByMonth.map(m => {
+                const row: any = { month: m.month, _total: m.totalQuantity, _cost: m.totalCost }
+                for (const brand of cementData.allBrands) {
+                  row[`${brand}_qty`] = m.brands[brand]?.quantity || 0
+                  row[`${brand}_price`] = m.brands[brand]?.avgBuyingPrice
+                    ? Math.round(m.brands[brand].avgBuyingPrice) : null
+                }
+                return row
+              })
+
+              // ── Summary totals ──
+              const totalSoldBags = cementData.salesByMonth.reduce((s, m) => s + m.totalQuantity, 0)
+              const totalRevenue = cementData.salesByMonth.reduce((s, m) => s + m.totalRevenue, 0)
+              const totalPurchasedBags = cementData.purchasesByMonth.reduce((s, m) => s + m.totalQuantity, 0)
+              const totalPurchaseCost = cementData.purchasesByMonth.reduce((s, m) => s + m.totalCost, 0)
+
+              return (
+                <div className="space-y-8">
+                  {/* Summary Cards */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                    {[
+                      { label: 'Total Sold', value: `${totalSoldBags.toLocaleString('en-IN')} bags`, sub: formatCurrency(totalRevenue), color: 'from-blue-500 to-blue-600' },
+                      { label: 'Total Purchased', value: `${totalPurchasedBags.toLocaleString('en-IN')} bags`, sub: formatCurrency(totalPurchaseCost), color: 'from-emerald-500 to-emerald-600' },
+                      { label: 'Brands Tracked', value: String(cementData.allBrands.length), sub: cementData.allBrands.join(', '), color: 'from-orange-500 to-amber-500' },
+                      { label: 'Avg Buy Price', value: totalPurchasedBags > 0 ? `₹${Math.round(totalPurchaseCost / totalPurchasedBags)}/bag` : '—', sub: 'across all brands', color: 'from-purple-500 to-purple-600' },
+                    ].map(card => (
+                      <Card key={card.label} className={`bg-gradient-to-br ${card.color} text-white border-0 shadow-md`}>
+                        <CardContent className="p-4">
+                          <p className="text-xs text-white/80 mb-1">{card.label}</p>
+                          <p className="text-xl font-bold">{card.value}</p>
+                          <p className="text-xs text-white/70 mt-1 truncate">{card.sub}</p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+
+                  {/* Chart 1 — Cement Sales by Month (Stacked Bar) */}
+                  <Card className="shadow-md border-0">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <BarChart3 className="h-5 w-5 text-blue-600" />
+                        Cement Sales — Monthly Quantity by Brand
+                      </CardTitle>
+                      <CardDescription>
+                        How many bags of each cement brand were sold each month (last 12 months)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {totalSoldBags === 0 ? (
+                        <div className="flex items-center justify-center h-72 text-gray-400">
+                          <div className="text-center">
+                            <BarChart3 className="h-12 w-12 mx-auto mb-2 opacity-40" />
+                            <p>No cement sales in the last 12 months</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={380}>
+                          <BarChart data={salesChartData} margin={{ top: 10, right: 30, left: 0, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis
+                              dataKey="month"
+                              tick={{ fontSize: 11, fill: '#6b7280' }}
+                              angle={-40}
+                              textAnchor="end"
+                              interval={0}
+                            />
+                            <YAxis
+                              tick={{ fontSize: 11, fill: '#6b7280' }}
+                              label={{ value: 'Bags sold', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#9ca3af' }}
+                            />
+                            <Tooltip
+                              cursor={{ fill: 'rgba(59,130,246,0.05)' }}
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null
+                                const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
+                                return (
+                                  <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+                                    <p className="font-bold text-gray-800 mb-2 text-sm">{label}</p>
+                                    {payload.map((p: any, i: number) => p.value > 0 && (
+                                      <div key={i} className="flex items-center justify-between gap-3 mb-1">
+                                        <span className="flex items-center gap-1">
+                                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: p.fill }} />
+                                          {p.name}
+                                        </span>
+                                        <span className="font-semibold">{p.value.toLocaleString('en-IN')} bags</span>
+                                      </div>
+                                    ))}
+                                    <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between font-bold">
+                                      <span>Total</span>
+                                      <span>{total.toLocaleString('en-IN')} bags</span>
+                                    </div>
+                                  </div>
+                                )
+                              }}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '12px' }} />
+                            {cementData.allBrands.map((brand, idx) => (
+                              <Bar
+                                key={brand}
+                                dataKey={brand}
+                                name={brand}
+                                stackId="cement"
+                                fill={brandColor(idx)}
+                                radius={idx === cementData.allBrands.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                              />
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Chart 2 — Cement Revenue by Month (Stacked Bar) */}
+                  <Card className="shadow-md border-0">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <TrendingUp className="h-5 w-5 text-emerald-600" />
+                        Cement Sales — Monthly Revenue by Brand
+                      </CardTitle>
+                      <CardDescription>
+                        Revenue (₹) generated from each cement brand per month
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {totalRevenue === 0 ? (
+                        <div className="flex items-center justify-center h-72 text-gray-400">
+                          <div className="text-center">
+                            <TrendingUp className="h-12 w-12 mx-auto mb-2 opacity-40" />
+                            <p>No revenue data</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={380}>
+                          <BarChart
+                            data={salesChartData.map(d => {
+                              const row: any = { month: d.month }
+                              for (const brand of cementData.allBrands) row[brand] = d[`${brand}_rev`] || 0
+                              return row
+                            })}
+                            margin={{ top: 10, right: 30, left: 20, bottom: 60 }}
+                          >
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} angle={-40} textAnchor="end" interval={0} />
+                            <YAxis tick={{ fontSize: 11, fill: '#6b7280' }} tickFormatter={v => `₹${(v / 1000).toFixed(0)}k`} />
+                            <Tooltip
+                              cursor={{ fill: 'rgba(16,185,129,0.05)' }}
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null
+                                const total = payload.reduce((s: number, p: any) => s + (p.value || 0), 0)
+                                return (
+                                  <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[160px]">
+                                    <p className="font-bold text-gray-800 mb-2 text-sm">{label}</p>
+                                    {payload.map((p: any, i: number) => p.value > 0 && (
+                                      <div key={i} className="flex items-center justify-between gap-3 mb-1">
+                                        <span className="flex items-center gap-1">
+                                          <span className="inline-block w-2.5 h-2.5 rounded-sm" style={{ background: p.fill }} />
+                                          {p.name}
+                                        </span>
+                                        <span className="font-semibold">{formatCurrency(p.value)}</span>
+                                      </div>
+                                    ))}
+                                    <div className="border-t border-gray-100 mt-2 pt-2 flex justify-between font-bold">
+                                      <span>Total</span>
+                                      <span>{formatCurrency(total)}</span>
+                                    </div>
+                                  </div>
+                                )
+                              }}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '12px' }} />
+                            {cementData.allBrands.map((brand, idx) => (
+                              <Bar key={brand} dataKey={brand} name={brand} stackId="rev"
+                                fill={brandColor(idx)}
+                                radius={idx === cementData.allBrands.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                              />
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Chart 3 — Cement Purchases + Buying Price (ComposedChart) */}
+                  <Card className="shadow-md border-0">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Package className="h-5 w-5 text-orange-500" />
+                        Cement Purchases — Quantity &amp; Buying Price by Brand
+                      </CardTitle>
+                      <CardDescription>
+                        Bars = bags purchased per brand · Lines = avg buying price (₹/bag)
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      {totalPurchasedBags === 0 ? (
+                        <div className="flex items-center justify-center h-72 text-gray-400">
+                          <div className="text-center">
+                            <Package className="h-12 w-12 mx-auto mb-2 opacity-40" />
+                            <p>No cement purchases in the last 12 months</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <ResponsiveContainer width="100%" height={420}>
+                          <ComposedChart data={purchaseChartData} margin={{ top: 10, right: 50, left: 0, bottom: 60 }}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#6b7280' }} angle={-40} textAnchor="end" interval={0} />
+                            <YAxis
+                              yAxisId="qty"
+                              tick={{ fontSize: 11, fill: '#6b7280' }}
+                              label={{ value: 'Bags bought', angle: -90, position: 'insideLeft', fontSize: 11, fill: '#9ca3af' }}
+                            />
+                            <YAxis
+                              yAxisId="price"
+                              orientation="right"
+                              tick={{ fontSize: 11, fill: '#9ca3af' }}
+                              tickFormatter={v => `₹${v}`}
+                              label={{ value: '₹/bag', angle: 90, position: 'insideRight', fontSize: 11, fill: '#9ca3af' }}
+                            />
+                            <Tooltip
+                              content={({ active, payload, label }) => {
+                                if (!active || !payload?.length) return null
+                                const qtyEntries = payload.filter((p: any) => p.type === 'bar')
+                                const priceEntries = payload.filter((p: any) => p.type === 'line')
+                                return (
+                                  <div className="bg-white border border-gray-200 rounded-xl shadow-lg p-3 text-xs min-w-[180px]">
+                                    <p className="font-bold text-gray-800 mb-2 text-sm">{label}</p>
+                                    {qtyEntries.length > 0 && (
+                                      <>
+                                        <p className="text-gray-500 font-semibold mb-1">📦 Quantity purchased</p>
+                                        {qtyEntries.map((p: any, i: number) => p.value > 0 && (
+                                          <div key={i} className="flex justify-between gap-3 mb-0.5">
+                                            <span className="flex items-center gap-1">
+                                              <span className="inline-block w-2 h-2 rounded-sm" style={{ background: p.fill }} />
+                                              {p.name.replace(' (qty)', '')}
+                                            </span>
+                                            <span className="font-semibold">{Number(p.value).toLocaleString('en-IN')} bags</span>
+                                          </div>
+                                        ))}
+                                      </>
+                                    )}
+                                    {priceEntries.some((p: any) => p.value != null) && (
+                                      <>
+                                        <p className="text-gray-500 font-semibold mb-1 mt-2">💰 Avg buying price</p>
+                                        {priceEntries.map((p: any, i: number) => p.value != null && (
+                                          <div key={i} className="flex justify-between gap-3 mb-0.5">
+                                            <span className="flex items-center gap-1">
+                                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: p.stroke }} />
+                                              {p.name.replace(' (₹/bag)', '')}
+                                            </span>
+                                            <span className="font-semibold">₹{Math.round(p.value)}/bag</span>
+                                          </div>
+                                        ))}
+                                      </>
+                                    )}
+                                  </div>
+                                )
+                              }}
+                            />
+                            <Legend wrapperStyle={{ paddingTop: '16px', fontSize: '12px' }} />
+                            {cementData.allBrands.map((brand, idx) => (
+                              <Bar
+                                key={`${brand}_qty`}
+                                yAxisId="qty"
+                                dataKey={`${brand}_qty`}
+                                name={`${brand} (qty)`}
+                                fill={brandColor(idx)}
+                                radius={[3, 3, 0, 0]}
+                                opacity={0.85}
+                              />
+                            ))}
+                            {cementData.allBrands.map((brand, idx) => (
+                              <Line
+                                key={`${brand}_price`}
+                                yAxisId="price"
+                                type="monotone"
+                                dataKey={`${brand}_price`}
+                                name={`${brand} (₹/bag)`}
+                                stroke={brandColor(idx)}
+                                strokeWidth={2}
+                                dot={{ r: 4, fill: brandColor(idx) }}
+                                connectNulls
+                              />
+                            ))}
+                          </ComposedChart>
+                        </ResponsiveContainer>
+                      )}
+
+                      {/* Brand legend with avg prices */}
+                      <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {cementData.allBrands.map((brand, idx) => {
+                          const totalQty = cementData.purchasesByMonth.reduce((s, m) => s + (m.brands[brand]?.quantity || 0), 0)
+                          const totalCostB = cementData.purchasesByMonth.reduce((s, m) => s + (m.brands[brand]?.totalCost || 0), 0)
+                          const avgPrice = totalQty > 0 ? totalCostB / totalQty : 0
+                          return (
+                            <div key={brand} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: brandColor(idx) }} />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-800 truncate">{brand}</p>
+                                <p className="text-xs text-gray-500">
+                                  {totalQty.toLocaleString('en-IN')} bags · {avgPrice > 0 ? `₹${Math.round(avgPrice)}/bag` : 'n/a'}
+                                </p>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              )
+            })()}
+          </TabsContent>
+        )}
       </Tabs>
 
       {/* Business Goal Dialog */}

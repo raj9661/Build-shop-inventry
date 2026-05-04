@@ -374,7 +374,6 @@ export default function CashSale() {
     const tmtItems = items.filter(i => i.isTmt);
 
     let successCount = 0;
-    let errorCount = 0;
 
     try {
       // 1. Process Regular Items
@@ -404,7 +403,15 @@ export default function CashSale() {
           payment_type: "cash",
           paid_amount: regularItems.reduce((acc, i) => acc + (i.price * i.quantity), 0)
         }
-        await salesService.createSale(saleData);
+        const result = await salesService.createSale(saleData);
+        // salesService catches errors internally and returns null on failure
+        // (it already shows its own toast.error). We throw a silent sentinel
+        // so the success path is aborted without showing a duplicate error toast.
+        if (result === null) {
+          const e = new Error("__SALE_FAILED__");
+          (e as any).silent = true;
+          throw e;
+        }
         successCount++;
       }
 
@@ -447,18 +454,28 @@ export default function CashSale() {
       }
 
       toast.success(t("Sale finalized successfully!", "बिक्री सफलतापूर्वक पूरी हुई!"));
-      // Reset
+      // Reset form
       setItems([]);
       setCustomerInfo({ phone: "", address: "" });
       setCurrentItem({ productId: '', name: '', stockType: 'normal', unit: '', quantity: '', price: '', conversionCft: '' as any });
       setTmtBundles('');
       setTmtPieces('');
-      // Refresh
+      // Refresh product list (stock counts)
       fetchProducts();
+      // Notify dashboard SalesTabs to auto-refresh Active Sales
+      try {
+        const event = new CustomEvent('sale:created', { detail: { shopId: currentShopId } });
+        window.dispatchEvent(event);
+        document.dispatchEvent(event);
+        localStorage.setItem('sale:created', JSON.stringify({ shopId: currentShopId, timestamp: Date.now() }));
+      } catch (_) { /* non-critical */ }
 
     } catch (error) {
       console.error('Error finalizing sale:', error);
-      toast.error("Failed to finalize sale. Check console for details.");
+      // Skip toast for silent sentinel errors (salesService already showed one)
+      if (!(error instanceof Error) || !(error as any).silent) {
+        toast.error(error instanceof Error ? error.message : "Failed to finalize sale. Check console for details.");
+      }
     } finally {
       setIsSubmitting(false)
     }
