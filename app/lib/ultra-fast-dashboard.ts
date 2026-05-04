@@ -300,18 +300,6 @@ class UltraFastDashboard {
           orderBy: { stockQuantity: 'asc' },
           take: 10
         }),
-        this.prisma.saleItem.groupBy({
-          by: ['productId'],
-          where: { sale: { shopId: shopId } },
-          _sum: { quantity: true },
-          orderBy: { _sum: { quantity: 'desc' } },
-          take: 10
-        }),
-        this.prisma.payment.groupBy({
-          by: ['method'],
-          where: { shopId: shopId, isActive: true },
-          _sum: { amount: true }
-        }),
         this.prisma.expense.findMany({
           where: {
             shopId: shopId,
@@ -321,7 +309,10 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' },
           take: 10
         }),
-        this.getAnalyticsData(shopId)
+        this.prisma.product.findMany({
+          where: { shopId: shopId, isActive: true, stockQuantity: { gt: 0 } },
+          select: { id: true, name: true, unit: true, price: true, stockQuantity: true }
+        })
       ]);
 
       const totalSales = Number(results[0]);
@@ -332,10 +323,8 @@ class UltraFastDashboard {
       const recentSales = results[5] as any[];
       const tmtSales = results[6] as any[];
       const lowStockProducts = results[7] as any[];
-      const topProducts = results[8] as any[];
-      const paymentMethods = results[9] as any[];
-      const expenses = results[10] as any[];
-      const analytics = results[11] as any;
+      const expenses = results[8] as any[];
+      const products = results[9] as any[];
 
       const parseDecimal = (value: any): number => {
         if (value === null || value === undefined) return 0;
@@ -459,12 +448,7 @@ class UltraFastDashboard {
 
       const groupedSales = this.groupMixedSales(allSales);
 
-      // 4. Fetch Products and today's rates for stock display
-      const products = await this.prisma.product.findMany({
-        where: { shopId: shopId, isActive: true, stockQuantity: { gt: 0 } },
-        select: { id: true, name: true, unit: true, price: true, stockQuantity: true }
-      });
-
+      // 4. Fetch today's rates for stock display
       const dailyRates = await this.prisma.dailyProductPrice.findMany({
         where: { productId: { in: products.map(p => p.id) }, date: startOfToday },
         select: { productId: true, price: true }
@@ -495,11 +479,8 @@ class UltraFastDashboard {
           minStockLevel: p.minStockLevel,
           category: p.category?.name || 'Unknown'
         })),
-        topProducts: await this.getTopProductsWithDetails(topProducts, shopId),
-        paymentMethods: paymentMethods.map((pm: any) => ({
-          method: pm.method,
-          amount: Number(pm._sum.amount || 0)
-        })),
+        topProducts: [],
+        paymentMethods: [],
         expenses: expenses.map((e: any) => ({
           id: Number(e.id),
           description: e.description,
@@ -507,7 +488,7 @@ class UltraFastDashboard {
           category: e.category,
           date: e.date
         })),
-        analytics,
+        analytics: null,
         productsInStock: productsWithDailyRates
       };
 
@@ -518,77 +499,6 @@ class UltraFastDashboard {
       console.error('Error loading dashboard data from DB:', error);
       throw error;
     }
-  }
-
-  // Get top products with details
-  private async getTopProductsWithDetails(topProducts: any[], shopId: number) {
-    const productIds = topProducts.map((p: any) => p.productId);
-    const products = await this.prisma.product.findMany({
-      where: {
-        id: { in: productIds },
-        shopId: shopId
-      },
-      select: {
-        id: true,
-        name: true,
-        price: true,
-        stockQuantity: true,
-        category: { select: { name: true } }
-      }
-    });
-
-    return topProducts.map((tp: any) => {
-      const product = products.find(p => p.id === tp.productId);
-      return {
-        id: tp.productId,
-        name: product?.name || 'Unknown',
-        totalSold: Number(tp._sum.quantity || 0),
-        price: Number(product?.price || 0),
-        stockQuantity: product?.stockQuantity || 0
-      };
-    });
-  }
-
-  // Get analytics data
-  private async getAnalyticsData(shopId: number) {
-    const today = new Date();
-    const startOfDay = new Date(today);
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date(today);
-    endOfDay.setHours(23, 59, 59, 999);
-
-    const [todaySales, todayRevenue, monthlySales] = await Promise.all([
-      this.prisma.sale.count({
-        where: {
-          shopId: shopId,
-          createdAt: { gte: startOfDay, lte: endOfDay }
-        }
-      }),
-      this.prisma.sale.aggregate({
-        where: {
-          shopId: shopId,
-          createdAt: { gte: startOfDay, lte: endOfDay }
-        },
-        _sum: { finalAmount: true }
-      }),
-      this.prisma.sale.groupBy({
-        by: ['createdAt'],
-        where: {
-          shopId: shopId,
-          createdAt: { gte: new Date(today.getFullYear(), today.getMonth(), 1) }
-        },
-        _sum: { finalAmount: true }
-      })
-    ]);
-
-    return {
-      todaySales,
-      todayRevenue: Number(todayRevenue?._sum?.finalAmount || 0),
-      monthlySales: monthlySales.map((sale: any) => ({
-        date: sale.createdAt,
-        revenue: Number(sale._sum.finalAmount || 0)
-      }))
-    };
   }
 
   // Clear dashboard cache
