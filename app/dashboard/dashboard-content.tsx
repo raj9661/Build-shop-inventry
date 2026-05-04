@@ -387,7 +387,7 @@ export function DashboardContent() {
       </Card>
 
       {/* Sales Section - now a separate component with its own fetch logic */}
-      <SalesTabs shopId={currentShopId} />
+      <SalesTabs shopId={currentShopId} initialSales={sales} />
 
       {/* Expenses */}
       <Card className="shadow-lg border-0 bg-white">

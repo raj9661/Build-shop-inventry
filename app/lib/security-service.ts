@@ -18,17 +18,27 @@ interface SecuritySettings {
 }
 
 class SecurityService {
+  private cachedSettings: SecuritySettings | null = null;
+  private settingsCacheTime: number = 0;
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
   private async getSecuritySettings(): Promise<SecuritySettings> {
     try {
+      if (this.cachedSettings && Date.now() - this.settingsCacheTime < this.CACHE_TTL) {
+        return this.cachedSettings;
+      }
+
       const systemSetting = await prisma.websiteSetting.findFirst({ 
         where: { 
           customerId: null, // Global platform setting
           type: 'SEO_META_TAGS' // Use any type for system settings
         } 
       });
+
+      let settings: SecuritySettings;
       if (systemSetting && systemSetting.value) {
         const data = JSON.parse(systemSetting.value) as any;
-        return {
+        settings = {
           sessionTimeout: data.security?.sessionTimeout || 30,
           requireMFA: data.security?.requireMFA || false,
           passwordPolicy: {
@@ -39,18 +49,23 @@ class SecurityService {
             requireSpecialChars: data.security?.passwordPolicy?.requireSpecialChars || false
           }
         };
+      } else {
+        settings = {
+          sessionTimeout: 30,
+          requireMFA: false,
+          passwordPolicy: {
+            minLength: 8,
+            requireUppercase: true,
+            requireLowercase: true,
+            requireNumbers: true,
+            requireSpecialChars: false
+          }
+        };
       }
-      return {
-        sessionTimeout: 30,
-        requireMFA: false,
-        passwordPolicy: {
-          minLength: 8,
-          requireUppercase: true,
-          requireLowercase: true,
-          requireNumbers: true,
-          requireSpecialChars: false
-        }
-      };
+
+      this.cachedSettings = settings;
+      this.settingsCacheTime = Date.now();
+      return settings;
     } catch (error) {
       console.error('Failed to load security settings:', error);
       return {

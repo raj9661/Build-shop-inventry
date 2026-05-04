@@ -16,11 +16,11 @@ function safeCurrency(val: any) {
   return !isNaN(num) ? num.toLocaleString() : "0";
 }
 
-export function SalesTabs({ shopId }: { shopId: number }) {
+export function SalesTabs({ shopId, initialSales }: { shopId: number, initialSales?: any[] }) {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("active");
-  const [sales, setSales] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [sales, setSales] = useState<any[]>(initialSales || []);
+  const [loading, setLoading] = useState(!initialSales);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const [cancelSaleId, setCancelSaleId] = useState<number | null>(null);
@@ -92,9 +92,14 @@ export function SalesTabs({ shopId }: { shopId: number }) {
   };
 
   useEffect(() => {
-    fetchSales();
+    if (initialSales) {
+      setSales(initialSales);
+      setLoading(false);
+    } else {
+      fetchSales();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shopId]);
+  }, [shopId, initialSales]);
 
   // Auto-refresh when a new sale is created anywhere in the app
   useEffect(() => {

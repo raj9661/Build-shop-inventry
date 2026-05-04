@@ -46,7 +46,7 @@ interface DashboardStats {
 
 class UltraFastDashboard {
   private prisma: PrismaClient;
-  private redis: Redis;
+  private redis: Redis | null = null;
   private memoryCache: Map<string, DashboardCache> = new Map();
   private performanceMetrics: Map<string, number[]> = new Map();
   private readonly CACHE_TTL = 300000; // 5 minutes
@@ -62,28 +62,29 @@ class UltraFastDashboard {
     });
 
     if (process.env.REDIS_URL) {
-      this.redis = new Redis(process.env.REDIS_URL, {
-        lazyConnect: true,
-        maxRetriesPerRequest: 1,
-        retryDelayOnFailover: 50,
-        enableReadyCheck: false,
-        maxLoadingTimeout: 2000,
-        keepAlive: 60000,
-        connectTimeout: 2000,
-        commandTimeout: 1000,
-        enableOfflineQueue: true,
-        family: 4,
-        ...({ retryDelayOnFailover: 50 } as any)
-      });
+      try {
+        this.redis = new Redis(process.env.REDIS_URL, {
+          lazyConnect: true,
+          maxRetriesPerRequest: 1,
+          retryDelayOnFailover: 50,
+          enableReadyCheck: false,
+          maxLoadingTimeout: 2000,
+          keepAlive: 60000,
+          connectTimeout: 2000,
+          commandTimeout: 1000,
+          enableOfflineQueue: false, // Prevent hanging if Redis is down
+          family: 4,
+          ...({ retryDelayOnFailover: 50 } as any)
+        });
+        this.setupRedisHandlers();
+      } catch (e) {
+        console.warn('⚠️ Failed to initialize Redis. Falling back to memory cache only.');
+        this.redis = null;
+      }
     } else {
-      // Fallback for local development if REDIS_URL is not set
-      this.redis = new Redis({
-        ...DASHBOARD_REDIS_CONFIG,
-        lazyConnect: true,
-        enableOfflineQueue: true
-      });
+      console.log('⚡ Running Dashboard in memory-cache mode (No Redis configured)');
+      this.redis = null;
     }
-    this.setupRedisHandlers();
   }
 
   // Helper function to safely serialize BigInt values
@@ -94,6 +95,7 @@ class UltraFastDashboard {
   }
 
   private setupRedisHandlers() {
+    if (!this.redis) return;
     this.redis.on('connect', () => {
       console.log('⚡ Ultra-fast Dashboard Redis connected');
     });
@@ -135,6 +137,9 @@ class UltraFastDashboard {
     return sorted[index] || 0;
   }
 
+  // Cache stampede prevention
+  private fetchPromises: Map<string, Promise<DashboardStats>> = new Map();
+
   // Ultra-fast dashboard data loading with multi-layer caching
   async getDashboardData(shopId: number, userId: number): Promise<DashboardStats> {
     const startTime = performance.now();
@@ -148,34 +153,67 @@ class UltraFastDashboard {
         return memoryCache.data;
       }
 
-      // 2. Check Redis cache
-      const redisData = await this.redis.get(cacheKey);
-      if (redisData) {
-        const cachedData = JSON.parse(redisData);
-        this.memoryCache.set(cacheKey, {
-          data: cachedData,
-          timestamp: Date.now(),
-          version: this.VERSION
-        });
-        this.trackPerformance('dashboard_redis_cache', startTime);
-        return cachedData;
+      // 2. Cache stampede prevention: check if another request is currently fetching this data
+      if (this.fetchPromises.has(cacheKey)) {
+        console.log(`⚡ [Cache Stampede Prevention] Waiting for existing fetch for ${cacheKey}`);
+        const data = await this.fetchPromises.get(cacheKey)!;
+        this.trackPerformance('dashboard_promise_dedupe', startTime);
+        return data;
       }
 
-      // 3. Load from database with parallel queries
-      const dashboardData = await this.loadDashboardDataFromDB(shopId);
+      // Create a new fetch promise and store it
+      const fetchPromise = (async () => {
+        // 3. Check Redis cache
+        if (this.redis) {
+          try {
+            const redisData = await this.redis.get(cacheKey);
+            if (redisData) {
+              const cachedData = JSON.parse(redisData);
+              this.memoryCache.set(cacheKey, {
+                data: cachedData,
+                timestamp: Date.now(),
+                version: this.VERSION
+              });
+              this.trackPerformance('dashboard_redis_cache', startTime);
+              return cachedData;
+            }
+          } catch (redisError) {
+            console.warn('⚠️ Redis cache failed, falling back to DB:', redisError);
+          }
+        }
 
-      // 4. Cache the result
-      await Promise.all([
-        this.redis.setex(cacheKey, 300, this.serializeBigInt(dashboardData)),
+        // 4. Load from database with parallel queries
+        const dashboardData = await this.loadDashboardDataFromDB(shopId);
+
+        // 5. Cache the result
         this.memoryCache.set(cacheKey, {
           data: dashboardData,
           timestamp: Date.now(),
           version: this.VERSION
-        })
-      ]);
+        });
+        
+        if (this.redis) {
+          try {
+            await this.redis.setex(cacheKey, 300, this.serializeBigInt(dashboardData));
+          } catch (e) {
+            // ignore redis set errors
+          }
+        }
 
-      this.trackPerformance('dashboard_db_load', startTime);
-      return dashboardData;
+        return dashboardData;
+      })();
+
+      // Store the promise so subsequent requests can await it
+      this.fetchPromises.set(cacheKey, fetchPromise);
+
+      try {
+        const dashboardData = await fetchPromise;
+        this.trackPerformance('dashboard_db_load', startTime);
+        return dashboardData;
+      } finally {
+        // Always remove the promise from the map when done
+        this.fetchPromises.delete(cacheKey);
+      }
 
     } catch (error) {
       console.error('Dashboard data loading error:', error);
@@ -556,18 +594,24 @@ class UltraFastDashboard {
   // Clear dashboard cache
   async clearDashboardCache(shopId: number, userId: number): Promise<void> {
     const cacheKey = `dashboard:${shopId}:${userId}`;
-    await Promise.all([
-      this.redis.del(cacheKey),
-      this.memoryCache.delete(cacheKey)
-    ]);
+    this.memoryCache.delete(cacheKey);
+    if (this.redis) {
+      try {
+        await this.redis.del(cacheKey);
+      } catch (e) {}
+    }
   }
 
   // Clear dashboard cache for all users of a shop
   async clearAllShopDashboardCaches(shopId: number): Promise<void> {
     // Clear from Redis
-    const keys = await this.redis.keys(`dashboard:${shopId}:*`);
-    if (keys.length > 0) {
-      await this.redis.del(...keys);
+    if (this.redis) {
+      try {
+        const keys = await this.redis.keys(`dashboard:${shopId}:*`);
+        if (keys.length > 0) {
+          await this.redis.del(...keys);
+        }
+      } catch (e) {}
     }
     // Clear from memory cache
     for (const key of Array.from(this.memoryCache.keys())) {
@@ -649,10 +693,12 @@ class UltraFastDashboard {
 
   // Cleanup
   async disconnect(): Promise<void> {
-    await Promise.all([
-      this.prisma.$disconnect(),
-      this.redis.quit()
-    ]);
+    if (this.redis) {
+      try {
+        await this.redis.quit();
+      } catch (e) {}
+    }
+    await this.prisma.$disconnect();
   }
 }
 
