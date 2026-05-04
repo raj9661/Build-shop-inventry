@@ -578,25 +578,36 @@ export const getAvailableUnits = (categoryName: string): { value: string; label:
     ]
   }
 
+  // Bricks are sold by piece (प्रति नग)
+  if (
+    categoryName.toLowerCase().includes("brick") ||
+    categoryName.toLowerCase().includes("ईंट")
+  ) {
+    return [
+      { value: "piece", label: "Piece (नग)", labelHi: "पीस (नग)" },
+      { value: "tractor", label: "Tractor", labelHi: "ट्रैक्टर" },
+      { value: "407", label: "407", labelHi: "407" },
+      { value: "chota_haathi", label: "Chota Haathi (Tata)", labelHi: "छोटा हाथी (टाटा)" },
+    ]
+  }
+
+  // Sand and Chips are measured in CFT
   if (
     categoryName.toLowerCase().includes("sand") ||
     categoryName.toLowerCase().includes("chips") ||
-    categoryName.toLowerCase().includes("bricks") ||
     categoryName.toLowerCase().includes("aggregates")
   ) {
     return [
+      { value: "cft", label: "CFT (घन फुट)", labelHi: "घन फुट (CFT)" },
       { value: "tractor", label: "Tractor", labelHi: "ट्रैक्टर" },
       { value: "407", label: "407", labelHi: "407" },
       { value: "highwa", label: "Highwa", labelHi: "हीवा" },
       { value: "tempo", label: "Tempo", labelHi: "टेम्पो" },
-      { value: "bag", label: "Bag", labelHi: "बैग" },
-      { value: "chota_haathi", label: "Chota Haathi (Tata)", labelHi: "छोटा हाथी (टाटा)" },
       { value: "small_hiwa", label: "Small Hiwa", labelHi: "छोटा हीवा" },
       { value: "big_hiwa", label: "Big Hiwa", labelHi: "बड़ा हीवा" },
-      { value: "piece", label: "Piece", labelHi: "पीस" },
+      { value: "chota_haathi", label: "Chota Haathi (Tata)", labelHi: "छोटा हाथी (टाटा)" },
+      { value: "bag", label: "Bag", labelHi: "बैग" },
       { value: "kg", label: "kg", labelHi: "किलो" },
-      { value: "gram", label: "Gram", labelHi: "ग्राम" },
-      { value: "liter", label: "Liter", labelHi: "लीटर" },
     ]
   }
 

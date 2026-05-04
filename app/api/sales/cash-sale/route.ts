@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PrismaClient, PaymentStatus } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
-import { getShopFilter } from '@/app/lib/shopAccessUtils';
-import { serializeBigInt } from '../../../lib/utils';
-import { createPurchaseEntry, createPaymentEntry } from '@/app/lib/ledgerUtils';
 import ultraFastDashboard from '@/app/lib/ultra-fast-dashboard';
 
 const prisma = new PrismaClient();
@@ -79,7 +76,7 @@ export async function POST(req: NextRequest) {
       payment_type
     });
 
-    const sale = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Calculate payment amounts based on payment type
       let paidAmount = 0;
       if (payment_type === 'cash' || payment_type === 'online') {
@@ -207,8 +204,17 @@ export async function POST(req: NextRequest) {
           const productName = product.name?.toLowerCase() || '';
           // Robust cement detection: check category or product name
           const isCement = categoryName.includes('cement') || productName.includes('cement');
+          // Bricks, chips, sand, and aggregates are always sold regardless of stock level
+          const isBulkMaterial =
+            categoryName.includes('sand') ||
+            categoryName.includes('chips') ||
+            categoryName.includes('brick') ||
+            categoryName.includes('aggregate') ||
+            productName.includes('sand') ||
+            productName.includes('chips') ||
+            productName.includes('brick');
 
-          console.log(`Product found: ${product.name}, Category: ${categoryName}, isCement: ${isCement}, Stock: ${currentStock}, Damaged: ${currentDamaged}`);
+          console.log(`Product found: ${product.name}, Category: ${categoryName}, isCement: ${isCement}, isBulkMaterial: ${isBulkMaterial}, Stock: ${currentStock}, Damaged: ${currentDamaged}`);
 
           const stockType = item.stockType || 'normal';
           let availableStock = 0;
@@ -228,7 +234,8 @@ export async function POST(req: NextRequest) {
           const itemConvFactor = item.conversionCft ? parseFloat(item.conversionCft) : 1;
           const itemTotalCft = requestedQuantity * itemConvFactor;
 
-          if (!isCement && availableStock < itemTotalCft) {
+          // Bulk materials (bricks/chips/sand) are sold even if not in stock — skip check
+          if (!isCement && !isBulkMaterial && availableStock < itemTotalCft) {
             throw new Error(`Insufficient ${stockType} stock for product ${product.name}. Available: ${availableStock}, Requested Total: ${itemTotalCft}`);
           }
 
@@ -282,8 +289,11 @@ export async function POST(req: NextRequest) {
                 data: { stockQuantity: newStock }
               });
             }
+          } else if (isBulkMaterial) {
+            // Bricks / chips / sand — do NOT deduct stock (sold regardless of inventory level)
+            console.log(`Skipping stock deduction for bulk material: ${product.name}`);
           } else {
-            // Update stock immediately for non-cement (bulk or regular)
+            // Update stock immediately for other non-cement products
             if (stockType === 'normal') {
               const newStockQuantity = Math.max(0, currentStock - itemTotalCft);
               console.log(`Updating normal stock for ${product.name}: ${currentStock} -> ${newStockQuantity} (Deducted ${itemTotalCft})`);
@@ -306,48 +316,17 @@ export async function POST(req: NextRequest) {
       // 4. Payment information is already stored in the Sale record
       // No separate Payment record needed
 
-      // 5. Create ledger entries
-      // Now that we are linking to specific customers, we SHOULD create ledger entries
-      // This logic ensures history tracking for recurring walk-in customers
-      const itemsList = hasItems ? items.map((item: any) => ({
-        name: item.name || '',
-        quantity: item.quantity,
-        price_per_unit: item.price_per_unit || item.price || 0,
-        unit: item.unit || 'units'
-      })) : [];
-
-      if (finalCustomerId) {
-        console.log('Creating ledger entries for cash sale');
-        // Purchase Entry
-        await createPurchaseEntry(tx, {
-          customerId: BigInt(finalCustomerId),
-          amount: totalAmount,
-          date: new Date(saleDate),
-          description: notes ? `${notes} (Cash Sale #${createdSale.id})` : `Cash Sale #${createdSale.id}`,
-          saleId: createdSale.id,
-          shopId: BigInt(parseInt(shopId)),
-          items: itemsList
-        });
-
-        // Payment Entry (since it's a cash sale, it's paid immediately)
-        if (paidAmount > 0) {
-          await createPaymentEntry(tx, {
-            customerId: BigInt(finalCustomerId),
-            amount: -paidAmount,
-            date: new Date(saleDate),
-            description: `Payment for Cash Sale #${createdSale.id}`,
-            saleId: createdSale.id,
-            shopId: BigInt(parseInt(shopId))
-          });
-        }
-      }
-
-      return createdSale;
+      // Return the created sale along with customer/payment context so we
+      // can create ledger entries OUTSIDE the transaction (avoids the Prisma
+      // "Transaction not found" error caused by running calculateRunningBalance
+      // — which does extra queries — inside an already-open interactive transaction).
+      return { createdSale, finalCustomerId, paidAmount };
     });
+
+    const { createdSale: sale, finalCustomerId, paidAmount } = result;
 
     console.log('Cash sale created successfully with ID:', sale.id);
 
-    // Fix BigInt serialization
     // Automatically clear dashboard cache for all users of this shop
     try {
       await ultraFastDashboard.clearAllShopDashboardCaches(shopId);

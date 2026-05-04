@@ -125,7 +125,17 @@ export default function CashSale() {
       })
       if (res.ok) {
         const data = await res.json()
-        setProducts((data.data.products || []).filter((p: any) => (p.stockQuantity - (p.damagedQuantity ?? 0)) > 0 || (p.damagedQuantity ?? 0) > 0))
+        const allProducts = data.data.products || [];
+        setProducts(allProducts.filter((p: any) => {
+          const catName = (p.category?.name || '').toLowerCase();
+          const pName = (p.name || '').toLowerCase();
+          // Bricks, chips, and sand are always available for cash sale (sold regardless of stock)
+          const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('brick') ||
+                         pName.includes('sand') || pName.includes('chips') || pName.includes('brick');
+          if (isBulk) return true;
+          // Other products need stock > 0
+          return (p.stockQuantity - (p.damagedQuantity ?? 0)) > 0 || (p.damagedQuantity ?? 0) > 0;
+        }))
       }
 
       // Fetch TMT Products
@@ -222,8 +232,10 @@ export default function CashSale() {
       if (!product) { toast.error("Product not found"); return; }
 
       const isCement = product.category?.name?.toLowerCase() === 'cement';
-      const isSandChips = product.category?.name?.toLowerCase()?.includes('sand') || 
-                          product.category?.name?.toLowerCase()?.includes('chips');
+      const catName = product.category?.name?.toLowerCase() || '';
+      const pName = product.name?.toLowerCase() || '';
+      const isBulkMaterial = catName.includes('sand') || catName.includes('chips') || catName.includes('brick') ||
+                             pName.includes('sand') || pName.includes('chips') || pName.includes('brick');
       let availableStock = 0;
 
       if (currentItem.stockType === 'normal') {
@@ -237,7 +249,7 @@ export default function CashSale() {
         .filter(i => !i.isTmt && i.productId === currentItem.productId && i.stockType === currentItem.stockType && i.unit === currentItem.unit)
         .reduce((sum, i) => sum + i.quantity, 0)
 
-      if (!isSandChips && availableStock - alreadyAdded < requestedQuantity) {
+      if (!isBulkMaterial && availableStock - alreadyAdded < requestedQuantity) {
         toast.error(`Insufficient stock! Available: ${availableStock - alreadyAdded} ${currentItem.unit}`);
         return;
       }
@@ -335,8 +347,10 @@ export default function CashSale() {
     if (!product) return
 
     const isCement = product.category?.name?.toLowerCase() === 'cement'
-    const isSandChips = product.category?.name?.toLowerCase()?.includes('sand') || 
-                        product.category?.name?.toLowerCase()?.includes('chips');
+    const catName2 = product.category?.name?.toLowerCase() || '';
+    const pName2 = product.name?.toLowerCase() || '';
+    const isBulkMaterial = catName2.includes('sand') || catName2.includes('chips') || catName2.includes('brick') ||
+                           pName2.includes('sand') || pName2.includes('chips') || pName2.includes('brick');
     let availableStock = 0
     if (item.stockType === 'normal') {
       availableStock = product.stockQuantity ?? 0
@@ -350,7 +364,7 @@ export default function CashSale() {
       .reduce((sum, i) => sum + i.quantity, 0)
 
     const newQuantity = item.quantity + delta
-    if (!isSandChips && newQuantity > availableStock - alreadyAdded) {
+    if (!isBulkMaterial && newQuantity > availableStock - alreadyAdded) {
       toast.error(`Insufficient stock`);
       return
     }
@@ -582,11 +596,20 @@ export default function CashSale() {
                     >
                       <option value="">{t("Select product", "उत्पाद चुनें")}</option>
                       {productType === 'regular' ? (
-                        products.map((p: any) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name} (Stock: {currentItem.stockType === 'damaged' ? (p.damagedQuantity ?? 0) : (p.stockQuantity ?? 0)})
-                          </option>
-                        ))
+                        products.map((p: any) => {
+                          const catN = (p.category?.name || '').toLowerCase();
+                          const pN = (p.name || '').toLowerCase();
+                          const isBulk = catN.includes('sand') || catN.includes('chips') || catN.includes('brick') ||
+                                        pN.includes('sand') || pN.includes('chips') || pN.includes('brick');
+                          const stockDisplay = isBulk
+                            ? '(On Order)'
+                            : `(Stock: ${currentItem.stockType === 'damaged' ? (p.damagedQuantity ?? 0) : (p.stockQuantity ?? 0)})`;
+                          return (
+                            <option key={p.id} value={p.id}>
+                              {p.name} {stockDisplay}
+                            </option>
+                          );
+                        })
                       ) : (
                         tmtProducts.map((p: any) => (
                           <option key={p.id} value={p.id}>
@@ -684,7 +707,7 @@ export default function CashSale() {
                   {(() => {
                     const product = products.find((p: any) => String(p.id) === String(currentItem.productId));
                     const isCement = product?.category?.name?.toLowerCase() === 'cement';
-                    const showConv = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'cft'].includes(currentItem.unit) && !isCement;
+                    const showConv = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'highwa'].includes(currentItem.unit) && !isCement;
                     
                     if (showConv) {
                       return (

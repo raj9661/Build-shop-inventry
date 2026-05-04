@@ -169,11 +169,13 @@ export async function GET(req: NextRequest) {
 
     // 1. Fetch Regular Sales
     if (regularSaleIds.length > 0) {
-      // Only fetch completed sales - this ensures only completed sales appear in ledger
+      // Only fetch completed/active sales — exclude [CASH_SALE] tagged sales
+      // Cash sales are immediate walk-in transactions and must not appear in the ledger
       const sales = await prisma.sale.findMany({
         where: {
           id: { in: regularSaleIds },
-          paymentStatus: { in: ['COMPLETED', 'PENDING'] } // Include both completed and active sales
+          paymentStatus: { in: ['COMPLETED', 'PENDING'] }, // Include both completed and active sales
+          NOT: { notes: { contains: '[CASH_SALE]' } }     // Exclude walk-in cash sales
         },
         select: {
           id: true,
