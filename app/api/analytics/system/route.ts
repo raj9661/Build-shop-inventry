@@ -565,49 +565,49 @@ export async function GET(req: NextRequest) {
     // Build safe shopId filter for related entities (sales, payments)
     const allowedShopIds = shopsWithStats.map((s) => Number(s.id));
 
-    // Calculate revenue by shop for the selected range
-    const generalRevenueByShop = await prisma.sale.groupBy({
-      by: ['shopId'],
-      where: {
-        isActive: true,
-        saleDate: { gte: startDate, lte: endDate },
-        ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
-      },
-      _sum: { finalAmount: true },
-      _count: { id: true }
-    });
+    console.log('🔍 [System Analytics] Fetching raw data for in-memory aggregations...');
+    const [sales, tmtSales, expenses] = await Promise.all([
+      prisma.sale.findMany({
+        where: {
+          isActive: true,
+          saleDate: { gte: startDate, lte: endDate },
+          ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
+        },
+        select: { shopId: true, saleDate: true, finalAmount: true, paymentMethod: true, paymentStatus: true, notes: true }
+      }),
+      prisma.tmtSale.findMany({
+        where: {
+          isActive: true,
+          saleDate: { gte: startDate, lte: endDate },
+          ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
+        },
+        select: { shopId: true, saleDate: true, totalAmount: true, paymentMethod: true, paymentStatus: true, notes: true }
+      }),
+      prisma.expense.findMany({
+        where: {
+          isActive: true,
+          date: { gte: startDate, lte: endDate },
+          ...shopFilter
+        },
+        select: { amount: true, date: true, category: true }
+      })
+    ]);
 
-    const tmtRevenueByShop = await prisma.tmtSale.groupBy({
-      by: ['shopId'],
-      where: {
-        isActive: true,
-        saleDate: { gte: startDate, lte: endDate },
-        ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
-      },
-      _sum: { totalAmount: true },
-      _count: { id: true }
-    });
+    const combinedSales = [
+      ...sales.map(s => ({ ...s, amount: Number(s.finalAmount || 0) })),
+      ...tmtSales.map(ts => ({ ...ts, amount: Number(ts.totalAmount || 0) }))
+    ];
 
-    // Merge both revenue streams by shopId
-    const shopRevenueMap = new Map<number, { amount: number; count: number }>();
-    
-    generalRevenueByShop.forEach(item => {
+    // 1. Revenue & Top Shops (grouped by shopId)
+    const shopRevenueMap = new Map<number, { revenue: number; sales: number }>();
+    combinedSales.forEach(item => {
       const id = Number(item.shopId);
-      const val = shopRevenueMap.get(id) || { amount: 0, count: 0 };
-      val.amount += item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0;
-      val.count += item._count.id;
+      const val = shopRevenueMap.get(id) || { revenue: 0, sales: 0 };
+      val.revenue += item.amount;
+      val.sales += 1;
       shopRevenueMap.set(id, val);
     });
 
-    tmtRevenueByShop.forEach(item => {
-      const id = Number(item.shopId);
-      const val = shopRevenueMap.get(id) || { amount: 0, count: 0 };
-      val.amount += item._sum?.totalAmount ? parseFloat((item._sum.totalAmount as any).toString()) : 0;
-      val.count += item._count.id;
-      shopRevenueMap.set(id, val);
-    });
-
-    // Get shop names for revenue breakdown
     const shopRevenueData = await Promise.all(
       Array.from(shopRevenueMap.entries()).map(async ([shopId, data]) => {
         const shop = await prisma.shop.findUnique({
@@ -618,216 +618,122 @@ export async function GET(req: NextRequest) {
           shopId,
           shopName: shop?.name || 'Unknown Shop',
           shopLocation: shop?.location || '',
-          amount: data.amount,
-          revenue: data.amount,
-          sales: data.count
+          amount: data.revenue,
+          revenue: data.revenue,
+          sales: data.sales
         };
       })
     );
 
-    // Payment method breakdown across accessible shops (based on sales)
-    let paymentMethodData: Array<{ method: string; amount: number; count: number }> = [];
+    let topShopsData: Array<{ name: string; revenue: number; sales: number; customers: number }> = [];
     try {
-      console.log('🔍 [System Analytics] Fetching payment breakdown from sales...');
-      console.log('🔍 Date range for payment breakdown:', { startDate, endDate, days });
-      const [sales, tmtSales] = await Promise.all([
-        prisma.sale.findMany({
-          where: {
-            isActive: true,
-            saleDate: {
-              gte: startDate,
-              lte: endDate
-            },
-            ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
-          },
-          select: {
-            finalAmount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            notes: true
-          }
-        }),
-        prisma.tmtSale.findMany({
-          where: {
-            isActive: true,
-            saleDate: {
-              gte: startDate,
-              lte: endDate
-            },
-            ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
-          },
-          select: {
-            totalAmount: true,
-            paymentMethod: true,
-            paymentStatus: true,
-            notes: true
-          }
+      const allShopsData = await Promise.all(
+        Array.from(shopRevenueMap.entries()).map(async ([shopId, data]) => {
+          const shop = await prisma.shop.findUnique({
+            where: { id: BigInt(shopId) },
+            select: { name: true }
+          });
+          const customerCount = await prisma.customer.count({
+            where: { shopId: BigInt(shopId), isActive: true }
+          });
+          return {
+            name: shop?.name || 'Unknown Shop',
+            revenue: data.revenue,
+            sales: data.sales,
+            customers: customerCount
+          };
         })
-      ]);
-
-      const combinedSales = [
-        ...sales.map(s => ({ ...s, amount: Number(s.finalAmount || 0) })),
-        ...tmtSales.map(ts => ({ ...ts, amount: Number(ts.totalAmount || 0) }))
-      ];
-
-      const breakdownMap = new Map<string, { amount: number, count: number }>();
-      
-      combinedSales.forEach(sale => {
-        const amount = sale.amount;
-        let method = sale.paymentMethod as string;
-        
-        // Check for partial payments or loans in notes
-        const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
-        const isLoan = sale.notes?.includes('Loan/Credit Sale') || (sale.paymentStatus === 'PENDING' && !partialMatch && amount > 0);
-
-        if (partialMatch) {
-          // Partial payment: Split between the payment method used and LOAN
-          const paid = parseFloat(partialMatch[1]);
-          const due = parseFloat(partialMatch[3]);
-          const partialMethod = partialMatch[2].toUpperCase();
-          
-          // Add paid part
-          const pMethod = breakdownMap.get(partialMethod) || { amount: 0, count: 0 };
-          pMethod.amount += paid;
-          pMethod.count += 1;
-          breakdownMap.set(partialMethod, pMethod);
-          
-          // Add due part to LOAN
-          const loanMethod = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
-          loanMethod.amount += due;
-          loanMethod.count += 1;
-          breakdownMap.set('LOAN', loanMethod);
-        } else if (isLoan) {
-          // Full loan/credit
-          const m = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
-          m.amount += amount;
-          m.count += 1;
-          breakdownMap.set('LOAN', m);
-        } else {
-          // Regular payment
-          const m = breakdownMap.get(method) || { amount: 0, count: 0 };
-          m.amount += amount;
-          m.count += 1;
-          breakdownMap.set(method, m);
-        }
-      });
-
-      paymentMethodData = Array.from(breakdownMap.entries()).map(([method, data]) => ({
-        method,
-        amount: data.amount,
-        count: data.count
-      }));
-      console.log('✅ [System Analytics] Payment breakdown fetched successfully');
-      console.log('🔍 Payment breakdown data:', paymentMethodData);
+      );
+      topShopsData = allShopsData.sort((a, b) => b.revenue - a.revenue).slice(0, 10);
     } catch (error) {
-      console.error('❌ [System Analytics] Payment breakdown error:', error);
-      paymentMethodData = [];
+      console.error('❌ [System Analytics] Top shops data processing error:', error);
     }
 
-    // Sales by month - dynamically calculate number of months based on days parameter
-    // Calculate how many months to show (default to 6 months if not specified)
-    const numMonths = Math.max(1, Math.ceil(days / 30));
-    const monthsToShow = Math.min(numMonths, 12); // Cap at 12 months
+    // 2. Payment Method Breakdown
+    const breakdownMap = new Map<string, { amount: number, count: number }>();
+    combinedSales.forEach(sale => {
+      const amount = sale.amount;
+      let method = sale.paymentMethod as string;
+      
+      const partialMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
+      const isLoan = sale.notes?.includes('Loan/Credit Sale') || (sale.paymentStatus === 'PENDING' && !partialMatch && amount > 0);
 
-    const monthIndices = Array.from({ length: monthsToShow }, (_, i) => monthsToShow - 1 - i);
-    
-    // Execute all month queries in parallel to avoid N+1 sequential bottlenecks
-    const monthPromises = monthIndices.map(async (i) => {
-      const now = new Date();
-      const targetYear = now.getUTCFullYear();
-      const targetMonth = now.getUTCMonth() - i;
-
-      const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
-
-      const [monthSales, monthTmtSales, monthExpenses] = await Promise.all([
-        prisma.sale.aggregate({
-          where: {
-            isActive: true,
-            saleDate: { gte: monthStart, lte: monthEnd },
-            ...shopFilter
-          },
-          _sum: { finalAmount: true },
-          _count: { id: true }
-        }),
-        prisma.tmtSale.aggregate({
-          where: {
-            isActive: true,
-            saleDate: { gte: monthStart, lte: monthEnd },
-            ...shopFilter
-          },
-          _sum: { totalAmount: true },
-          _count: { id: true }
-        }),
-        prisma.expense.aggregate({
-          where: {
-            isActive: true,
-            date: { gte: monthStart, lte: monthEnd },
-            ...shopFilter
-          },
-          _sum: { amount: true }
-        })
-      ]);
-
-      const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      const revenue = Number(monthSales._sum.finalAmount || 0) + Number(monthTmtSales._sum.totalAmount || 0);
-      const salesCount = (monthSales._count.id || 0) + (monthTmtSales._count.id || 0);
-      const expenses = Number(monthExpenses._sum.amount || 0);
-
-      return {
-        month: monthLabel,
-        salesCount,
-        revenue,
-        expenses
-      };
-    });
-
-    const monthlyData = await Promise.all(monthPromises);
-    
-    const salesByMonth = monthlyData.map(d => ({
-      month: d.month,
-      sales: d.salesCount,
-      revenue: d.revenue
-    }));
-    
-    const expensesByMonth = monthlyData.map(d => ({
-      month: d.month,
-      expenses: d.expenses
-    }));
-
-    console.log('📊 Total monthly analytics processed in parallel');
-
-    // Expenses by category
-    const expensesByCategory = await prisma.expense.groupBy({
-      by: ['category'],
-      where: {
-        ...shopFilter,
-        date: {
-          gte: startDate,
-          lte: endDate
-        },
-        isActive: true
-      },
-      _sum: { amount: true },
-      orderBy: {
-        _sum: {
-          amount: 'desc'
-        }
+      if (partialMatch) {
+        const paid = parseFloat(partialMatch[1]);
+        const due = parseFloat(partialMatch[3]);
+        const partialMethod = partialMatch[2].toUpperCase();
+        
+        const pMethod = breakdownMap.get(partialMethod) || { amount: 0, count: 0 };
+        pMethod.amount += paid; pMethod.count += 1; breakdownMap.set(partialMethod, pMethod);
+        
+        const loanMethod = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
+        loanMethod.amount += due; loanMethod.count += 1; breakdownMap.set('LOAN', loanMethod);
+      } else if (isLoan) {
+        const m = breakdownMap.get('LOAN') || { amount: 0, count: 0 };
+        m.amount += amount; m.count += 1; breakdownMap.set('LOAN', m);
+      } else {
+        const m = breakdownMap.get(method) || { amount: 0, count: 0 };
+        m.amount += amount; m.count += 1; breakdownMap.set(method, m);
       }
     });
 
-    // Top products by revenue
+    const paymentMethodData = Array.from(breakdownMap.entries()).map(([method, data]) => ({
+      method, amount: data.amount, count: data.count
+    }));
+
+    // 3. Sales & Expenses by Month
+    const numMonths = Math.max(1, Math.ceil(days / 30));
+    const monthsToShow = Math.min(numMonths, 12);
+    const monthIndices = Array.from({ length: monthsToShow }, (_, i) => monthsToShow - 1 - i);
+    
+    const monthlyData = monthIndices.map(i => {
+      const now = new Date();
+      const targetYear = now.getUTCFullYear();
+      const targetMonth = now.getUTCMonth() - i;
+      const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
+      const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
+      
+      const mSales = combinedSales.filter(s => {
+        const d = new Date(s.saleDate);
+        return d >= monthStart && d <= monthEnd;
+      });
+      const mExpenses = expenses.filter(e => {
+        const d = new Date(e.date);
+        return d >= monthStart && d <= monthEnd;
+      });
+
+      const revenue = mSales.reduce((sum, s) => sum + s.amount, 0);
+      const salesCount = mSales.length;
+      const totalExp = mExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+
+      return {
+        month: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        salesCount,
+        revenue,
+        expenses: totalExp
+      };
+    });
+
+    const salesByMonth = monthlyData.map(d => ({ month: d.month, sales: d.salesCount, revenue: d.revenue }));
+    const expensesByMonth = monthlyData.map(d => ({ month: d.month, expenses: d.expenses }));
+
+    // 4. Expenses by Category
+    const expCategoryMap = new Map<string, number>();
+    expenses.forEach(e => {
+      const cat = e.category || 'OTHER';
+      const amt = Number(e.amount);
+      expCategoryMap.set(cat, (expCategoryMap.get(cat) || 0) + amt);
+    });
+    const expensesByCategory = Array.from(expCategoryMap.entries())
+      .map(([category, amount]) => ({ category, _sum: { amount } }))
+      .sort((a, b) => b._sum.amount - a._sum.amount);
+
+    // 5. Top Products (requires join, keeping query isolated)
     let topProductsData: Array<{ name: string; sales: number; revenue: number }> = [];
     try {
-      console.log('🔍 [System Analytics] Fetching top products...');
       const topProducts = await prisma.saleItem.groupBy({
         by: ['productId'],
-        where: {
-          sale: {
-            isActive: true,
-            ...shopFilter
-          }
-        },
+        where: { sale: { isActive: true, ...shopFilter } },
         _sum: { totalPrice: true },
         _count: { id: true },
         orderBy: { _sum: { totalPrice: 'desc' } },
@@ -847,90 +753,8 @@ export async function GET(req: NextRequest) {
           };
         })
       );
-      console.log('✅ [System Analytics] Top products fetched successfully');
     } catch (error) {
       console.error('❌ [System Analytics] Top products error:', error);
-      topProductsData = [];
-    }
-
-    // Top shops by revenue
-    const generalTopShops = await prisma.sale.groupBy({
-      by: ['shopId'],
-      where: {
-        isActive: true,
-        saleDate: {
-          gte: startDate,
-          lte: endDate
-        },
-        ...shopFilter
-      },
-      _sum: { finalAmount: true },
-      _count: { id: true }
-    });
-
-    const tmtTopShops = await prisma.tmtSale.groupBy({
-      by: ['shopId'],
-      where: {
-        isActive: true,
-        saleDate: {
-          gte: startDate,
-          lte: endDate
-        },
-        ...shopFilter
-      },
-      _sum: { totalAmount: true },
-      _count: { id: true }
-    });
-
-    const topShopsMap = new Map<number, { revenue: number; sales: number }>();
-    generalTopShops.forEach(item => {
-      const id = Number(item.shopId);
-      const val = topShopsMap.get(id) || { revenue: 0, sales: 0 };
-      val.revenue += item._sum?.finalAmount ? parseFloat((item._sum.finalAmount as any).toString()) : 0;
-      val.sales += item._count.id;
-      topShopsMap.set(id, val);
-    });
-    tmtTopShops.forEach(item => {
-      const id = Number(item.shopId);
-      const val = topShopsMap.get(id) || { revenue: 0, sales: 0 };
-      val.revenue += item._sum?.totalAmount ? parseFloat((item._sum.totalAmount as any).toString()) : 0;
-      val.sales += item._count.id;
-      topShopsMap.set(id, val);
-    });
-
-    let topShopsData: Array<{ name: string; revenue: number; sales: number; customers: number }> = [];
-    try {
-      console.log('🔍 [System Analytics] Processing top shops data...');
-      
-      const allShopsData = await Promise.all(
-        Array.from(topShopsMap.entries()).map(async ([shopId, data]) => {
-          const shop = await prisma.shop.findUnique({
-            where: { id: BigInt(shopId) },
-            select: { name: true }
-          });
-
-          // Get customer count for this shop
-          const customerCount = await prisma.customer.count({
-            where: {
-              shopId: BigInt(shopId),
-              isActive: true
-            }
-          });
-
-          return {
-            name: shop?.name || 'Unknown Shop',
-            revenue: data.revenue,
-            sales: data.sales,
-            customers: customerCount
-          };
-        })
-      );
-      
-      topShopsData = allShopsData.sort((a, b) => b.revenue - a.revenue).slice(0, 10);
-      console.log('✅ [System Analytics] Top shops data processed successfully');
-    } catch (error) {
-      console.error('❌ [System Analytics] Top shops data processing error:', error);
-      topShopsData = [];
     }
 
     // Highest Balance Customers - compute real balance dynamically from ledger entries
