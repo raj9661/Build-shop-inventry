@@ -8,6 +8,15 @@ const nextConfig = {
   // Gzip all HTML/JS/CSS at the Edge — typically 60-70% size reduction
   compress: true,
 
+  // ── Compiler ────────────────────────────────────────────────────────────────
+  // Automatically strip all console.log/info/warn from production builds
+  // but keep console.error for error tracking. Leaves logs intact in local dev.
+  compiler: {
+    removeConsole: process.env.NODE_ENV === 'production' ? {
+      exclude: ['error'],
+    } : false,
+  },
+
   // ── Images ──────────────────────────────────────────────────────────────────
   images: {
     // Serve optimised WebP / AVIF instead of raw JPEG/PNG

@@ -315,8 +315,6 @@ function SuperDuperAdminDashboardContent() {
     const hasAccess = userRole === 'SUPER_DUPER_ADMIN' || localUserRole === 'SUPER_DUPER_ADMIN'
     if (hasAccess) {
       console.log('🔍 Loading SUPER_DUPER_ADMIN data...')
-      console.log('🔍 Current token in localStorage:', localStorage.getItem('accessToken') ? 'Present' : 'Missing')
-      console.log('🔍 Token preview:', localStorage.getItem('accessToken')?.substring(0, 50) + '...')
       loadSystemStats()
       loadShops()
     } else {
@@ -562,7 +560,6 @@ function SuperDuperAdminDashboardContent() {
 
       // Check if we have a valid token
       const token = localStorage.getItem('accessToken')
-      console.log('🔍 Token from localStorage:', token ? `${token.substring(0, 20)}...` : 'No token')
 
       // Check if token is malformed
       if (token && (token.includes('undefined') || token.includes('null') || token.length < 10)) {
@@ -580,13 +577,6 @@ function SuperDuperAdminDashboardContent() {
         return
       }
 
-      // Clear cache first
-      try {
-        await fetch('/api/debug/clear-cache', { method: 'POST' })
-        console.log('🧹 Cache cleared')
-      } catch (cacheError) {
-        console.log('⚠️ Could not clear cache:', cacheError)
-      }
 
       // Try the API call first
       const response = await fetch('/api/shops/user-assigned', {
@@ -612,7 +602,6 @@ function SuperDuperAdminDashboardContent() {
 
         if (shopsData.success && shopsData.data && shopsData.data.shops) {
           console.log('✅ Setting shops:', shopsData.data.shops.length, 'shops')
-          console.log('✅ Raw shop data with assignedUsers:', shopsData.data.shops.map((s: any) => ({ name: s.name, assignedUsers: s.assignedUsers })))
           setShops(shopsData.data.shops)
           // Also refresh the ShopContext so the sidebar updates
           refreshShops()
@@ -2483,13 +2472,6 @@ function SuperDuperAdminDashboardContent() {
                       </thead>
                       <tbody>
                         {logs.loginLog && logs.loginLog.length > 0 ? logs.loginLog.map((log, i) => {
-                          console.log('🔍 Login log item:', log, 'user data:', log.user);
-                          console.log('🔍 User display data:', {
-                            name: log.user?.name,
-                            email: log.user?.email,
-                            userId: log.userId,
-                            displayValue: log.user?.name || log.user?.email || log.userId
-                          });
                           return (
                             <tr key={log.id || i} className="border-b">
                               <td className="px-2 py-1" title={`User: ${log.user?.name || log.user?.email || log.userId}`}>
