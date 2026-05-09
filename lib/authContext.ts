@@ -112,7 +112,7 @@ export async function resolveAuthContext(userId: number | bigint): Promise<AuthC
       select: { id: true },
     });
     shopIds = createdShops.map((s) => s.id);
-    canAccessAllShops = true;
+    canAccessAllShops = false; // <-- Harden: Force shopId[] membership check
   }
 
   // ── 3. Write to Redis ───────────────────────────────────────────────────────
