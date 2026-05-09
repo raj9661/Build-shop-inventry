@@ -269,6 +269,7 @@ export default function SaleDocuments() {
   const [loading,     setLoading]     = useState(true)
   const [page,        setPage]        = useState(1)
   const [totalPages,  setTotalPages]  = useState(1)
+  const [limit,       setLimit]       = useState(4)
   const [dateFilter,  setDateFilter]  = useState("")
 
   // ── Helpers ─────────────────────────────────────────────────────────────
@@ -280,23 +281,23 @@ export default function SaleDocuments() {
   }, [])
 
   // ── Fetch documents (stable reference) ──────────────────────────────────
-  const fetchDocuments = useCallback(async (pageNum = 1) => {
+  const fetchDocuments = useCallback(async (pageNum = 1, currentLimit = limit) => {
     if (!currentShop?.id) return
     setLoading(true)
     try {
       const token = localStorage.getItem("accessToken")
-      let url = `/api/sale-documents?shopId=${currentShop.id}&page=${pageNum}&limit=12`
+      let url = `/api/sale-documents?shopId=${currentShop.id}&page=${pageNum}&limit=${currentLimit}`
       if (dateFilter) url += `&dateFrom=${dateFilter}&dateTo=${dateFilter}`
       const res  = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (data.success) {
-        setDocuments(prev => pageNum === 1 ? data.data.documents : [...prev, ...data.data.documents])
-        setTotalPages(data.data.pagination.totalPages)
+        setDocuments(data.data.documents)
+        setTotalPages(data.data.pagination.totalPages || 1)
         setPage(pageNum)
       } else toast.error(data.message || "Failed to load documents")
     } catch { toast.error("Error loading documents") }
     finally    { setLoading(false) }
-  }, [currentShop?.id, dateFilter])
+  }, [currentShop?.id, dateFilter, limit])
 
   useEffect(() => {
     if (userRole === "SUPER_DUPER_ADMIN" || userRole === "SUPER_ADMIN") fetchDocuments(1)
@@ -374,13 +375,58 @@ export default function SaleDocuments() {
                 <DocCard key={doc.id} doc={doc} onDelete={handleDelete} formatFileSize={formatFileSize} />
               ))}
             </div>
-            {page < totalPages && (
-              <div className="text-center pt-4">
-                <Button variant="outline" onClick={() => fetchDocuments(page + 1)} disabled={loading}>
-                  {loading ? "Loading…" : "Load More"}
+            <div className="flex flex-col gap-4 pt-6 border-t mt-4">
+              <div className="flex justify-between items-center">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => fetchDocuments(page - 1)} 
+                  disabled={loading || page <= 1}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm text-gray-500 font-medium">
+                  Page {page} of {totalPages}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => fetchDocuments(page + 1)} 
+                  disabled={loading || page >= totalPages}
+                >
+                  Next
                 </Button>
               </div>
-            )}
+              <div className="text-center">
+                {limit === 4 ? (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-indigo-600 hover:text-indigo-800 text-xs"
+                    onClick={() => {
+                      setLimit(100)
+                      fetchDocuments(1, 100)
+                    }}
+                    disabled={loading}
+                  >
+                    Show All Data
+                  </Button>
+                ) : (
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="text-indigo-600 hover:text-indigo-800 text-xs"
+                    onClick={() => {
+                      setLimit(4)
+                      fetchDocuments(1, 4)
+                    }}
+                    disabled={loading}
+                  >
+                    Show Paginated (4 per page)
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </CardContent>
