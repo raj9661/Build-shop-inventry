@@ -1,0 +1,97 @@
+{
+  "customerName": "Sumit Kumar",
+  "customerId": "1",
+  "totalEntries": 11,
+  "expectedVisible": 7,
+  "filteredOut": 4,
+  "details": [
+    {
+      "id": 36,
+      "date": "2026-02-07",
+      "amount": 2520,
+      "description": "TMT Sale #27 - Purchase",
+      "status": "FILTERED (Type: debit)",
+      "type": "debit"
+    },
+    {
+      "id": 37,
+      "date": "2026-02-07",
+      "amount": -2520,
+      "description": "Matches TMT Sale #27 - Payment",
+      "status": "FILTERED (Type: credit)",
+      "type": "credit"
+    },
+    {
+      "id": 33,
+      "date": "2026-02-07",
+      "amount": 320,
+      "description": "[COMPLETED] TMT Sale #26",
+      "status": "KEPT (TMT Completed)",
+      "type": "sale_payment"
+    },
+    {
+      "id": 32,
+      "date": "2026-02-07",
+      "amount": 300,
+      "description": "Sale #30",
+      "status": "KEPT (Sale Completed)",
+      "type": "sale_payment"
+    },
+    {
+      "id": 34,
+      "date": "2026-02-07",
+      "amount": 2520,
+      "description": "TMT Sale #23 - Purchase",
+      "status": "FILTERED (Type: debit)",
+      "type": "debit"
+    },
+    {
+      "id": 35,
+      "date": "2026-02-07",
+      "amount": -2520,
+      "description": "Matches TMT Sale #23 - Payment",
+      "status": "FILTERED (Type: credit)",
+      "type": "credit"
+    },
+    {
+      "id": 27,
+      "date": "2025-11-01",
+      "amount": 1500,
+      "description": "Sale #24",
+      "status": "KEPT (Sale Completed)",
+      "type": "sale_payment"
+    },
+    {
+      "id": 26,
+      "date": "2025-11-01",
+      "amount": 31200,
+      "description": "Sale #23",
+      "status": "KEPT (Sale Completed)",
+      "type": "sale_payment"
+    },
+    {
+      "id": 1,
+      "date": "2025-10-31",
+      "amount": 4500,
+      "description": "Sale #1",
+      "status": "KEPT (Sale Completed)",
+      "type": "sale_payment"
+    },
+    {
+      "id": 2,
+      "date": "2025-10-31",
+      "amount": 500,
+      "description": "paid ",
+      "status": "KEPT (Payment)",
+      "type": "loan_clearing"
+    },
+    {
+      "id": 20,
+      "date": "2025-10-31",
+      "amount": 800,
+      "description": "completed",
+      "status": "KEPT (Payment)",
+      "type": "loan_clearing"
+    }
+  ]
+}

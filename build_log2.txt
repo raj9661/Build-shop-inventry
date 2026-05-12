@@ -1,0 +1,224 @@
+﻿
+> saas-inventory-platform@1.0.0 build
+> prisma generate && next build
+
+Environment variables loaded from .env
+Prisma schema loaded from prisma\schema.prisma
+node.exe : Warning: You did not specify an output path for your `generator` in schema.prisma. This behavior is 
+deprecated and will no longer be supported in Prisma 7.0.0. To learn more visit https://pris.ly/cli/output-path
+At C:\Program Files\nodejs\npm.ps1:29 char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Warning: You di...cli/output-path:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+Γ£ö Generated Prisma Client (v6.7.0) to .\node_modules\.pnpm\@prisma+client@6.7.0_prisma_eae679d1c26f2888f88f5407457fe5c5\node_modules\@prisma\client in 775ms
+
+Start by importing your Prisma Client (See: https://pris.ly/d/importing-client)
+
+Tip: Want real-time updates to your database without manual polling? Discover how with Pulse: https://pris.ly/tip-0-pulse
+
+ΓÜá `eslint` configuration in next.config.mjs is no longer supported. See more info here: 
+https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+ΓÜá Invalid next.config.mjs options detected: 
+ΓÜá     Unrecognized key(s) in object: 'eslint'
+ΓÜá See more info here: https://nextjs.org/docs/messages/invalid-next-config
+Γû▓ Next.js 16.1.6 (Turbopack)
+- Environments: .env.local, .env
+- Experiments (use with caution):
+  ┬╖ optimizePackageImports
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 36.8s
+  Skipping validation of types
+  Collecting page data using 7 workers ...
+Starting scheduled notification service...
+Scheduled notification service started
+Γ£à Redis connected
+Γ£à Redis connected
+Γ£à Redis connected
+Γ£à Redis connected
+Γ£à Redis connected
+Γ£à Redis connected
+Γ£à Redis connected
+Starting scheduled notification service...
+Scheduled notification service started
+Starting scheduled notification service...
+Scheduled notification service started
+Starting scheduled notification service...
+Scheduled notification service started
+Starting scheduled notification service...
+Scheduled notification service started
+Starting scheduled notification service...
+Scheduled notification service started
+Starting scheduled notification service...
+Scheduled notification service started
+  Generating static pages using 7 workers (0/102) ...
+  Generating static pages using 7 workers (25/102) 
+  Generating static pages using 7 workers (50/102) 
+≡ƒöì [AddSale] Component mounted - currentShopId: 0 currentShop: No Shop Available userRole: null
+≡ƒöì [AddSale] currentShop details: {
+  id: 0,
+  name: 'No Shop Available',
+  location: 'Please create a shop first',
+  createdAt: '2026-05-01T11:02:59.080Z'
+}
+≡ƒöì [AddSale] currentShopId type: number value: 0
+≡ƒöì [AddSale] Categories from products: 0 []
+≡ƒöì [AddSale] Products loaded: 0 products
+≡ƒöì [AddSale] Sample product with category/type: []
+≡ƒöì [AddSale] All products with categories: []
+≡ƒöì [AddSale] Component mounted - currentShopId: 0 currentShop: No Shop Available userRole: null
+≡ƒöì [AddSale] currentShop details: {
+  id: 0,
+  name: 'No Shop Available',
+  location: 'Please create a shop first',
+  createdAt: '2026-05-01T11:02:59.080Z'
+}
+≡ƒöì [AddSale] currentShopId type: number value: 0
+≡ƒöì [AddSale] Categories from products: 0 []
+≡ƒöì [AddSale] Products loaded: 0 products
+≡ƒöì [AddSale] Sample product with category/type: []
+≡ƒöì [AddSale] All products with categories: []
+≡ƒöì [SubscriptionPage] Component rendered
+≡ƒöì [SubscriptionPage] Component rendered
+≡ƒöì [SuperDuperAdminDashboard] Component rendering
+≡ƒöì [SuperDuperAdminDashboard] useShop result: { userRole: null, contextShopsCount: 0, currentShopId: 0 }
+≡ƒöì [SuperDuperAdminDashboard] Component rendering
+≡ƒöì [SuperDuperAdminDashboard] useShop result: { userRole: null, contextShopsCount: 0, currentShopId: 0 }
+  Generating static pages using 7 workers (76/102) 
+Γ£ô Generating static pages using 7 workers (102/102) in 5.6s
+  Finalizing page optimization ...
+ΓÜá Failed to copy traced files for C:\Build-shop-inventry\.next\server\app\api\sale-documents\route.js Error: EINVAL: 
+invalid argument, copyfile 'C:\Build-shop-inventry\.next\server\chunks\[externals]_node:async_hooks_b485b2a4._.js' -> 
+'C:\Build-shop-inventry\.next\standalone\.next\server\chunks\[externals]_node:async_hooks_b485b2a4._.js'
+    at ignore-listed frames {
+  errno: -4071,
+  code: 'EINVAL',
+  syscall: 'copyfile',
+  path: 'C:\\Build-shop-inventry\\.next\\server\\chunks\\[externals]_node:async_hooks_b485b2a4._.js',
+  dest: 'C:\\Build-shop-inventry\\.next\\standalone\\.next\\server\\chunks\\[externals]_node:async_hooks_b485b2a4._.js'
+}
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ Γùï /add-sale
+Γö£ Γùï /add-stock
+Γö£ ╞Æ /api/analytics
+Γö£ ╞Æ /api/analytics/inventory-insights
+Γö£ ╞Æ /api/analytics/metrics
+Γö£ ╞Æ /api/analytics/super-admin
+Γö£ ╞Æ /api/analytics/system
+Γö£ ╞Æ /api/analytics/user
+Γö£ ╞Æ /api/auth
+Γö£ ╞Æ /api/auth/[...nextauth]
+Γö£ ╞Æ /api/auth/change-password
+Γö£ ╞Æ /api/auth/change-password/request-otp
+Γö£ ╞Æ /api/auth/check-uniqueness
+Γö£ ╞Æ /api/auth/custom-login
+Γö£ ╞Æ /api/auth/custom-session
+Γö£ ╞Æ /api/auth/forgot-password
+Γö£ ╞Æ /api/auth/register
+Γö£ ╞Æ /api/auth/reset-password
+Γö£ ╞Æ /api/auth/ultra-fast
+Γö£ ╞Æ /api/auth/verify-email
+Γö£ ╞Æ /api/backup
+Γö£ ╞Æ /api/business-goals
+Γö£ ╞Æ /api/categories
+Γö£ ╞Æ /api/categories/public
+Γö£ ╞Æ /api/categories/types
+Γö£ ╞Æ /api/customers
+Γö£ ╞Æ /api/customers/[id]/toggle-status
+Γö£ ╞Æ /api/customers/sync-balances
+Γö£ ╞Æ /api/dashboard/ultra-fast
+Γö£ ╞Æ /api/debug/delete-product
+Γö£ ╞Æ /api/debug/products
+Γö£ ╞Æ /api/debug/users
+Γö£ ╞Æ /api/employee-payments
+Γö£ ╞Æ /api/employees
+Γö£ ╞Æ /api/employees/[id]
+Γö£ ╞Æ /api/expenses
+Γö£ ╞Æ /api/health
+Γö£ ╞Æ /api/ledger
+Γö£ ╞Æ /api/notifications/test
+Γö£ ╞Æ /api/performance
+Γö£ ╞Æ /api/platform/admin
+Γö£ ╞Æ /api/platform/analytics
+Γö£ ╞Æ /api/platform/notifications
+Γö£ ╞Æ /api/platform/payments
+Γö£ ╞Æ /api/platform/payments/webhook
+Γö£ ╞Æ /api/platform/subscriptions
+Γö£ ╞Æ /api/platform/violations
+Γö£ ╞Æ /api/platform/violations/[id]
+Γö£ ╞Æ /api/products
+Γö£ ╞Æ /api/products/[id]/rate
+Γö£ ╞Æ /api/products/low-stock
+Γö£ ╞Æ /api/sale-documents
+Γö£ ╞Æ /api/sales
+Γö£ ╞Æ /api/sales/cash-sale
+Γö£ ╞Æ /api/settings
+Γö£ ╞Æ /api/shops
+Γö£ ╞Æ /api/shops/[id]
+Γö£ ╞Æ /api/shops/[id]/delete-otp
+Γö£ ╞Æ /api/shops/[id]/logs
+Γö£ ╞Æ /api/shops/[id]/remove-user/[userId]
+Γö£ ╞Æ /api/shops/[id]/stats
+Γö£ ╞Æ /api/shops/[id]/users
+Γö£ ╞Æ /api/shops/user-assigned
+Γö£ ╞Æ /api/stock
+Γö£ ╞Æ /api/stock/ledger-balance
+Γö£ ╞Æ /api/subscription/plans
+Γö£ ╞Æ /api/subscription/status
+Γö£ ╞Æ /api/subscription/update
+Γö£ ╞Æ /api/supplier-charges
+Γö£ ╞Æ /api/supplier-payments
+Γö£ ╞Æ /api/suppliers
+Γö£ ╞Æ /api/suppliers/[id]
+Γö£ ╞Æ /api/suppliers/sync-balances
+Γö£ ╞Æ /api/tmt/bars
+Γö£ ╞Æ /api/tmt/bars/[id]
+Γö£ ╞Æ /api/tmt/bars/test
+Γö£ ╞Æ /api/tmt/companies
+Γö£ ╞Æ /api/tmt/inventory
+Γö£ ╞Æ /api/tmt/inventory/validate
+Γö£ ╞Æ /api/tmt/products
+Γö£ ╞Æ /api/tmt/purchases
+Γö£ ╞Æ /api/tmt/sales
+Γö£ ╞Æ /api/tmt/sizes
+Γö£ ╞Æ /api/transactions/all
+Γö£ ╞Æ /api/unit-conversion
+Γö£ ╞Æ /api/users
+Γö£ ╞Æ /api/users/[id]
+Γö£ ╞Æ /api/users/check-username
+Γö£ ╞Æ /api/users/me
+Γö£ Γùï /cash-sale
+Γö£ Γùï /customer-details
+Γö£ Γùï /customer-ledger
+Γö£ Γùï /dashboard
+Γö£ Γùï /dashboard/analytics
+Γö£ Γùï /dashboard/super-admin
+Γö£ Γùï /employees
+Γö£ Γùï /forgot-password
+Γö£ Γùï /inventory
+Γö£ Γùï /landing
+Γö£ Γùï /login
+Γö£ Γùï /onboarding
+Γö£ Γùï /platform-admin
+Γö£ Γùï /reset-password
+Γö£ Γùï /sale-documents
+Γö£ Γùï /signup
+Γö£ Γùï /subscription
+Γö£ Γùï /subscription/manage
+Γö£ Γùï /subscription/plans
+Γö£ Γùï /super-admin
+Γö£ Γùï /suppliers
+Γö£ Γùï /tmt-inventory
+Γö£ Γùï /verify-email
+Γöö Γùï /weekly-payout
+
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

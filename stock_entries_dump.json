@@ -1,0 +1,36 @@
+[
+  {
+    "id": "18",
+    "productId": "14",
+    "supplierId": "7",
+    "quantity": "100",
+    "unitName": null,
+    "conversionCft": null,
+    "unitPrice": "280",
+    "totalAmount": "28000",
+    "entryDate": "2026-03-01T00:00:00.000Z",
+    "notes": "Added via stock entry form",
+    "isActive": true,
+    "createdAt": "2026-03-16T16:28:57.079Z",
+    "updatedAt": "2026-03-16T16:49:28.558Z",
+    "shopId": "1",
+    "paymentStatus": "COMPLETED"
+  },
+  {
+    "id": "32",
+    "productId": "14",
+    "supplierId": "7",
+    "quantity": "100",
+    "unitName": null,
+    "conversionCft": null,
+    "unitPrice": "290",
+    "totalAmount": "29000",
+    "entryDate": "2026-03-25T00:00:00.000Z",
+    "notes": "Added via stock entry form",
+    "isActive": true,
+    "createdAt": "2026-03-26T04:59:42.171Z",
+    "updatedAt": "2026-03-30T16:04:56.720Z",
+    "shopId": "1",
+    "paymentStatus": "COMPLETED"
+  }
+]

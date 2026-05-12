@@ -1,0 +1,39 @@
+﻿≡ƒÜÇ Starting Mixed Sale Grouping Verification...
+≡ƒ¢Æ Creating Regular Sale...
+node : Γ¥î Regular 
+Sale Failed: 500 
+Internal Server Error
+At line:1 char:1
++ node scripts/verify
+_mixed_sale_grouping.
+js 2>&1 | Out-File 
+-Encoding  ...
++ ~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~
+    + CategoryInfo   
+           : NotSpe  
+  cified: (Γ¥î Reg   
+ ular Sal...al Se    
+rver Error:Strin    
+g) [], RemoteExc    
+eption
+    + FullyQualified 
+   ErrorId : Native  
+  CommandError
+ 
+Response Body: 
+Internal Server Error
+Γ¥î Verification 
+failed: Error: 
+Regular Sale Failed: 
+500
+    at 
+runVerification (C:\B
+uild-shop-inventry\sc
+ripts\verify_mixed_sa
+le_grouping.js:72:19)
+    at process.proces
+sTicksAndRejections (
+node:internal/process
+/task_queues:105:5)

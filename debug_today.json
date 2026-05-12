@@ -1,0 +1,41 @@
+[
+  {
+    "id": "94",
+    "customerId": "1",
+    "amount": "2520",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-10T03:52:33.749Z",
+    "description": "[COMPLETED] TMT Sale #33",
+    "isActive": true,
+    "createdAt": "2026-02-10T03:52:33.751Z",
+    "updatedAt": "2026-02-10T03:52:33.751Z",
+    "shopId": "1"
+  },
+  {
+    "id": "93",
+    "customerId": "1",
+    "amount": "-2520",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-10T03:52:17.203Z",
+    "description": "Payment for TMT Sale #33",
+    "isActive": true,
+    "createdAt": "2026-02-10T03:52:20.564Z",
+    "updatedAt": "2026-02-10T03:52:20.564Z",
+    "shopId": "1"
+  },
+  {
+    "id": "92",
+    "customerId": "1",
+    "amount": "2520",
+    "type": "sale_payment",
+    "method": "CASH",
+    "date": "2026-02-10T03:52:17.203Z",
+    "description": "TMT Sale #33",
+    "isActive": true,
+    "createdAt": "2026-02-10T03:52:20.197Z",
+    "updatedAt": "2026-02-10T03:52:20.197Z",
+    "shopId": "1"
+  }
+]

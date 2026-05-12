@@ -1,0 +1,27 @@
+Found 2 sales.
+--- SALE DETAILS ---
+ID: 27
+Date: Sat Feb 07 2026 22:10:11 GMT+0530 (India Standard Time)
+Status: COMPLETED
+Payment Status: PAID
+Customer: 1 (Sumit Kumar)
+Total: 2520
+Paid: 2520
+Due: 0
+Ledger Entries Found: 2
+   -> [debit] Amount: 2520, Date: Sat Feb 07 2026 22:10:09 GMT+0530 (India Standard Time)
+   -> [credit] Amount: -2520, Date: Sat Feb 07 2026 22:10:09 GMT+0530 (India Standard Time)
+--------------------
+--- SALE DETAILS ---
+ID: 23
+Date: Sat Feb 07 2026 19:27:11 GMT+0530 (India Standard Time)
+Status: COMPLETED
+Payment Status: PAID
+Customer: 1 (Sumit Kumar)
+Total: 2520
+Paid: 2520
+Due: 0
+Ledger Entries Found: 2
+   -> [debit] Amount: 2520, Date: Sat Feb 07 2026 19:27:10 GMT+0530 (India Standard Time)
+   -> [credit] Amount: -2520, Date: Sat Feb 07 2026 19:27:10 GMT+0530 (India Standard Time)
+--------------------

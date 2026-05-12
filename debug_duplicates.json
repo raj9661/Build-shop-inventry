@@ -1,0 +1,28 @@
+[
+  {
+    "id": "35",
+    "customerId": "1",
+    "amount": "-2520",
+    "type": "credit",
+    "method": "CASH",
+    "date": "2026-02-07T13:57:10.489Z",
+    "description": "Matches TMT Sale #23 - Payment",
+    "isActive": true,
+    "createdAt": "2026-02-07T17:01:01.192Z",
+    "updatedAt": "2026-02-07T17:01:01.192Z",
+    "shopId": "1"
+  },
+  {
+    "id": "34",
+    "customerId": "1",
+    "amount": "2520",
+    "type": "debit",
+    "method": "CASH",
+    "date": "2026-02-07T13:57:10.489Z",
+    "description": "TMT Sale #23 - Purchase",
+    "isActive": true,
+    "createdAt": "2026-02-07T17:01:01.021Z",
+    "updatedAt": "2026-02-07T17:01:01.021Z",
+    "shopId": "1"
+  }
+]

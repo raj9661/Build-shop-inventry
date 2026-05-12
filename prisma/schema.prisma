@@ -1,0 +1,1332 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// PLATFORM ADMINISTRATION
+// ============================================================
+
+model PlatformOwner {
+  id                 BigInt              @id @default(sequence())
+  name               String
+  email              String              @unique
+  phone              String?
+  companyName        String?
+  isActive           Boolean             @default(true)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  notifications      Notification[]
+  platformAnalytics  PlatformAnalytics[]
+  subscriptions      Subscription[]
+  assignedViolations Violation[]         @relation("ViolationAssignee")
+  violations         Violation[]
+  websiteSettings    WebsiteSetting[]
+
+  // email is @unique — implicit index; no separate @@index needed
+  // isActive is low-cardinality boolean — not indexed standalone
+}
+
+model Subscription {
+  id              BigInt                @id @default(sequence())
+  customerId      BigInt                @unique
+  plan            SubscriptionPlan
+  status          SubscriptionStatus    @default(TRIAL)
+  startDate       DateTime
+  endDate         DateTime
+  trialEndDate    DateTime?
+  autoRenew       Boolean               @default(true)
+  price           Decimal               @db.Decimal(10, 2)
+  currency        String                @default("USD")
+  paymentMethod   PaymentMethod?
+  lastPaymentDate DateTime?
+  nextPaymentDate DateTime?
+  isActive        Boolean               @default(true)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  createdBy       BigInt?
+  platformOwner   PlatformOwner?        @relation(fields: [createdBy], references: [id])
+  customer        User                  @relation("CustomerSubscription", fields: [customerId], references: [id])
+  payments        SubscriptionPayment[]
+  usage           SubscriptionUsage[]
+
+  // customerId is @unique — implicit index covers single lookups
+  // Removed: @@index([status]), @@index([plan]), @@index([isActive]) — low cardinality
+  @@index([endDate])           // Subscription expiry background jobs
+  @@index([status, endDate])   // Filter expiring/trial subscriptions by status
+}
+
+model SubscriptionPayment {
+  id              BigInt        @id @default(sequence())
+  subscriptionId  BigInt
+  amount          Decimal       @db.Decimal(10, 2)
+  currency        String        @default("USD")
+  paymentMethod   PaymentMethod
+  paymentStatus   PaymentStatus @default(PENDING)
+  transactionId   String?
+  // TODO: Convert to Json? after verifying all existing rows contain valid JSON.
+  // CockroachDB ALTER COLUMN TYPE STRING -> JSONB requires clean data.
+  gatewayResponse String?
+  paymentDate     DateTime?
+  failureReason   String?
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  subscription    Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([subscriptionId]) covered by composite below
+  // Removed: @@index([paymentStatus]), @@index([isActive]) — low cardinality
+  @@index([subscriptionId, paymentDate]) // Payment history per subscription
+}
+
+model SubscriptionUsage {
+  id             BigInt       @id @default(sequence())
+  subscriptionId BigInt
+  metric         String
+  usage          Int
+  limit          Int?
+  period         String
+  recordedAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([metric]) — low cardinality string enum-like field
+  // Replaced single indexes with composite below
+  @@index([subscriptionId, recordedAt]) // Usage timeline per subscription
+}
+
+model Violation {
+  id          BigInt          @id @default(sequence())
+  customerId  BigInt
+  type        ViolationType
+  status      ViolationStatus @default(REPORTED)
+  title       String
+  description String
+  evidence    String?
+  reportedBy  BigInt?
+  assignedTo  BigInt?
+  resolution  String?
+  actionTaken String?
+  severity    Int             @default(1)
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  resolvedAt  DateTime?
+  assignee    PlatformOwner?  @relation("ViolationAssignee", fields: [assignedTo], references: [id])
+  customer    User            @relation("CustomerViolation", fields: [customerId], references: [id])
+  reporter    PlatformOwner?  @relation(fields: [reportedBy], references: [id])
+
+  // Removed: @@index([type]), @@index([status]), @@index([severity]), @@index([isActive]) — low cardinality
+  @@index([customerId, status]) // Violations per customer filtered by status
+}
+
+model Notification {
+  id            BigInt           @id @default(sequence())
+  recipientId   BigInt?
+  recipientType String
+  type          NotificationType
+  title         String
+  message       String
+  isRead        Boolean          @default(false)
+  isActive      Boolean          @default(true)
+  scheduledFor  DateTime?
+  sentAt        DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  createdBy     BigInt?
+  platformOwner PlatformOwner?   @relation(fields: [createdBy], references: [id])
+
+  // Removed: @@index([recipientType]), @@index([type]), @@index([isRead]), @@index([isActive]) — low cardinality
+  @@index([recipientId, isRead]) // Unread notifications per recipient — critical UI query
+}
+
+model WebsiteSetting {
+  id            BigInt             @id @default(sequence())
+  customerId    BigInt?
+  type          WebsiteSettingType
+  key           String
+  value         String
+  description   String?
+  isActive      Boolean            @default(true)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  createdBy     BigInt?
+  platformOwner PlatformOwner?     @relation(fields: [createdBy], references: [id])
+  customer      User?              @relation("CustomerWebsiteSettings", fields: [customerId], references: [id])
+
+  // Unique covers (customerId, type, key) tuple — efficient for most lookups
+  // Removed: @@index([type]), @@index([isActive]) — covered by unique or low cardinality
+  @@unique([customerId, type, key])
+  @@index([customerId]) // Broad customer-level setting fetch
+}
+
+model PlatformAnalytics {
+  id            BigInt         @id @default(sequence())
+  metric        String
+  value         Decimal        @db.Decimal(15, 2)
+  // TODO: Convert to Json? after verifying all existing rows contain valid JSON.
+  metadata      String?
+  recordedAt    DateTime       @default(now())
+  createdAt     DateTime       @default(now())
+  createdBy     BigInt?
+  platformOwner PlatformOwner? @relation(fields: [createdBy], references: [id])
+
+  // Removed: @@index([metric]) alone — low cardinality; replaced with composite
+  @@index([metric, recordedAt]) // Metric-specific timeline queries (dashboard charts)
+}
+
+// ============================================================
+// USERS & AUTHENTICATION
+// ============================================================
+
+model User {
+  id                      BigInt               @id @default(sequence())
+  name                    String
+  username                String               @unique
+  email                   String               @unique
+  password                String
+  role                    PlatformRole         @default(STAFF)
+  phone                   String?              @unique
+  isActive                Boolean              @default(true)
+  lastLoginAt             DateTime?
+  emailVerified           Boolean              @default(false)
+  emailVerificationToken  String?
+  passwordResetToken      String?
+  passwordResetExpires    DateTime?
+  twoFactorEnabled        Boolean              @default(false)
+  twoFactorSecret         String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+  createdBy               BigInt?
+  updatedBy               BigInt?
+  activityLogs            ActivityLog[]
+  loginLogs               LoginLog[]
+  categoriesCreated       ProductCategory[]    @relation("CategoryCreatedBy")
+  typesCreated            ProductType[]        @relation("TypeCreatedBy")
+  shopsCreated            Shop[]               @relation("ShopCreatedBy")
+  shopsUpdated            Shop[]               @relation("ShopUpdatedBy")
+  customerSubscription    Subscription?        @relation("CustomerSubscription")
+  trustedDevices          TrustedDevice[]
+  createdByUser           User?                @relation("UserCreatedBy", fields: [createdBy], references: [id])
+  usersCreated            User[]               @relation("UserCreatedBy")
+  updatedByUser           User?                @relation("UserUpdatedBy", fields: [updatedBy], references: [id])
+  usersUpdated            User[]               @relation("UserUpdatedBy")
+  user2FASetting          User2FASetting?
+  shopAssignmentsCreated  UserShopAssignment[] @relation("ShopAssignmentCreatedBy")
+  shopAssignments         UserShopAssignment[]
+  customerViolations      Violation[]          @relation("CustomerViolation")
+  customerWebsiteSettings WebsiteSetting[]     @relation("CustomerWebsiteSettings")
+  saleDocuments           SaleDocument[]
+
+  // email, username, phone are @unique — implicit indexes; no separate @@index needed
+  // Removed: @@index([isActive]), @@index([createdAt]), @@index([emailVerified]) — low cardinality booleans
+  // Removed: @@index([email]) — redundant with @unique
+  @@index([role]) // Admin user management — retained (PLATFORM_OWNER, ADMIN, STAFF filtering)
+}
+
+model TrustedDevice {
+  id                BigInt   @id @default(sequence())
+  userId            BigInt
+  deviceId          String
+  deviceName        String
+  ipAddress         String?
+  userAgent         String?
+  lastUsedAt        DateTime @default(now())
+  createdAt         DateTime @default(now())
+  deviceFingerprint Json?
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([deviceId]) alone — covered by unique (userId, deviceId)
+  @@unique([userId, deviceId])
+  @@index([userId]) // Device list per user
+}
+
+model User2FASetting {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt   @unique
+  otp_method String
+  secret     String?
+  isEnabled  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // userId is @unique — implicit index covers all lookups
+}
+
+model UserShopAssignment {
+  id           BigInt       @id @default(sequence())
+  userId       BigInt
+  shopId       BigInt
+  role         PlatformRole
+  assignedAt   DateTime     @default(now())
+  active       Boolean      @default(true)
+  assignedById BigInt
+  assignedBy   User         @relation("ShopAssignmentCreatedBy", fields: [assignedById], references: [id])
+  shop         Shop         @relation(fields: [shopId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([active]) — low cardinality boolean
+  @@unique([userId, shopId])
+  @@index([shopId])
+  @@index([userId])
+  @@index([userId, active]) // Hot path: getAuthContext cache-miss query
+}
+
+model LoginLog {
+  id            BigInt   @id @default(sequence())
+  userId        BigInt
+  ipAddress     String?
+  userAgent     String?
+  success       Boolean
+  failureReason String?
+  createdAt     DateTime @default(now())
+  // onDelete: Restrict — security/compliance logs must survive; user deletion blocked while logs exist
+  user          User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([success]) — low cardinality boolean
+  @@index([userId, createdAt]) // Login history per user with time range
+}
+
+model ActivityLog {
+  id         BigInt   @id @default(sequence())
+  userId     BigInt
+  action     String
+  resource   String
+  resourceId BigInt?
+  // TODO: Convert to Json? after verifying all existing rows contain valid JSON.
+  details    String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+  // onDelete: Restrict — audit/compliance logs must survive; user deletion blocked while logs exist
+  user       User     @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([action]), @@index([resource]) — low cardinality string fields
+  @@index([userId, createdAt]) // Audit trail per user with time range
+}
+
+// ============================================================
+// SHOP (TENANT ROOT)
+// ============================================================
+
+model Shop {
+  id                    BigInt                  @id @default(sequence())
+  name                  String
+  location              String?
+  phone                 String?
+  email                 String?
+  address               String?
+  gstNo                 String?
+  isActive              Boolean                 @default(true)
+  createdBy             BigInt?
+  updatedBy             BigInt?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  analyticsSummaries    AnalyticsSummary[]
+  businessGoals         BusinessGoal[]
+  businessMetrics       BusinessMetric[]
+  customers             Customer[]
+  customerLedgerEntries CustomerLedgerEntry[]
+  employees             Employee[]
+  employeePayments      EmployeePayment[]
+  employeeSalaryDues    EmployeeSalaryDue[]
+  employeeAttendances   EmployeeAttendance[]
+  expenses              Expense[]
+  inventoryAnalytics    InventoryAnalytics[]
+  payments              Payment[]
+  products              Product[]
+  categories            ProductCategory[]
+  productSalesAnalytics ProductSalesAnalytics[]
+  productTypes          ProductType[]
+  sales                 Sale[]
+  createdByUser         User?                   @relation("ShopCreatedBy", fields: [createdBy], references: [id])
+  updatedByUser         User?                   @relation("ShopUpdatedBy", fields: [updatedBy], references: [id])
+  stockEntries          StockEntry[]
+  suppliers             Supplier[]
+  supplierPayments      SupplierPayment[]
+  supplierWeeklyReports SupplierWeeklyReport[]
+  tmtCompanies          TmtCompany[]
+  tmtInventory          TmtInventory[]
+  tmtProducts           TmtProduct[]
+  tmtPurchases          TmtPurchase[]
+  tmtSales              TmtSale[]
+  tmtSizes              TmtSize[]
+  userAssignments       UserShopAssignment[]
+  stockLedgerEntries    StockLedger[]
+  saleDocuments         SaleDocument[]
+
+  // Removed: @@index([updatedAt]) � rarely used as standalone filter
+  // Removed: @@index([location]) � rarely used as standalone filter
+  @@index([isActive])  // Global active-shop list (admin, platform owner)
+  @@index([createdAt]) // Admin ordering/listing
+  @@index([name])      // Shop name search (global admin view, no tenant scope here)
+}
+
+// ============================================================
+// PRODUCT CATALOG
+// ============================================================
+
+model ProductCategory {
+  id            BigInt        @id @default(sequence())
+  name          String
+  description   String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  shopId        BigInt?
+  createdBy     BigInt?
+  products      Product[]
+  createdByUser User?         @relation("CategoryCreatedBy", fields: [createdBy], references: [id])
+  shop          Shop?         @relation(fields: [shopId], references: [id])
+  types         ProductType[]
+
+  // Removed: @@index([isActive]), @@index([createdAt]), @@index([createdBy]) � low cardinality or low value
+  // Unique covers shopId+name for tenant-scoped uniqueness checks
+  @@unique([name, shopId])
+  @@index([shopId]) // Tenant-scoped category list
+}
+
+model ProductType {
+  id            BigInt          @id @default(sequence())
+  name          String
+  description   String?
+  categoryId    BigInt
+  isActive      Boolean         @default(true)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  shopId        BigInt?
+  bundleSize    Int?
+  createdBy     BigInt?
+  products      Product[]
+  category      ProductCategory @relation(fields: [categoryId], references: [id])
+  createdByUser User?           @relation("TypeCreatedBy", fields: [createdBy], references: [id])
+  shop          Shop?           @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([isActive]), @@index([createdBy]) � low cardinality
+  @@unique([name, shopId])
+  @@index([categoryId]) // Types by category (dropdown population)
+  @@index([shopId])     // Tenant-scoped type list
+}
+
+model Product {
+  id                 BigInt                  @id @default(sequence())
+  name               String
+  description        String?
+  categoryId         BigInt
+  typeId             BigInt
+  shopId             BigInt
+  sku                String?
+  barcode            String?
+  unit               String
+  price              Decimal                 @db.Decimal(10, 2)
+  costPrice          Decimal                 @db.Decimal(10, 2)
+  stockQuantity      Decimal                 @default(0) @db.Decimal(12, 3)
+  minStockLevel      Decimal                 @default(0) @db.Decimal(12, 3)
+  maxStockLevel      Decimal?
+  isActive           Boolean                 @default(true)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  damagedQuantity    Decimal                 @default(0) @db.Decimal(12, 3)
+  specialPrices      CustomerSpecialPrice[]
+  dailyPrices        DailyProductPrice[]
+  inventoryAnalytics InventoryAnalytics[]
+  category           ProductCategory         @relation(fields: [categoryId], references: [id])
+  shop               Shop                    @relation(fields: [shopId], references: [id])
+  type               ProductType             @relation(fields: [typeId], references: [id])
+  salesAnalytics     ProductSalesAnalytics[]
+  saleItems          SaleItem[]
+  stockEntries       StockEntry[]
+  unitConversions    ProductUnitConversion[]
+  stockLedgerEntries StockLedger[]
+
+  // Removed: @@index([isActive]) � replaced by composite below
+  // Removed: @@index([name]) � replaced by tenant-aware composite below
+  @@index([sku])              // Barcode/SKU scan lookup
+  @@index([barcode])          // Barcode scan lookup
+  @@index([shopId, createdAt]) // Dashboard: recent products by tenant
+  @@index([shopId, isActive])  // Active product list per tenant
+  @@index([shopId, name])      // Tenant-scoped product name search/autocomplete
+  @@index([categoryId])        // Products by category (dropdown/filter)
+  @@index([typeId])            // Products by type (filter)
+}
+
+model DailyProductPrice {
+  id        BigInt   @id @default(sequence())
+  productId BigInt
+  date      DateTime
+  price     Decimal  @db.Decimal(10, 2)
+  createdAt DateTime @default(now())
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([date]), @@index([productId]) � both covered by unique below
+  @@unique([productId, date])
+}
+
+model ProductUnitConversion {
+  id        BigInt   @id @default(sequence())
+  productId BigInt
+  unitName  String
+  cftValue  Decimal  @db.Decimal(10, 3)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, unitName])
+  @@index([productId]) // Conversion lookup per product
+}
+
+// ============================================================
+// SUPPLIERS & STOCK
+// ============================================================
+
+model Supplier {
+  id                 BigInt                 @id @default(sequence())
+  name               String
+  phone              String?
+  email              String?
+  address            String?
+  gstNo              String?
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @updatedAt
+  shopId             BigInt
+  outstandingPayment Decimal                @default(0) @db.Decimal(12, 2)
+  openingBalance     Decimal                @default(0) @db.Decimal(12, 2)
+  stockEntries       StockEntry[]
+  shop               Shop                   @relation(fields: [shopId], references: [id])
+  payments           SupplierPayment[]
+  weeklyReports      SupplierWeeklyReport[]
+  tmtInventories     TmtInventory[]
+
+  // Removed: @@index([isActive]), @@index([name]), @@index([phone]) � replaced by composites
+  @@index([shopId])            // Tenant-scoped base index
+  @@index([shopId, isActive])  // Active supplier list per tenant
+  @@index([shopId, name])      // Tenant-scoped supplier name search/autocomplete
+}
+
+model StockEntry {
+  id            BigInt        @id @default(sequence())
+  productId     BigInt
+  supplierId    BigInt
+  quantity      Decimal       @db.Decimal(12, 3)
+  unitName      String?
+  conversionCft Decimal?      @db.Decimal(12, 3)
+  unitPrice     Decimal       @db.Decimal(10, 2)
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  entryDate     DateTime
+  notes         String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  shopId        BigInt
+  paymentStatus PaymentStatus @default(PENDING)
+  product       Product       @relation(fields: [productId], references: [id])
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([shopId]) alone � replaced by composites
+  // Removed: @@index([isActive]), @@index([paymentStatus]) � low cardinality
+  @@index([productId])         // Product stock history
+  @@index([supplierId])        // Supplier stock history
+  @@index([entryDate])         // Global date filter
+  @@index([shopId, entryDate]) // Tenant date-range stock queries
+  @@index([shopId, productId]) // Tenant product stock lookup
+}
+
+model SupplierPayment {
+  id            BigInt        @id @default(sequence())
+  supplierId    BigInt
+  amount        Decimal       @db.Decimal(12, 2)
+  paymentMethod PaymentMethod
+  paymentDate   DateTime
+  notes         String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  shopId        BigInt
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  supplier      Supplier      @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([supplierId])              // Payments per supplier
+  @@index([shopId])                  // Tenant-scoped payments
+  @@index([paymentDate])             // Global date filter
+  @@index([supplierId, paymentDate]) // Supplier payment history (ledger pagination)
+}
+
+model SupplierWeeklyReport {
+  id            BigInt   @id @default(sequence())
+  supplierId    BigInt
+  weekStartDate DateTime
+  weekEndDate   DateTime
+  totalSupplied Decimal  @db.Decimal(12, 2)
+  totalPaid     Decimal  @db.Decimal(12, 2)
+  outstanding   Decimal  @db.Decimal(12, 2)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  shopId        BigInt
+  shop          Shop     @relation(fields: [shopId], references: [id])
+  supplier      Supplier @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([supplierId])    // Reports per supplier
+  @@index([shopId])        // Tenant-scoped reports
+  @@index([weekStartDate]) // Week range queries
+}
+
+model StockLedger {
+  id              BigInt   @id @default(sequence())
+  productId       BigInt
+  shopId          BigInt
+  transactionType String   // PURCHASE | SALE | DIRECT_SALE | ADJUSTMENT | LOSS
+  unitName        String
+  unitQuantity    Decimal  @db.Decimal(12, 3)
+  cftQuantity     Decimal  @db.Decimal(12, 3)
+  referenceId     BigInt?
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  // onDelete: Restrict � audit/inventory integrity; never auto-delete stock ledger records
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  shop    Shop    @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  @@index([productId])             // Product stock history lookup
+  @@index([shopId])                // Tenant-scoped ledger
+  @@index([shopId, createdAt])     // Tenant stock timeline (dashboard range queries)
+  @@index([productId, createdAt])  // Product-level stock timeline (inventory detail)
+}
+
+// ============================================================
+// EMPLOYEES & PAYROLL
+// ============================================================
+
+model Employee {
+  id               BigInt               @id @default(sequence())
+  name             String
+  phone            String?
+  email            String?
+  address          String?
+  position         String?
+  salary           Decimal?             @db.Decimal(10, 2)
+  joinDate         DateTime?
+  isActive         Boolean              @default(true)
+  salaryType       String               @default("monthly")
+  paymentDayOfWeek String?              // e.g., "Monday", "Saturday"
+  notes            String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  shopId           BigInt
+  shop             Shop                 @relation(fields: [shopId], references: [id])
+  payments         EmployeePayment[]
+  salaryDues       EmployeeSalaryDue[]
+  attendances      EmployeeAttendance[]
+
+  // Removed: @@index([isActive]), @@index([name]), @@index([position]) � replaced by composites
+  @@index([shopId])           // Base tenant index
+  @@index([shopId, isActive]) // Active employees per tenant
+  @@index([shopId, name])     // Tenant-scoped employee name search
+}
+
+model EmployeePayment {
+  id            BigInt        @id @default(sequence())
+  employeeId    BigInt
+  amount        Decimal       @db.Decimal(10, 2)
+  paymentMethod PaymentMethod
+  paymentDate   DateTime
+  notes         String?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  shopId        BigInt
+  // onDelete: Restrict � financial record; never auto-delete
+  employee      Employee      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  shop          Shop          @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([isActive]) � covered by composite below
+  @@index([employeeId])                   // Payments per employee
+  @@index([shopId])                       // Tenant-scoped payments
+  @@index([paymentDate])                  // Date filter
+  @@index([shopId, isActive, paymentDate]) // Ultra-fast analytics queries
+}
+
+model EmployeeSalaryDue {
+  id         BigInt   @id @default(sequence())
+  employeeId BigInt
+  amount     Decimal  @db.Decimal(10, 2)
+  dueDate    DateTime
+  notes      String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  shopId     BigInt
+  // onDelete: Restrict � financial record; never auto-delete
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  shop       Shop     @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([employeeId]) // Dues per employee
+  @@index([shopId])     // Tenant-scoped dues
+  @@index([dueDate])    // Due date reminder queries
+}
+
+model EmployeeAttendance {
+  id          BigInt   @id @default(sequence())
+  employeeId  BigInt
+  date        DateTime @db.Date
+  status      String   @default("present") // present | absent | half_day
+  hoursWorked Decimal? @default(8) @db.Decimal(4, 2)
+  notes       String?
+  shopId      BigInt
+  createdAt   DateTime @default(now())
+  // onDelete: Restrict � HR record; preserve attendance history
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  shop        Shop     @relation(fields: [shopId], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([employeeId])    // Attendance per employee
+  @@index([shopId])        // Tenant-scoped attendance
+  @@index([date])          // Global date filter
+  @@index([shopId, date])  // Tenant attendance by date range (payroll calculation)
+}
+
+// ============================================================
+// CUSTOMERS & SALES
+// ============================================================
+
+model Customer {
+  id             BigInt                 @id @default(sequence())
+  name           String
+  phone          String?
+  email          String?
+  address        String?
+  gstNo          String?
+  customerType   CustomerType           @default(REGULAR)
+  creditLimit    Decimal                @default(0) @db.Decimal(12, 2)
+  currentBalance Decimal                @default(0) @db.Decimal(12, 2)
+  isActive       Boolean                @default(true)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  shopId         BigInt
+  shop           Shop                   @relation(fields: [shopId], references: [id])
+  ledgerEntries  CustomerLedgerEntry[]
+  specialPrices  CustomerSpecialPrice[]
+  sales          Sale[]
+  tmtSales       TmtSale[]
+
+  // Removed: @@index([isActive]), @@index([customerType]) � low cardinality; replaced by composites
+  // Removed: @@index([name]), @@index([phone]) � replaced by tenant-aware composite
+  @@index([shopId])           // Base tenant index
+  @@index([shopId, isActive]) // Active customer list per tenant
+  @@index([shopId, name])     // Tenant-scoped customer name search/autocomplete
+}
+
+model CustomerSpecialPrice {
+  id           BigInt   @id @default(sequence())
+  customerId   BigInt
+  productId    BigInt
+  specialPrice Decimal  @db.Decimal(10, 2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  customer     Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([isActive]) � low cardinality; unique covers lookups
+  @@unique([customerId, productId])
+  @@index([customerId]) // Special prices per customer
+  @@index([productId])  // Products with special pricing
+}
+
+model CustomerLedgerEntry {
+  id          BigInt        @id @default(sequence())
+  customerId  BigInt
+  amount      Decimal       @db.Decimal(12, 2)
+  type        String
+  method      PaymentMethod
+  date        DateTime
+  description String?
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  shopId      BigInt
+  // onDelete: Restrict � financial record; never auto-delete ledger entries
+  customer    Customer      @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  shop        Shop          @relation(fields: [shopId], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([type]), @@index([isActive]) � low cardinality
+  // Replaced single indexes with composites for pagination performance
+  @@index([customerId])           // Base customer ledger lookup
+  @@index([shopId])               // Tenant-scoped ledger
+  @@index([date])                 // Global date filter
+  @@index([customerId, date])     // Customer ledger pagination (most used API pattern)
+  @@index([shopId, date])         // Shop-level ledger reporting
+}
+
+model Sale {
+  id            BigInt        @id @default(sequence())
+  customerId    BigInt?
+  totalAmount   Decimal       @db.Decimal(12, 2)
+  discount      Decimal       @default(0) @db.Decimal(10, 2)
+  finalAmount   Decimal       @db.Decimal(12, 2)
+  transportFare Decimal       @default(0) @db.Decimal(12, 2)
+  vehicleNumber String?
+  driverName    String?
+  paymentMethod PaymentMethod
+  paymentStatus PaymentStatus @default(PENDING)
+  saleDate      DateTime
+  notes         String?
+  status        SaleStatus    @default(PENDING)
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  shopId        BigInt
+  // onDelete: SetNull � cash sales exist without a customer (walk-in)
+  customer      Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  shop          Shop          @relation(fields: [shopId], references: [id])
+  items         SaleItem[]
+
+  // Removed: @@index([paymentStatus]), @@index([status]), @@index([isActive]) � low cardinality; covered by composites
+  @@index([customerId])                 // Sales per customer
+  @@index([shopId])                     // Tenant-scoped sales
+  @@index([saleDate])                   // Global date filter
+  @@index([shopId, saleDate])           // Dashboard + sales list by shop & date
+  @@index([shopId, paymentStatus])      // Filter by payment status per tenant
+  @@index([shopId, isActive, saleDate]) // Ultra-fast dashboard range queries
+  @@index([customerId, saleDate])       // Customer sales history (ledger / account view)
+}
+
+model SaleItem {
+  id            BigInt   @id @default(sequence())
+  saleId        BigInt
+  productId     BigInt
+  quantity      Decimal  @db.Decimal(12, 3)
+  unitName      String?
+  conversionCft Decimal? @db.Decimal(12, 3)
+  unit          String?
+  unitPrice     Decimal  @db.Decimal(10, 2)
+  totalPrice    Decimal  @db.Decimal(12, 2)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  product       Product  @relation(fields: [productId], references: [id])
+  // onDelete: Cascade � sale items are transactional children; delete with parent sale
+  sale          Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([saleId])    // Items per sale (invoice generation)
+  @@index([productId]) // Sales history per product
+}
+
+model Payment {
+  id          BigInt        @id @default(sequence())
+  amount      Decimal       @db.Decimal(12, 2)
+  method      PaymentMethod
+  purpose     String
+  description String?
+  date        DateTime
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  shopId      BigInt
+  shop        Shop          @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([method]), @@index([isActive]) � low cardinality
+  @@index([shopId])       // Tenant-scoped payments
+  @@index([date])         // Date filter
+  @@index([shopId, date]) // Tenant payment history (cash flow report)
+}
+
+model Expense {
+  id          BigInt          @id @default(sequence())
+  amount      Decimal         @db.Decimal(10, 2)
+  category    ExpenseCategory
+  description String?
+  date        DateTime
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  shopId      BigInt
+  shop        Shop            @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([category]), @@index([isActive]) � low cardinality; covered by composite
+  @@index([shopId])              // Tenant-scoped expenses
+  @@index([date])                // Date filter
+  @@index([shopId, isActive, date]) // Ultra-fast analytics: active expenses per tenant in range
+}
+
+model SaleDocument {
+  id           BigInt   @id @default(sequence())
+  shopId       BigInt
+  uploadedBy   BigInt
+  fileName     String   // stored object key in B2
+  originalName String   // original filename from user
+  fileUrl      String   // B2 download URL
+  fileKey      String   // B2 object key for deletion
+  fileSize     Int      // in bytes
+  mimeType     String
+  documentDate DateTime // date of the sale/bill/invoice
+  description  String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  shop         Shop     @relation(fields: [shopId], references: [id], onDelete: Restrict)
+  // onDelete: Restrict � document record integrity; uploader must be archived before deletion
+  uploader     User     @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+
+  // Removed: @@index([isActive]) � low cardinality; covered by composite [shopId, isActive]
+  @@index([shopId])              // Tenant-scoped documents
+  @@index([uploadedBy])          // Documents per uploader
+  @@index([documentDate])        // Date filter
+  @@index([shopId, documentDate]) // Tenant document timeline (most-used list query)
+  @@index([shopId, isActive])    // Active documents per tenant
+}
+
+// ============================================================
+// ANALYTICS
+// ============================================================
+
+model AnalyticsSummary {
+  id             BigInt   @id @default(sequence())
+  date           DateTime
+  totalSales     Decimal  @db.Decimal(12, 2)
+  totalExpenses  Decimal  @db.Decimal(12, 2)
+  netProfit      Decimal  @db.Decimal(12, 2)
+  totalCustomers Int
+  totalProducts  Int
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  shopId         BigInt
+  shop           Shop     @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([date]), @@index([isActive]) � date covered by unique; isActive low cardinality
+  @@unique([date, shopId])
+  @@index([shopId]) // Tenant-scoped analytics (unique already handles date+shopId)
+}
+
+model ProductSalesAnalytics {
+  id           BigInt   @id @default(sequence())
+  productId    BigInt
+  date         DateTime
+  quantitySold Decimal  @db.Decimal(12, 3)
+  totalRevenue Decimal  @db.Decimal(12, 2)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  shopId       BigInt
+  product      Product  @relation(fields: [productId], references: [id])
+  shop         Shop     @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([date]), @@index([isActive]) � date covered by unique; isActive low cardinality
+  @@unique([productId, date, shopId])
+  @@index([productId]) // Product analytics history
+  @@index([shopId])    // Tenant-scoped analytics
+}
+
+model BusinessMetric {
+  id         BigInt   @id @default(sequence())
+  metricName String
+  value      Decimal  @db.Decimal(12, 4)
+  formula    String?
+  period     String
+  recordedAt DateTime @default(now())
+  shopId     BigInt
+  shop       Shop     @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([metricName]), @@index([period]) � low cardinality string fields
+  @@index([shopId])            // Tenant-scoped metrics
+  @@index([shopId, recordedAt]) // Tenant metrics timeline (dashboard charts)
+}
+
+model InventoryAnalytics {
+  id              BigInt   @id @default(sequence())
+  shopId          BigInt
+  productId       BigInt
+  avgStock        Decimal  @db.Decimal(12, 2)
+  cogs            Decimal  @db.Decimal(12, 2)
+  turnoverRatio   Decimal  @db.Decimal(12, 4)
+  daysInInventory Decimal  @db.Decimal(12, 2)
+  recordedAt      DateTime @default(now())
+  product         Product  @relation(fields: [productId], references: [id])
+  shop            Shop     @relation(fields: [shopId], references: [id])
+
+  @@index([shopId])             // Tenant-scoped analytics
+  @@index([productId])          // Per-product analytics
+  @@index([recordedAt])         // Global timeline
+  @@index([shopId, recordedAt]) // Tenant analytics timeline (most common query)
+}
+
+model BusinessGoal {
+  id          BigInt    @id @default(sequence())
+  metricName  String
+  targetValue Decimal   @db.Decimal(12, 2)
+  period      String
+  achieved    Boolean   @default(false)
+  achievedAt  DateTime?
+  shopId      BigInt
+  shop        Shop      @relation(fields: [shopId], references: [id])
+
+  @@index([shopId]) // Tenant-scoped goals
+}
+
+// ============================================================
+// TMT BAR SYSTEM
+// ============================================================
+
+model TmtCompany {
+  id        BigInt       @id @default(sequence())
+  name      String
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  shopId    BigInt?
+  shop      Shop?        @relation(fields: [shopId], references: [id])
+  products  TmtProduct[]
+
+  // Removed: @@index([isActive]), @@index([name]) � replaced by tenant-aware composites
+  @@unique([name, shopId])
+  @@index([shopId])        // Tenant-scoped company list
+  @@index([shopId, name])  // Tenant-scoped company name search
+}
+
+model TmtSize {
+  id        BigInt       @id @default(sequence())
+  sizeMm    Decimal      @db.Decimal(5, 1)
+  isActive  Boolean      @default(true)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  shopId    BigInt?
+  products  TmtProduct[]
+  shop      Shop?        @relation(fields: [shopId], references: [id])
+
+  // Removed: @@index([isActive]), @@index([sizeMm]) � unique covers lookup; isActive low cardinality
+  @@unique([sizeMm, shopId])
+  @@index([shopId]) // Tenant-scoped sizes
+}
+
+model TmtProduct {
+  id                BigInt            @id @default(sequence())
+  productName       String
+  companyId         BigInt
+  sizeId            BigInt
+  weightPerRodKg    Decimal           @db.Decimal(8, 3)
+  rodsPerBundle     Int
+  weightPerBundleKg Decimal           @db.Decimal(8, 3)
+  defaultUnit       TmtUnitType       @default(KG)
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  shopId            BigInt?
+  inventory         TmtInventory[]
+  company           TmtCompany        @relation(fields: [companyId], references: [id])
+  shop              Shop?             @relation(fields: [shopId], references: [id])
+  size              TmtSize           @relation(fields: [sizeId], references: [id])
+  purchases         TmtPurchaseItem[]
+  sales             TmtSaleItem[]
+
+  // Removed: @@index([isActive]), @@index([productName]) � low cardinality / single column
+  @@unique([companyId, sizeId, shopId])
+  @@index([companyId]) // Products by company (dropdown)
+  @@index([sizeId])    // Products by size (filter)
+  @@index([shopId])    // Tenant-scoped products
+}
+
+model TmtPurchase {
+  id             BigInt            @id @default(sequence())
+  invoiceNumber  String
+  supplierName   String
+  totalWeightTon Decimal           @db.Decimal(10, 2)
+  dateReceived   DateTime
+  remarks        String?
+  isActive       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  shopId         BigInt
+  shop           Shop              @relation(fields: [shopId], references: [id])
+  items          TmtPurchaseItem[]
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([shopId])                 // Tenant-scoped purchases
+  @@index([dateReceived])           // Date filter
+  @@index([invoiceNumber])          // Invoice lookup
+  @@index([shopId, dateReceived])   // Tenant date-range purchase queries
+}
+
+model TmtPurchaseItem {
+  id                BigInt      @id @default(sequence())
+  purchaseId        BigInt
+  productId         BigInt
+  quantity          Decimal     @db.Decimal(10, 2)
+  unitType          TmtUnitType
+  weightPerRodKg    Decimal     @db.Decimal(8, 3)
+  rodsPerBundle     Int
+  weightPerBundleKg Decimal     @db.Decimal(8, 3)
+  totalBundles      Decimal     @db.Decimal(10, 2)
+  totalPieces       Decimal     @db.Decimal(10, 2)
+  equivalentKg      Decimal     @db.Decimal(10, 2)
+  remarks           String?
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  product           TmtProduct  @relation(fields: [productId], references: [id])
+  // onDelete: Cascade � purchase items are transactional children
+  purchase          TmtPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([purchaseId]) // Items per purchase (invoice view)
+  @@index([productId])  // Purchase history per product
+}
+
+model TmtInventory {
+  id                    BigInt     @id @default(sequence())
+  productId             BigInt
+  availableQtyKg        Decimal    @db.Decimal(12, 3)
+  reservedQtyKg         Decimal    @default(0) @db.Decimal(12, 3)
+  lastUpdated           DateTime   @default(now())
+  isActive              Boolean    @default(true)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime   @updatedAt
+  shopId                BigInt
+  costPricePerKg        Decimal?   @db.Decimal(10, 2)
+  maxStockKg            Decimal?   @db.Decimal(12, 3)
+  minStockKg            Decimal?   @db.Decimal(12, 3)
+  sellingPricePerKg     Decimal?   @db.Decimal(10, 2)
+  supplierId            BigInt?
+  totalAmount           Decimal?   @db.Decimal(12, 2)
+  costPricePerPiece     Decimal?   @db.Decimal(10, 2)
+  sellingPricePerPiece  Decimal?   @db.Decimal(10, 2)
+  totalAmountFromKg     Decimal?   @db.Decimal(12, 2)
+  totalAmountFromPieces Decimal?   @db.Decimal(12, 2)
+  product               TmtProduct @relation(fields: [productId], references: [id])
+  shop                  Shop       @relation(fields: [shopId], references: [id])
+  // onDelete: SetNull � supplier is optional; inventory survives supplier removal
+  supplier              Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+
+  // Removed: @@index([isActive]), @@index([lastUpdated]) � low cardinality / low value standalone
+  @@unique([productId, shopId])
+  @@index([productId])   // Inventory per product
+  @@index([shopId])      // Tenant-scoped inventory
+  @@index([supplierId])  // Inventory by supplier
+}
+
+model TmtSale {
+  id            BigInt           @id @default(sequence())
+  customerName  String?
+  customerId    BigInt?
+  totalAmount   Decimal          @db.Decimal(12, 2)
+  paidAmount    Decimal?         @db.Decimal(12, 2)
+  dueAmount     Decimal?         @db.Decimal(12, 2)
+  paymentStatus TmtPaymentStatus @default(PAID)
+  paymentMethod PaymentMethod
+  saleDate      DateTime
+  notes         String?
+  status        SaleStatus       @default(PENDING)
+  isActive      Boolean          @default(true)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  shopId        BigInt
+  // onDelete: SetNull � cash/walk-in TMT sales can exist without a customer record
+  customer      Customer?        @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  shop          Shop             @relation(fields: [shopId], references: [id])
+  items         TmtSaleItem[]
+
+  // Removed: @@index([paymentMethod]), @@index([paymentStatus]), @@index([isActive]) � low cardinality
+  @@index([shopId])                  // Tenant-scoped TMT sales
+  @@index([saleDate])                // Date filter
+  @@index([shopId, saleDate])        // Tenant TMT sales dashboard
+  @@index([shopId, isActive, saleDate]) // Ultra-fast analytics: active TMT sales range queries
+}
+
+model TmtSaleItem {
+  id                BigInt      @id @default(sequence())
+  saleId            BigInt
+  productId         BigInt
+  quantity          Decimal     @db.Decimal(10, 2)
+  unitType          TmtUnitType
+  unitPrice         Decimal     @db.Decimal(10, 2)
+  totalPrice        Decimal     @db.Decimal(12, 2)
+  weightPerRodKg    Decimal     @db.Decimal(8, 3)
+  rodsPerBundle     Int
+  weightPerBundleKg Decimal     @db.Decimal(8, 3)
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  product           TmtProduct  @relation(fields: [productId], references: [id])
+  // onDelete: Cascade � TMT sale items are transactional children
+  sale              TmtSale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  // Removed: @@index([isActive]) � low cardinality
+  @@index([saleId])    // Items per TMT sale (invoice generation)
+  @@index([productId]) // TMT product sales history
+}
+
+// ============================================================
+// ADMIN AUDIT
+// ============================================================
+
+model AdminAuditLog {
+  id         BigInt   @id @default(sequence())
+  adminId    BigInt
+  action     String   // "EDIT" | "DELETE"
+  tableName  String   // "CustomerLedgerEntry" | "StockEntry" | "SupplierPayment"
+  recordId   BigInt
+  // TODO: Convert to Json after verifying all existing rows contain valid JSON.
+  // CockroachDB requires ALTER COLUMN TYPE STRING -> JSONB; run on clean/pre-validated data only.
+  beforeData String   // JSON snapshot BEFORE change
+  afterData  String?  // JSON snapshot AFTER change (null for DELETE)
+  reason     String?  // Admin-provided reason
+  shopId     BigInt
+  createdAt  DateTime @default(now())
+
+  // NOTE: adminId is a raw BigInt (no FK relation) � intentional for audit safety.
+  // Deleting a User will NOT cascade to audit logs; records are preserved indefinitely.
+  // Removed: @@index([createdAt]) alone � replaced by composite below
+  @@index([adminId])              // Audit by admin user
+  @@index([tableName, recordId])  // Lookup audit trail for a specific record
+  @@index([shopId])               // Tenant-scoped audit view
+  @@index([shopId, createdAt])    // Tenant audit timeline (compliance review)
+}
+
+// ============================================================
+// ENUMS
+// ============================================================
+
+enum PlatformRole {
+  PLATFORM_OWNER
+  SUPER_DUPER_ADMIN
+  SUPER_ADMIN
+  ADMIN
+  USER
+  STAFF
+  MODERATOR
+  CREATOR
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+  PAYMENT_FAILED
+}
+
+enum SubscriptionPlan {
+  TRIAL_30_DAYS
+  BASIC_MONTHLY
+  BASIC_YEARLY
+  PROFESSIONAL_MONTHLY
+  PROFESSIONAL_YEARLY
+  ENTERPRISE_MONTHLY
+  ENTERPRISE_YEARLY
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  UPI
+  BANK_TRANSFER
+  CHEQUE
+  OTHER
+  STRIPE
+  RAZORPAY
+  PAYPAL
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+enum CustomerType {
+  REGULAR
+  WHOLESALE
+  RETAIL
+  CONTRACTOR
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+  REFUNDED
+}
+
+enum ExpenseCategory {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  SALARY
+  MAINTENANCE
+  MARKETING
+  TRANSPORTATION
+  OTHER
+}
+
+enum TmtUnitType {
+  KG
+  TON
+  PIECE
+  BUNDLE
+}
+
+enum TmtPaymentStatus {
+  PAID
+  PARTIAL
+  UNPAID
+  PENDING
+  CANCELLED
+}
+
+enum ViolationType {
+  PAYMENT_FAILURE
+  TERMS_VIOLATION
+  SUSPICIOUS_ACTIVITY
+  DATA_MISUSE
+  COPYRIGHT_INFRINGEMENT
+  SPAM
+  OTHER
+}
+
+enum ViolationStatus {
+  REPORTED
+  UNDER_REVIEW
+  RESOLVED
+  ESCALATED
+  DISMISSED
+}
+
+enum NotificationType {
+  SUBSCRIPTION_EXPIRY
+  PAYMENT_DUE
+  TRIAL_ENDING
+  ACCOUNT_SUSPENDED
+  VIOLATION_REPORTED
+  SYSTEM_MAINTENANCE
+  FEATURE_UPDATE
+  USER_CREATED
+  USER_UPDATED
+  USER_DELETED
+  GENERAL
+}
+
+enum WebsiteSettingType {
+  SEO_META_TAGS
+  ANALYTICS
+  SOCIAL_MEDIA
+  CONTACT_INFO
+  BRANDING
+  INTEGRATION
+  SECURITY
+  PERFORMANCE
+}

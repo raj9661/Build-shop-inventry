@@ -1,0 +1,197 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole { 
+  SUPER_DUPER_ADMIN 
+  SUPER_ADMIN 
+  ADMIN 
+  USER 
+  STAFF 
+}
+
+enum PaymentMethod { 
+  CASH 
+  CARD 
+  UPI 
+  BANK_TRANSFER 
+  CHEQUE 
+  OTHER 
+}
+
+enum PaymentStatus { 
+  PENDING 
+  COMPLETED 
+  FAILED 
+  CANCELLED 
+}
+
+enum CustomerType { 
+  REGULAR 
+  WHOLESALE 
+  RETAIL 
+  CONTRACTOR 
+}
+
+enum SaleStatus {
+  PENDING
+  COMPLETED
+  CANCELLED
+}
+
+enum ExpenseCategory {
+  RENT
+  ELECTRICITY
+  WATER
+  INTERNET
+  SALARY
+  MAINTENANCE
+  MARKETING
+  TRANSPORTATION
+  OTHER
+}
+
+enum TmtUnitType {
+  KG
+  TON
+  PIECE
+  BUNDLE
+}
+
+model User {
+  id                     BigInt                  @id @default(sequence())
+  name                   String
+  username               String                  @unique
+  email                  String                  @unique
+  password               String
+  role                   UserRole                @default(STAFF)
+  phone                  String?
+  isActive               Boolean                 @default(true)
+  lastLoginAt            DateTime?
+  emailVerified          Boolean                 @default(false)
+  emailVerificationToken String?
+  passwordResetToken     String?
+  passwordResetExpires   DateTime?
+  twoFactorEnabled       Boolean                 @default(false)
+  twoFactorSecret        String?
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  @@index([role])
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([email])
+  @@index([emailVerified])
+}
+
+model Shop {
+  id                    BigInt                    @id @default(sequence())
+  name                  String
+  location              String?
+  phone                 String?
+  email                 String?
+  address               String?
+  gstNo                 String?
+  isActive              Boolean                  @default(true)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  // Relations
+  tmtCompanies          TmtCompany[]
+  tmtSizes              TmtSize[]
+  tmtProducts           TmtProduct[]
+  tmtInventory          TmtInventory[]
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@index([name])
+  @@index([location])
+}
+
+model TmtCompany {
+  id              BigInt         @id @default(sequence())
+  name            String
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  @@unique([name, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([name])
+}
+
+model TmtSize {
+  id              BigInt         @id @default(sequence())
+  sizeMm          Decimal        @db.Decimal(5, 1)
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt?
+
+  shop            Shop?          @relation(fields: [shopId], references: [id])
+  products        TmtProduct[]
+
+  @@unique([sizeMm, shopId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([sizeMm])
+}
+
+model TmtProduct {
+  id                  BigInt         @id @default(sequence())
+  productName         String
+  companyId           BigInt
+  sizeId              BigInt
+  weightPerRodKg      Decimal        @db.Decimal(8, 3)
+  rodsPerBundle       Int
+  weightPerBundleKg   Decimal        @db.Decimal(8, 3)
+  defaultUnit         TmtUnitType    @default(KG)
+  isActive            Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  shopId              BigInt?
+
+  company             TmtCompany     @relation(fields: [companyId], references: [id])
+  size                TmtSize        @relation(fields: [sizeId], references: [id])
+  shop                Shop?          @relation(fields: [shopId], references: [id])
+  inventory           TmtInventory[]
+
+  @@unique([companyId, sizeId, shopId])
+  @@index([companyId])
+  @@index([sizeId])
+  @@index([shopId])
+  @@index([isActive])
+  @@index([productName])
+}
+
+model TmtInventory {
+  id              BigInt         @id @default(sequence())
+  productId       BigInt
+  availableQtyKg  Decimal        @db.Decimal(12, 3)
+  reservedQtyKg   Decimal        @db.Decimal(12, 3) @default(0)
+  lastUpdated     DateTime       @default(now())
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  shopId          BigInt
+
+  product         TmtProduct     @relation(fields: [productId], references: [id])
+  shop            Shop           @relation(fields: [shopId], references: [id])
+
+  @@unique([productId, shopId])
+  @@index([productId])
+  @@index([shopId])
+  @@index([lastUpdated])
+  @@index([isActive])
+}
