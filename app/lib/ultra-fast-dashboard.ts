@@ -402,8 +402,8 @@ class UltraFastDashboard {
       // 2. Transform TMT Sales
       const transformedTmtSales = tmtSales.map((tmtSale: any) => {
         const total = parseDecimal(tmtSale.totalAmount);
-        const paid = parseDecimal(tmtSale.paidAmount) || total;
-        const due = parseDecimal(tmtSale.dueAmount) || 0;
+        const paid = parseDecimal(tmtSale.paidAmount);
+        const due = parseDecimal(tmtSale.dueAmount);
 
         let paymentType = 'cash';
         if (tmtSale.paymentStatus === 'PARTIAL') paymentType = 'partial';

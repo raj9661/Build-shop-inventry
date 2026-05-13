@@ -374,7 +374,7 @@ export async function POST(req: NextRequest) {
           driverName: driverName || null,
           paymentStatus: salePaymentStatus,
           paymentMethod: paymentMethodToStore as any,
-          notes: isDirectSale ? `${saleNotes}\n(Direct Truck Sale)` : saleNotes,
+          notes: (isDirectSale || (hasItems && items.some((i: any) => i.isDirectSale))) ? `${saleNotes}\n(Includes Direct Truck Sale)` : saleNotes,
           isActive: true,
         }
       });
@@ -384,7 +384,8 @@ export async function POST(req: NextRequest) {
       if (hasItems) {
         await Promise.all(items.map(async (item: any, index: number) => {
         let finalProductId = item.productId;
-        if (isDirectSale && (!finalProductId || finalProductId === 0) && item.name && item.categoryId && item.typeId) {
+        const itemIsDirectSale = item.isDirectSale ?? isDirectSale;
+        if (itemIsDirectSale && (!finalProductId || finalProductId === 0) && item.name && item.categoryId && item.typeId) {
           let product = await tx.product.findFirst({
             where: {
               name: { equals: item.name, mode: 'insensitive' },
@@ -435,14 +436,22 @@ export async function POST(req: NextRequest) {
         });
 
         // If direct sale, create a StockEntry for the purchase side
-        if (isDirectSale && finalSupplierId) {
+        let itemSupplierId = item.supplierId || finalSupplierId;
+        if (itemIsDirectSale && item.supplierInfo && !itemSupplierId) {
+          const newSupplier = await tx.supplier.create({
+            data: { name: item.supplierInfo.name, phone: item.supplierInfo.phone, shopId, isActive: true }
+          });
+          itemSupplierId = Number(newSupplier.id);
+        }
+
+        if (itemIsDirectSale && itemSupplierId) {
           const purchasePrice = Number(item.purchasePrice || item.price_per_unit || item.unitPrice);
           const totalPurchaseAmount = purchasePrice * Number(item.quantity);
 
           await tx.stockEntry.create({
             data: {
               productId: finalProductId,
-              supplierId: BigInt(finalSupplierId),
+              supplierId: BigInt(itemSupplierId),
               shopId: shopId,
               quantity: Number(item.quantity),
               unitName: item.unitName || item.unit || null,
@@ -458,7 +467,7 @@ export async function POST(req: NextRequest) {
 
           // Update supplier outstanding payment
           await tx.supplier.update({
-            where: { id: BigInt(finalSupplierId) },
+            where: { id: BigInt(itemSupplierId) },
             data: {
               outstandingPayment: {
                 increment: totalPurchaseAmount
@@ -478,7 +487,7 @@ export async function POST(req: NextRequest) {
         const isLoose = item.unit === 'kg' || item.unitName === 'kg' || item.stockType === 'damaged';
 
         // Update product inventory - ONLY IF NOT DIRECT SALE
-        if (!isDirectSale && productInfo) {
+        if (!itemIsDirectSale && productInfo) {
           if (isCement && isLoose) {
               // Loose cement sold in kg → deduct from damagedQuantity
               await tx.product.update({

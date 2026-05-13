@@ -64,6 +64,13 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
           )}
         </div>
       </div>
+      {sale.customerName && (
+        <div className="text-xs mb-1" style={{ fontSize: 12 }}>
+          <span className="font-semibold">To: {sale.customerName}</span>
+          {sale.customerPhone && <span className="ml-2 text-gray-500">{sale.customerPhone}</span>}
+          {sale.customerAddress && <div className="text-gray-500">{sale.customerAddress}</div>}
+        </div>
+      )}
       <table className="w-full text-xs mb-1" style={{ fontFamily: 'monospace', fontSize: 12 }}>
         <thead>
           <tr>
@@ -96,6 +103,9 @@ const ProperBillPrint: React.FC<ProperBillPrintProps> = ({ sale, onClose, userRo
             <div>Paid: ₹{Number(sale.paid_amount).toFixed(2)}</div>
             <div>Due: ₹{(Number(sale.finalAmount) - Number(sale.paid_amount)).toFixed(2)}</div>
           </>
+        )}
+        {(sale.payment_type === "loan" || sale.paymentStatus === "UNPAID") && (
+          <div style={{ color: 'red' }}>Due: ₹{Number(sale.finalAmount).toFixed(2)}</div>
         )}
       </div>
       {sale.vehicleNumber && <div className="text-center text-xs mt-1 italic">Vehicle: {sale.vehicleNumber} {sale.driverName ? `(${sale.driverName})` : ''}</div>}

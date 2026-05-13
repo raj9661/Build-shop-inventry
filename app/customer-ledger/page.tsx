@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -673,112 +673,120 @@ export default function CustomerLedger() {
   }
 
   // Add a single row rendering function for all tabs
-  function renderLedgerRow(entry: LedgerEntry) {
-    return (
-      <TableRow key={`ledger-entry-${entry.id}`} className="hover:bg-gray-50">
-        {/* Date/Time */}
-        <TableCell className="border-r text-xs md:text-sm">
-          <div>
-            <div className="font-medium">{entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '-'}</div>
-            <div className="text-gray-500 text-xs">{entry.time || '-'}</div>
-            {/* Admin Controls */}
-            {isAdmin && (
-              <div className="flex gap-1 mt-1">
-                <button
-                  onClick={() => setAdminEditEntry(entry)}
-                  className="p-0.5 rounded text-amber-600 hover:bg-amber-50 transition-colors"
-                  title="Admin: Edit this entry"
-                >
-                  <Pencil className="h-3 w-3" />
-                </button>
-                <button
-                  onClick={() => setAdminDeleteEntry(entry)}
-                  className="p-0.5 rounded text-red-500 hover:bg-red-50 transition-colors"
-                  title="Admin: Delete this entry"
-                >
-                  <Trash2 className="h-3 w-3" />
-                </button>
-              </div>
-            )}
-          </div>
-        </TableCell>
-        {/* Items */}
-        <TableCell className="border-r text-xs md:text-sm">
-          {entry.type === 'credit'
-            ? <span className="text-green-700 font-semibold">{entry.description && entry.description.includes('Opening Balance') ? entry.description : 'Payment'}</span>
-            : entry.items && entry.items.length > 0
-              ? <div className="space-y-1">{entry.items.map((item, index) => {
-                const isOpeningBalance = item.name.toLowerCase().includes('opening balance');
-                return (
-                  <div key={index} className="flex items-center gap-2">
-                    <span className="font-medium">{item.name}</span>
-                    {!isOpeningBalance && (
-                      <span className="text-gray-500">
-                        (
-                        {item.quantity} {item.unit || ""}
-                        {item.price ? ` × ₹${item.price.toLocaleString()}` : ""}
-                        )
-                      </span>
-                    )}
-                    {item.price && !isOpeningBalance ? (
-                      <span className="font-semibold text-gray-700">
-                        ₹{(item.quantity * item.price).toLocaleString()}
-                      </span>
-                    ) : null}
-                  </div>
-                );
-              })}</div>
-              : <span className="text-gray-400">-</span>
-          }
-        </TableCell>
-        {/* Qty */}
-        <TableCell className="border-r text-xs md:text-sm text-center">
-          {(entry.type === 'credit' || (entry.items && entry.items[0]?.name.toLowerCase().includes('opening balance'))) ? <span className="text-gray-400">-</span> : (entry.qty || <span className="text-gray-400">-</span>)}
-        </TableCell>
-        {/* Price */}
-        <TableCell className="border-r text-xs md:text-sm text-right">
-          {(entry.type === 'credit' || (entry.items && entry.items[0]?.name.toLowerCase().includes('opening balance'))) ? <span className="text-gray-400">-</span> : (entry.price ? `₹${entry.price.toLocaleString()}` : <span className="text-gray-400">-</span>)}
-        </TableCell>
-        {/* Total */}
-        <TableCell className="border-r text-xs md:text-sm text-right">
-          {entry.type === 'credit'
-            ? <span className="font-bold text-green-600">-₹{entry.paid.toLocaleString()}</span>
-            : entry.total ? <span className="font-bold text-red-600">+₹{entry.total.toLocaleString()}</span> : <span className="text-gray-400">-</span>
-          }
-        </TableCell>
-        {/* Payment Mode */}
-        <TableCell className="border-r text-xs md:text-sm text-center">
-          {entry.paymentMode && entry.paymentMode !== '-' ? (
-            entry.isPartial ? (
-              <Badge variant="outline">{entry.paymentMode}</Badge>
-            ) : (
-              <Badge variant="default">{entry.paymentMode}</Badge>
-            )
-          ) : <span className="text-gray-400">-</span>}
-        </TableCell>
-        {/* Paid */}
-        <TableCell className="border-r text-xs md:text-sm text-right">
-          {entry.type === 'credit'
-            ? <span className="font-bold text-green-600">₹{entry.paid.toLocaleString()}</span>
-            : entry.paid ? <span className="font-bold text-green-600">₹{entry.paid.toLocaleString()}</span> : <span className="text-gray-400">-</span>
-          }
-        </TableCell>
-        {/* Due */}
-        <TableCell className="border-r text-xs md:text-sm text-right">
-          {entry.type === 'credit' ? <span className="text-gray-400">-</span> : (entry.due ? <span className="font-bold text-blue-600">₹{entry.due.toLocaleString()}</span> : <span className="text-gray-400">-</span>)}
-        </TableCell>
-        {/* Balance */}
-        <TableCell className="text-xs md:text-sm text-right">
-          <div className={`font-bold ${entry.runningBalance > 0 ? "text-red-600" : entry.runningBalance < 0 ? "text-green-600" : "text-gray-600"}`}>
-            ₹{Math.abs(entry.runningBalance).toLocaleString()}
-            <div className="text-xs text-gray-500">
-              {entry.runningBalance > 0 && t("Due", "बकाया")}
-              {entry.runningBalance < 0 && t("Advance", "अग्रिम")}
-              {entry.runningBalance === 0 && t("Clear", "साफ")}
+  function renderLedgerRow(entry: LedgerEntry, index: number) {
+    const isCredit = entry.type === 'credit';
+    const isOpeningBalance = entry.items && entry.items.length > 0 && entry.items[0]?.name.toLowerCase().includes('opening balance');
+    
+    // Fallback single row rendering
+    if (isCredit || isOpeningBalance || !entry.items || entry.items.length <= 1) {
+      const singleItem = entry.items && entry.items.length > 0 ? entry.items[0] : null;
+      return (
+        <TableRow key={`ledger-entry-${entry.id}-${index}`} className="hover:bg-gray-50 transition-colors">
+          <TableCell className="border-r text-xs md:text-sm">
+            <div>
+              <div className="font-medium">{entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '-'}</div>
+              <div className="text-gray-500 text-xs">{entry.time || '-'}</div>
+              {isAdmin && (
+                <div className="flex gap-1 mt-1">
+                  <button onClick={() => setAdminEditEntry(entry)} className="p-0.5 rounded text-amber-600 hover:bg-amber-50 transition-colors" title="Admin: Edit this entry"><Pencil className="h-3 w-3" /></button>
+                  <button onClick={() => setAdminDeleteEntry(entry)} className="p-0.5 rounded text-red-500 hover:bg-red-50 transition-colors" title="Admin: Delete this entry"><Trash2 className="h-3 w-3" /></button>
+                </div>
+              )}
             </div>
-          </div>
-        </TableCell>
-      </TableRow>
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm">
+            {isCredit ? <span className="text-green-700 font-semibold">{entry.description && entry.description.includes('Opening Balance') ? entry.description : 'Payment'}</span> : (singleItem ? <span className="font-medium">{singleItem.name}</span> : <span className="text-gray-400">-</span>)}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-center">
+            {isCredit || isOpeningBalance ? <span className="text-gray-400">-</span> : (singleItem?.quantity ? `${singleItem.quantity} ${singleItem.unit || ""}` : (entry.qty || <span className="text-gray-400">-</span>))}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-right">
+            {isCredit || isOpeningBalance ? <span className="text-gray-400">-</span> : (singleItem?.price ? `₹${singleItem.price.toLocaleString()}` : (entry.price ? `₹${entry.price.toLocaleString()}` : <span className="text-gray-400">-</span>))}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-right">
+            {isCredit ? <span className="font-bold text-green-600">-₹{entry.paid.toLocaleString()}</span> : (entry.total ? <span className="font-bold text-red-600">+₹{entry.total.toLocaleString()}</span> : <span className="text-gray-400">-</span>)}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-center">
+            {entry.paymentMode && entry.paymentMode !== '-' ? (entry.isPartial ? <Badge variant="outline">{entry.paymentMode}</Badge> : <Badge variant="default">{entry.paymentMode}</Badge>) : <span className="text-gray-400">-</span>}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-right">
+            {isCredit ? <span className="font-bold text-green-600">₹{entry.paid.toLocaleString()}</span> : (entry.paid ? <span className="font-bold text-green-600">₹{entry.paid.toLocaleString()}</span> : <span className="text-gray-400">-</span>)}
+          </TableCell>
+          <TableCell className="border-r text-xs md:text-sm text-right">
+            {isCredit ? <span className="text-gray-400">-</span> : (entry.due ? <span className="font-bold text-blue-600">₹{entry.due.toLocaleString()}</span> : <span className="text-gray-400">-</span>)}
+          </TableCell>
+          <TableCell className="text-xs md:text-sm text-right">
+            <div className={`font-bold ${entry.runningBalance > 0 ? "text-red-600" : entry.runningBalance < 0 ? "text-green-600" : "text-gray-600"}`}>
+              ₹{Math.abs(entry.runningBalance).toLocaleString()}
+              <div className="text-xs text-gray-500">
+                {entry.runningBalance > 0 && t("Due", "बकाया")}
+                {entry.runningBalance < 0 && t("Advance", "अग्रिम")}
+                {entry.runningBalance === 0 && t("Clear", "साफ")}
+              </div>
+            </div>
+          </TableCell>
+        </TableRow>
+      );
+    }
+
+    // Multi-item rendering with rowSpan
+    const rowCount = entry.items.length;
+    return (
+      <React.Fragment key={`ledger-entry-fragment-${entry.id}-${index}`}>
+        {entry.items.map((item, idx) => {
+          if (idx === 0) {
+            return (
+              <TableRow key={`ledger-entry-${entry.id}-${index}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                <TableCell rowSpan={rowCount} className="border-r border-b text-xs md:text-sm align-top">
+                  <div>
+                    <div className="font-medium">{entry.date ? new Date(entry.date).toLocaleDateString("en-IN") : '-'}</div>
+                    <div className="text-gray-500 text-xs">{entry.time || '-'}</div>
+                    {isAdmin && (
+                      <div className="flex gap-1 mt-1">
+                        <button onClick={() => setAdminEditEntry(entry)} className="p-0.5 rounded text-amber-600 hover:bg-amber-50 transition-colors" title="Admin: Edit this entry"><Pencil className="h-3 w-3" /></button>
+                        <button onClick={() => setAdminDeleteEntry(entry)} className="p-0.5 rounded text-red-500 hover:bg-red-50 transition-colors" title="Admin: Delete this entry"><Trash2 className="h-3 w-3" /></button>
+                      </div>
+                    )}
+                  </div>
+                </TableCell>
+                <TableCell className="border-r text-xs md:text-sm"><span className="font-medium">{item.name}</span></TableCell>
+                <TableCell className="border-r text-xs md:text-sm text-center">{item.quantity} {item.unit || ""}</TableCell>
+                <TableCell className="border-r text-xs md:text-sm text-right">{item.price ? `₹${item.price.toLocaleString()}` : <span className="text-gray-400">-</span>}</TableCell>
+                <TableCell rowSpan={rowCount} className="border-r border-b text-xs md:text-sm text-right align-top">
+                  {entry.total ? <span className="font-bold text-red-600">+₹{entry.total.toLocaleString()}</span> : <span className="text-gray-400">-</span>}
+                </TableCell>
+                <TableCell rowSpan={rowCount} className="border-r border-b text-xs md:text-sm text-center align-top">
+                  {entry.paymentMode && entry.paymentMode !== '-' ? (entry.isPartial ? <Badge variant="outline">{entry.paymentMode}</Badge> : <Badge variant="default">{entry.paymentMode}</Badge>) : <span className="text-gray-400">-</span>}
+                </TableCell>
+                <TableCell rowSpan={rowCount} className="border-r border-b text-xs md:text-sm text-right align-top">
+                  {entry.paid ? <span className="font-bold text-green-600">₹{entry.paid.toLocaleString()}</span> : <span className="text-gray-400">-</span>}
+                </TableCell>
+                <TableCell rowSpan={rowCount} className="border-r border-b text-xs md:text-sm text-right align-top">
+                  {entry.due ? <span className="font-bold text-blue-600">₹{entry.due.toLocaleString()}</span> : <span className="text-gray-400">-</span>}
+                </TableCell>
+                <TableCell rowSpan={rowCount} className="border-b text-xs md:text-sm text-right align-top">
+                  <div className={`font-bold ${entry.runningBalance > 0 ? "text-red-600" : entry.runningBalance < 0 ? "text-green-600" : "text-gray-600"}`}>
+                    ₹{Math.abs(entry.runningBalance).toLocaleString()}
+                    <div className="text-xs text-gray-500">
+                      {entry.runningBalance > 0 && t("Due", "बकाया")}
+                      {entry.runningBalance < 0 && t("Advance", "अग्रिम")}
+                      {entry.runningBalance === 0 && t("Clear", "साफ")}
+                    </div>
+                  </div>
+                </TableCell>
+              </TableRow>
+            );
+          } else {
+            return (
+              <TableRow key={`ledger-entry-${entry.id}-${index}-${idx}`} className="hover:bg-gray-50 transition-colors">
+                <TableCell className="border-r text-xs md:text-sm"><span className="font-medium">{item.name}</span></TableCell>
+                <TableCell className="border-r text-xs md:text-sm text-center">{item.quantity} {item.unit || ""}</TableCell>
+                <TableCell className="border-r text-xs md:text-sm text-right">{item.price ? `₹${item.price.toLocaleString()}` : <span className="text-gray-400">-</span>}</TableCell>
+              </TableRow>
+            );
+          }
+        })}
+      </React.Fragment>
     );
   }
 

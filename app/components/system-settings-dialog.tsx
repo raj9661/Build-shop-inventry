@@ -80,6 +80,50 @@ interface CreateUserDialogProps {
   onOpenChange?: (open: boolean) => void
 }
 
+const getDefaultSettings = (): SystemSettings => ({
+  general: {
+    systemName: "Shop Inventory System",
+    timezone: "Asia/Kolkata",
+    currency: "INR",
+    language: "en"
+  },
+  security: {
+    sessionTimeout: 30,
+    requireMFA: false,
+    passwordPolicy: {
+      minLength: 8,
+      requireUppercase: true,
+      requireLowercase: true,
+      requireNumbers: true,
+      requireSpecialChars: false
+    }
+  },
+  notifications: {
+    emailNotifications: true,
+    smsNotifications: false,
+    pushNotifications: true,
+    lowStockAlerts: true,
+    salesReports: true,
+    emailAddresses: [],
+    notificationEmail: "",
+    shopSpecificNotifications: false,
+    dailyReports: true,
+    weeklyReports: true,
+    monthlyReports: true,
+    criticalAlerts: true
+  },
+  appearance: {
+    theme: "light",
+    sidebarCollapsed: false,
+    compactMode: false
+  },
+  database: {
+    backupFrequency: "daily",
+    retentionDays: 30,
+    autoBackup: true
+  }
+});
+
 export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOpenChange }: CreateUserDialogProps) {
   const [uncontrolledOpen, setUncontrolledOpen] = useState(false)
   const open = controlledOpen !== undefined ? controlledOpen : uncontrolledOpen;
@@ -88,49 +132,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
 
-  const [settings, setSettings] = useState<SystemSettings>({
-    general: {
-      systemName: "Shop Inventory System",
-      timezone: "Asia/Kolkata",
-      currency: "INR",
-      language: "en"
-    },
-    security: {
-      sessionTimeout: 30,
-      requireMFA: false,
-      passwordPolicy: {
-        minLength: 8,
-        requireUppercase: true,
-        requireLowercase: true,
-        requireNumbers: true,
-        requireSpecialChars: false
-      }
-    },
-    notifications: {
-      emailNotifications: true,
-      smsNotifications: false,
-      pushNotifications: true,
-      lowStockAlerts: true,
-      salesReports: true,
-      emailAddresses: [],
-      notificationEmail: "",
-      shopSpecificNotifications: false,
-      dailyReports: true,
-      weeklyReports: true,
-      monthlyReports: true,
-      criticalAlerts: true
-    },
-    appearance: {
-      theme: "light",
-      sidebarCollapsed: false,
-      compactMode: false
-    },
-    database: {
-      backupFrequency: "daily",
-      retentionDays: 30,
-      autoBackup: true
-    }
-  })
+  const [settings, setSettings] = useState<SystemSettings>(getDefaultSettings())
 
   useEffect(() => {
     if (open) {
@@ -150,7 +152,20 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
 
       if (response.ok) {
         const data = await response.json()
-        setSettings(data)
+        setSettings({
+          general: { ...getDefaultSettings().general, ...(data?.general || {}) },
+          security: {
+            ...getDefaultSettings().security,
+            ...(data?.security || {}),
+            passwordPolicy: {
+              ...getDefaultSettings().security.passwordPolicy,
+              ...(data?.security?.passwordPolicy || {})
+            }
+          },
+          notifications: { ...getDefaultSettings().notifications, ...(data?.notifications || {}) },
+          appearance: { ...getDefaultSettings().appearance, ...(data?.appearance || {}) },
+          database: { ...getDefaultSettings().database, ...(data?.database || {}) }
+        })
       }
     } catch (error) {
       console.error('Failed to load settings:', error)
@@ -230,6 +245,8 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
     }))
   }
 
+  const currentSettings = settings?.general ? settings : getDefaultSettings();
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-[95vw] sm:max-w-4xl p-4 md:p-6 max-h-[90vh] overflow-y-auto rounded-lg">
@@ -264,14 +281,14 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <Label htmlFor="systemName">System Name</Label>
                       <Input
                         id="systemName"
-                        value={settings.general.systemName}
+                        value={currentSettings.general.systemName}
                         onChange={(e) => updateSetting('general', 'systemName', e.target.value)}
                       />
                     </div>
                     <div>
                       <Label htmlFor="timezone">Timezone</Label>
                       <Select
-                        value={settings.general.timezone}
+                        value={currentSettings.general.timezone}
                         onValueChange={(value) => updateSetting('general', 'timezone', value)}
                       >
                         <SelectTrigger>
@@ -288,7 +305,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div>
                       <Label htmlFor="currency">Currency</Label>
                       <Select
-                        value={settings.general.currency}
+                        value={currentSettings.general.currency}
                         onValueChange={(value) => updateSetting('general', 'currency', value)}
                       >
                         <SelectTrigger>
@@ -305,7 +322,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div>
                       <Label htmlFor="language">Language</Label>
                       <Select
-                        value={settings.general.language}
+                        value={currentSettings.general.language}
                         onValueChange={(value) => updateSetting('general', 'language', value)}
                       >
                         <SelectTrigger>
@@ -343,7 +360,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           type="number"
                           min="5"
                           max="480"
-                          value={settings.security.sessionTimeout}
+                          value={currentSettings.security.sessionTimeout}
                           onChange={(e) => updateSetting('security', 'sessionTimeout', parseInt(e.target.value))}
                         />
                         <p className="text-xs text-gray-500 mt-1">
@@ -353,7 +370,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="requireMFA"
-                          checked={settings.security.requireMFA}
+                          checked={currentSettings.security.requireMFA}
                           onCheckedChange={(checked) => updateSetting('security', 'requireMFA', checked)}
                         />
                         <Label htmlFor="requireMFA">Require Multi-Factor Authentication</Label>
@@ -375,14 +392,14 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           type="number"
                           min="6"
                           max="32"
-                          value={settings.security.passwordPolicy.minLength}
+                          value={currentSettings.security.passwordPolicy.minLength}
                           onChange={(e) => updateNestedSetting('security', 'passwordPolicy', 'minLength', parseInt(e.target.value))}
                         />
                       </div>
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="requireUppercase"
-                          checked={settings.security.passwordPolicy.requireUppercase}
+                          checked={currentSettings.security.passwordPolicy.requireUppercase}
                           onCheckedChange={(checked) => updateNestedSetting('security', 'passwordPolicy', 'requireUppercase', checked)}
                         />
                         <Label htmlFor="requireUppercase">Require Uppercase</Label>
@@ -390,7 +407,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="requireLowercase"
-                          checked={settings.security.passwordPolicy.requireLowercase}
+                          checked={currentSettings.security.passwordPolicy.requireLowercase}
                           onCheckedChange={(checked) => updateNestedSetting('security', 'passwordPolicy', 'requireLowercase', checked)}
                         />
                         <Label htmlFor="requireLowercase">Require Lowercase</Label>
@@ -398,7 +415,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="requireNumbers"
-                          checked={settings.security.passwordPolicy.requireNumbers}
+                          checked={currentSettings.security.passwordPolicy.requireNumbers}
                           onCheckedChange={(checked) => updateNestedSetting('security', 'passwordPolicy', 'requireNumbers', checked)}
                         />
                         <Label htmlFor="requireNumbers">Require Numbers</Label>
@@ -406,7 +423,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="requireSpecialChars"
-                          checked={settings.security.passwordPolicy.requireSpecialChars}
+                          checked={currentSettings.security.passwordPolicy.requireSpecialChars}
                           onCheckedChange={(checked) => updateNestedSetting('security', 'passwordPolicy', 'requireSpecialChars', checked)}
                         />
                         <Label htmlFor="requireSpecialChars">Require Special Characters</Label>
@@ -420,31 +437,31 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div className="grid grid-cols-1 gap-3">
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${settings.security.requireMFA ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                          <div className={`w-3 h-3 rounded-full ${currentSettings.security.requireMFA ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                           <span className="text-sm">Multi-Factor Authentication</span>
                         </div>
-                        <Badge variant={settings.security.requireMFA ? "default" : "secondary"}>
-                          {settings.security.requireMFA ? "Enabled" : "Disabled"}
+                        <Badge variant={currentSettings.security.requireMFA ? "default" : "secondary"}>
+                          {currentSettings.security.requireMFA ? "Enabled" : "Disabled"}
                         </Badge>
                       </div>
 
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${settings.security.sessionTimeout <= 30 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                          <div className={`w-3 h-3 rounded-full ${currentSettings.security.sessionTimeout <= 30 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                           <span className="text-sm">Session Timeout</span>
                         </div>
-                        <Badge variant={settings.security.sessionTimeout <= 30 ? "default" : "secondary"}>
-                          {settings.security.sessionTimeout} minutes
+                        <Badge variant={currentSettings.security.sessionTimeout <= 30 ? "default" : "secondary"}>
+                          {currentSettings.security.sessionTimeout} minutes
                         </Badge>
                       </div>
 
                       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                         <div className="flex items-center space-x-2">
-                          <div className={`w-3 h-3 rounded-full ${settings.security.passwordPolicy.minLength >= 8 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
+                          <div className={`w-3 h-3 rounded-full ${currentSettings.security.passwordPolicy.minLength >= 8 ? 'bg-green-500' : 'bg-yellow-500'}`}></div>
                           <span className="text-sm">Password Policy</span>
                         </div>
-                        <Badge variant={settings.security.passwordPolicy.minLength >= 8 ? "default" : "secondary"}>
-                          {settings.security.passwordPolicy.minLength} chars min
+                        <Badge variant={currentSettings.security.passwordPolicy.minLength >= 8 ? "default" : "secondary"}>
+                          {currentSettings.security.passwordPolicy.minLength} chars min
                         </Badge>
                       </div>
                     </div>
@@ -454,7 +471,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                   <div className="space-y-4">
                     <h4 className="font-medium text-sm text-gray-700">Security Recommendations</h4>
                     <div className="space-y-2">
-                      {!settings.security.requireMFA && (
+                      {!currentSettings.security.requireMFA && (
                         <div className="flex items-start space-x-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                           <Shield className="h-4 w-4 text-blue-600 mt-0.5" />
                           <div className="text-sm">
@@ -464,7 +481,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                         </div>
                       )}
 
-                      {settings.security.sessionTimeout > 60 && (
+                      {currentSettings.security.sessionTimeout > 60 && (
                         <div className="flex items-start space-x-2 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
                           <Shield className="h-4 w-4 text-yellow-600 mt-0.5" />
                           <div className="text-sm">
@@ -474,7 +491,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                         </div>
                       )}
 
-                      {!settings.security.passwordPolicy.requireSpecialChars && (
+                      {!currentSettings.security.passwordPolicy.requireSpecialChars && (
                         <div className="flex items-start space-x-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
                           <Shield className="h-4 w-4 text-orange-600 mt-0.5" />
                           <div className="text-sm">
@@ -507,7 +524,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           id="notificationEmail"
                           type="email"
                           placeholder="admin@company.com"
-                          value={settings.notifications.notificationEmail}
+                          value={currentSettings.notifications.notificationEmail}
                           onChange={(e) => updateSetting('notifications', 'notificationEmail', e.target.value)}
                         />
                         <p className="text-xs text-gray-500 mt-1">
@@ -517,7 +534,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="emailNotifications"
-                          checked={settings.notifications.emailNotifications}
+                          checked={currentSettings.notifications.emailNotifications}
                           onCheckedChange={(checked) => updateSetting('notifications', 'emailNotifications', checked)}
                         />
                         <Label htmlFor="emailNotifications">Enable Email Notifications</Label>
@@ -525,7 +542,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="shopSpecificNotifications"
-                          checked={settings.notifications.shopSpecificNotifications}
+                          checked={currentSettings.notifications.shopSpecificNotifications}
                           onCheckedChange={(checked) => updateSetting('notifications', 'shopSpecificNotifications', checked)}
                         />
                         <Label htmlFor="shopSpecificNotifications">Shop-Specific Notifications</Label>
@@ -540,7 +557,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="lowStockAlerts"
-                          checked={settings.notifications.lowStockAlerts}
+                          checked={currentSettings.notifications.lowStockAlerts}
                           onCheckedChange={(checked) => updateSetting('notifications', 'lowStockAlerts', checked)}
                         />
                         <Label htmlFor="lowStockAlerts">Low Stock Alerts</Label>
@@ -548,7 +565,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="criticalAlerts"
-                          checked={settings.notifications.criticalAlerts}
+                          checked={currentSettings.notifications.criticalAlerts}
                           onCheckedChange={(checked) => updateSetting('notifications', 'criticalAlerts', checked)}
                         />
                         <Label htmlFor="criticalAlerts">Critical Alerts</Label>
@@ -556,7 +573,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="salesReports"
-                          checked={settings.notifications.salesReports}
+                          checked={currentSettings.notifications.salesReports}
                           onCheckedChange={(checked) => updateSetting('notifications', 'salesReports', checked)}
                         />
                         <Label htmlFor="salesReports">Sales Reports</Label>
@@ -564,7 +581,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="dailyReports"
-                          checked={settings.notifications.dailyReports}
+                          checked={currentSettings.notifications.dailyReports}
                           onCheckedChange={(checked) => updateSetting('notifications', 'dailyReports', checked)}
                         />
                         <Label htmlFor="dailyReports">Daily Reports</Label>
@@ -572,7 +589,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="weeklyReports"
-                          checked={settings.notifications.weeklyReports}
+                          checked={currentSettings.notifications.weeklyReports}
                           onCheckedChange={(checked) => updateSetting('notifications', 'weeklyReports', checked)}
                         />
                         <Label htmlFor="weeklyReports">Weekly Reports</Label>
@@ -580,7 +597,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="monthlyReports"
-                          checked={settings.notifications.monthlyReports}
+                          checked={currentSettings.notifications.monthlyReports}
                           onCheckedChange={(checked) => updateSetting('notifications', 'monthlyReports', checked)}
                         />
                         <Label htmlFor="monthlyReports">Monthly Reports</Label>
@@ -595,7 +612,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="smsNotifications"
-                          checked={settings.notifications.smsNotifications}
+                          checked={currentSettings.notifications.smsNotifications}
                           onCheckedChange={(checked) => updateSetting('notifications', 'smsNotifications', checked)}
                         />
                         <Label htmlFor="smsNotifications">SMS Notifications</Label>
@@ -603,7 +620,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <div className="flex items-center space-x-2">
                         <Switch
                           id="pushNotifications"
-                          checked={settings.notifications.pushNotifications}
+                          checked={currentSettings.notifications.pushNotifications}
                           onCheckedChange={(checked) => updateSetting('notifications', 'pushNotifications', checked)}
                         />
                         <Label htmlFor="pushNotifications">Push Notifications</Label>
@@ -625,7 +642,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                               'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
                             },
                             body: JSON.stringify({
-                              email: settings.notifications.notificationEmail,
+                              email: currentSettings.notifications.notificationEmail,
                               shopName: 'Test Shop'
                             })
                           });
@@ -650,7 +667,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                           });
                         }
                       }}
-                      disabled={!settings.notifications.emailNotifications || !settings.notifications.notificationEmail}
+                      disabled={!currentSettings.notifications.emailNotifications || !currentSettings.notifications.notificationEmail}
                     >
                       Send Test Notification
                     </Button>
@@ -671,7 +688,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div>
                       <Label htmlFor="theme">Theme</Label>
                       <Select
-                        value={settings.appearance.theme}
+                        value={currentSettings.appearance.theme}
                         onValueChange={(value) => updateSetting('appearance', 'theme', value)}
                       >
                         <SelectTrigger>
@@ -687,7 +704,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div className="flex items-center space-x-2">
                       <Switch
                         id="sidebarCollapsed"
-                        checked={settings.appearance.sidebarCollapsed}
+                        checked={currentSettings.appearance.sidebarCollapsed}
                         onCheckedChange={(checked) => updateSetting('appearance', 'sidebarCollapsed', checked)}
                       />
                       <Label htmlFor="sidebarCollapsed">Collapsed Sidebar</Label>
@@ -695,7 +712,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div className="flex items-center space-x-2">
                       <Switch
                         id="compactMode"
-                        checked={settings.appearance.compactMode}
+                        checked={currentSettings.appearance.compactMode}
                         onCheckedChange={(checked) => updateSetting('appearance', 'compactMode', checked)}
                       />
                       <Label htmlFor="compactMode">Compact Mode</Label>
@@ -717,7 +734,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                     <div>
                       <Label htmlFor="backupFrequency">Backup Frequency</Label>
                       <Select
-                        value={settings.database.backupFrequency}
+                        value={currentSettings.database.backupFrequency}
                         onValueChange={(value) => updateSetting('database', 'backupFrequency', value)}
                       >
                         <SelectTrigger>
@@ -736,14 +753,14 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       <Input
                         id="retentionDays"
                         type="number"
-                        value={settings.database.retentionDays}
+                        value={currentSettings.database.retentionDays}
                         onChange={(e) => updateSetting('database', 'retentionDays', parseInt(e.target.value))}
                       />
                     </div>
                     <div className="flex items-center space-x-2">
                       <Switch
                         id="autoBackup"
-                        checked={settings.database.autoBackup}
+                        checked={currentSettings.database.autoBackup}
                         onCheckedChange={(checked) => updateSetting('database', 'autoBackup', checked)}
                       />
                       <Label htmlFor="autoBackup">Automatic Backup</Label>

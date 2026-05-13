@@ -12,45 +12,45 @@ export interface PlanLimits {
 export const PLAN_LIMITS: Record<string, PlanLimits> = {
   TRIAL_30_DAYS: {
     maxShops: 1,
-    maxUsers: 5,
+    maxUsers: 1,
     maxProducts: 100,
     maxCustomers: 50
   },
   BASIC_MONTHLY: {
-    maxShops: 1,
-    maxUsers: 10,
+    maxShops: 2,
+    maxUsers: 3,
     maxProducts: 500,
     maxCustomers: 200
   },
   BASIC_YEARLY: {
-    maxShops: 1,
-    maxUsers: 10,
+    maxShops: 2,
+    maxUsers: 3,
     maxProducts: 500,
     maxCustomers: 200
   },
   PROFESSIONAL_MONTHLY: {
     maxShops: 5,
-    maxUsers: 25,
+    maxUsers: 10,
     maxProducts: 2000,
     maxCustomers: 1000
   },
   PROFESSIONAL_YEARLY: {
     maxShops: 5,
-    maxUsers: 25,
+    maxUsers: 10,
     maxProducts: 2000,
     maxCustomers: 1000
   },
   ENTERPRISE_MONTHLY: {
-    maxShops: 50,
-    maxUsers: 100,
-    maxProducts: 10000,
-    maxCustomers: 5000
+    maxShops: -1,
+    maxUsers: -1,
+    maxProducts: -1,
+    maxCustomers: -1
   },
   ENTERPRISE_YEARLY: {
-    maxShops: 50,
-    maxUsers: 100,
-    maxProducts: 10000,
-    maxCustomers: 5000
+    maxShops: -1,
+    maxUsers: -1,
+    maxProducts: -1,
+    maxCustomers: -1
   }
 }
 
@@ -83,15 +83,18 @@ export async function canCreateShop(userId: bigint): Promise<{ canCreate: boolea
       })
       
       const limits = PLAN_LIMITS.TRIAL_30_DAYS
+      const limit = limits.maxShops
+      const canCreate = limit === -1 ? true : currentShops < limit
       return {
-        canCreate: currentShops < limits.maxShops,
-        reason: currentShops >= limits.maxShops ? `Trial plan allows maximum ${limits.maxShops} shop(s). You have ${currentShops} shop(s).` : undefined,
+        canCreate,
+        reason: !canCreate ? `Trial plan allows maximum ${limit} shop(s). You have ${currentShops} shop(s).` : undefined,
         currentCount: currentShops,
-        limit: limits.maxShops
+        limit
       }
     }
 
     const limits = PLAN_LIMITS[subscription.plan] || PLAN_LIMITS.TRIAL_30_DAYS
+    const limit = limits.maxShops
     
     const currentShops = await prisma.shop.count({
       where: { 
@@ -100,11 +103,12 @@ export async function canCreateShop(userId: bigint): Promise<{ canCreate: boolea
       }
     })
 
+    const canCreate = limit === -1 ? true : currentShops < limit
     return {
-      canCreate: currentShops < limits.maxShops,
-      reason: currentShops >= limits.maxShops ? `${subscription.plan} plan allows maximum ${limits.maxShops} shop(s). You have ${currentShops} shop(s).` : undefined,
+      canCreate,
+      reason: !canCreate ? `${subscription.plan} plan allows maximum ${limit} shop(s). You have ${currentShops} shop(s).` : undefined,
       currentCount: currentShops,
-      limit: limits.maxShops
+      limit
     }
   } catch (error) {
     console.error('Error checking shop creation limits:', error)
@@ -131,15 +135,18 @@ export async function canCreateUser(userId: bigint, targetRole: string): Promise
       })
       
       const limits = PLAN_LIMITS.TRIAL_30_DAYS
+      const limit = limits.maxUsers
+      const canCreate = limit === -1 ? true : currentUsers < limit
       return {
-        canCreate: currentUsers < limits.maxUsers,
-        reason: currentUsers >= limits.maxUsers ? `Trial plan allows maximum ${limits.maxUsers} users. You have ${currentUsers} users.` : undefined,
+        canCreate,
+        reason: !canCreate ? `Trial plan allows maximum ${limit} users. You have ${currentUsers} users.` : undefined,
         currentCount: currentUsers,
-        limit: limits.maxUsers
+        limit
       }
     }
 
     const limits = PLAN_LIMITS[subscription.plan] || PLAN_LIMITS.TRIAL_30_DAYS
+    const limit = limits.maxUsers
     
     const currentUsers = await prisma.user.count({
       where: { 
@@ -148,11 +155,12 @@ export async function canCreateUser(userId: bigint, targetRole: string): Promise
       }
     })
 
+    const canCreate = limit === -1 ? true : currentUsers < limit
     return {
-      canCreate: currentUsers < limits.maxUsers,
-      reason: currentUsers >= limits.maxUsers ? `${subscription.plan} plan allows maximum ${limits.maxUsers} users. You have ${currentUsers} users.` : undefined,
+      canCreate,
+      reason: !canCreate ? `${subscription.plan} plan allows maximum ${limit} users. You have ${currentUsers} users.` : undefined,
       currentCount: currentUsers,
-      limit: limits.maxUsers
+      limit
     }
   } catch (error) {
     console.error('Error checking user creation limits:', error)
