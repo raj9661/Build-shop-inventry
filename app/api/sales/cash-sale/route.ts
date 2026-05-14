@@ -210,9 +210,11 @@ export async function POST(req: NextRequest) {
             categoryName.includes('chips') ||
             categoryName.includes('brick') ||
             categoryName.includes('aggregate') ||
+            categoryName.includes('ring') ||
             productName.includes('sand') ||
             productName.includes('chips') ||
-            productName.includes('brick');
+            productName.includes('brick') ||
+            productName.includes('ring');
 
           console.log(`Product found: ${product.name}, Category: ${categoryName}, isCement: ${isCement}, isBulkMaterial: ${isBulkMaterial}, Stock: ${currentStock}, Damaged: ${currentDamaged}`);
 
@@ -290,8 +292,22 @@ export async function POST(req: NextRequest) {
               });
             }
           } else if (isBulkMaterial) {
-            // Bricks / chips / sand — do NOT deduct stock (sold regardless of inventory level)
-            console.log(`Skipping stock deduction for bulk material: ${product.name}`);
+            // Bricks / chips / sand — do NOT block sale if out of stock, but MUST deduct stock
+            const isTrueBulkCft = 
+              categoryName.includes('sand') || 
+              categoryName.includes('chips') || 
+              categoryName.includes('aggregate') || 
+              productName.includes('sand') || 
+              productName.includes('chips');
+              
+            const deductionAmount = isTrueBulkCft ? itemTotalCft : requestedQuantity;
+            const newStockQuantity = currentStock - deductionAmount;
+            
+            console.log(`Updating stock for bulk material ${product.name}: ${currentStock} -> ${newStockQuantity} (Deducted ${deductionAmount})`);
+            await tx.product.update({
+              where: { id: product.id },
+              data: { stockQuantity: newStockQuantity }
+            });
           } else {
             // Update stock immediately for other non-cement products
             if (stockType === 'normal') {
