@@ -59,6 +59,10 @@ const nextConfig = {
     }),
   },
 
+  // ── Turbopack ───────────────────────────────────────────────────────────────
+  // Silence Next.js 16 error when using a custom webpack config
+  turbopack: {},
+
   // ── Webpack persistent disk cache ───────────────────────────────────────────
   // Caches compiled modules to .next/cache/webpack between server restarts.
   // After the FIRST compile, subsequent restarts skip re-compiling unchanged
