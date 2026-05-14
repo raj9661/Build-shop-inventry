@@ -1958,9 +1958,9 @@ function AddSalePage() {
                               </div>
 
                               {/* Add to Cart Button */}
-                              <div className="md:col-span-full mt-4 flex justify-end items-center border-t pt-4">
-                                <div className="mr-6 flex flex-col items-end">
-                                  <div className="flex items-center">
+                              <div className="md:col-span-full mt-4 flex flex-col sm:flex-row justify-between sm:justify-end items-center border-t pt-4 gap-4 w-full overflow-hidden">
+                                <div className="flex flex-col items-center sm:items-end w-full sm:w-auto text-center sm:text-right">
+                                  <div className="flex justify-center sm:justify-end items-center">
                                     <span className="text-gray-500 mr-2">{t("Item Total:", "आइटम कुल:")}</span>
                                     <span className="text-xl font-bold text-gray-800">₹{(parseQuantity(currentRegularItem.quantity.toString()) * (currentRegularItem.price || 0)).toFixed(2)}</span>
                                   </div>
@@ -2017,15 +2017,15 @@ function AddSalePage() {
                                     const estProfit = sellTotal - costTotal;
 
                                     return costTotal > 0 ? (
-                                      <div className={`text-sm font-medium ${estProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                                      <div className={`text-sm font-medium mt-1 ${estProfit >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
                                         {estProfit >= 0 ? 'Est. Profit:' : 'Est. Loss:'} ₹{Math.abs(estProfit).toFixed(2)}
                                       </div>
                                     ) : null;
                                   })()}
                                 </div>
-                                <Button type="button" onClick={handleAddRegularItemToCart} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                                  <PlusCircle className="h-4 w-4 mr-2" />
-                                  {t("Add to Cart", "कार्ट में जोड़ें")}
+                                <Button type="button" onClick={handleAddRegularItemToCart} className="bg-indigo-600 hover:bg-indigo-700 text-white w-full sm:w-auto">
+                                  <PlusCircle className="h-4 w-4 mr-2 flex-shrink-0" />
+                                  <span className="truncate">{t("Add to Cart", "कार्ट में जोड़ें")}</span>
                                 </Button>
                               </div>
                             </div>
