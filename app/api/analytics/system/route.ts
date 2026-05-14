@@ -321,6 +321,7 @@ export async function GET(req: NextRequest) {
       prisma.sale.count({
         where: {
           isActive: true,
+          paymentStatus: { not: 'CANCELLED' },
           saleDate: {
             gte: startDate,
             lte: endDate
@@ -333,6 +334,7 @@ export async function GET(req: NextRequest) {
       prisma.sale.aggregate({
         where: {
           isActive: true,
+          paymentStatus: { not: 'CANCELLED' },
           saleDate: {
             gte: startDate,
             lte: endDate
@@ -474,6 +476,7 @@ export async function GET(req: NextRequest) {
       prisma.tmtSale.count({
         where: {
           isActive: true,
+          status: { not: 'CANCELLED' },
           saleDate: {
             gte: startDate,
             lte: endDate
@@ -486,6 +489,7 @@ export async function GET(req: NextRequest) {
       prisma.tmtSale.aggregate({
         where: {
           isActive: true,
+          status: { not: 'CANCELLED' },
           saleDate: {
             gte: startDate,
             lte: endDate

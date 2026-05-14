@@ -485,6 +485,9 @@ export async function POST(req: NextRequest) {
         const categoryName = (productInfo as any)?.category?.name?.toLowerCase()?.trim() || '';
         const isCement = categoryName.includes('cement');
         const isLoose = item.unit === 'kg' || item.unitName === 'kg' || item.stockType === 'damaged';
+        // Only Sand and Chips (true bulk CFT materials) use CFT-based stock.
+        // Bricks, TMT, and all other piece-count products use raw quantity.
+        const isTrueBulkCft = categoryName.includes('sand') || categoryName.includes('chips') || categoryName.includes('aggregate');
 
         // Update product inventory - ONLY IF NOT DIRECT SALE
         if (!itemIsDirectSale && productInfo) {
@@ -499,8 +502,8 @@ export async function POST(req: NextRequest) {
                 }
               });
             } else if (isCement) {
-              // Cement sold in bags → deduct raw bag quantity (NOT itemTotalCft)
-              // stockQuantity stores number of bags, conversionCft does NOT apply here
+              // Cement sold in bags → deduct raw bag quantity (NOT CFT)
+              // stockQuantity stores number of bags; conversionCft does NOT apply here
               await tx.product.update({
                 where: { id: finalProductId },
                 data: {
@@ -509,8 +512,8 @@ export async function POST(req: NextRequest) {
                   }
                 }
               });
-            } else {
-              // All other products (Sand, Stone, Bricks etc.) → deduct by CFT volume
+            } else if (isTrueBulkCft) {
+              // Sand / Chips / Aggregates — stock stored in CFT, deduct CFT volume
               await tx.product.update({
                 where: { id: finalProductId },
                 data: {
@@ -519,10 +522,27 @@ export async function POST(req: NextRequest) {
                   }
                 }
               });
+            } else {
+              // Bricks, TMT (via regular sale), and all other piece-count products
+              // — stock stored as piece count, deduct raw quantity only
+              await tx.product.update({
+                where: { id: finalProductId },
+                data: {
+                  stockQuantity: {
+                    decrement: Number(item.quantity)
+                  }
+                }
+              });
             }
           }
 
         // Create Stock Ledger entry
+        // cftQuantity: cement → bag count; true bulk (sand/chips) → CFT volume; others → raw quantity
+        const ledgerCftQty = (isCement && !isLoose)
+          ? Number(item.quantity)
+          : isTrueBulkCft
+            ? itemTotalCft
+            : Number(item.quantity);
         await tx.stockLedger.create({
           data: {
             productId: finalProductId,
@@ -530,7 +550,7 @@ export async function POST(req: NextRequest) {
             transactionType: 'SALE',
             unitName: item.unitName || item.unit || 'unit',
             unitQuantity: Number(item.quantity),
-            cftQuantity: (isCement && !isLoose) ? Number(item.quantity) : itemTotalCft,
+            cftQuantity: ledgerCftQty,
             referenceId: createdSale.id,
             notes: notes || `Sale to ${customerInfo?.name || customerId || 'Customer'}`,
           }
@@ -694,6 +714,7 @@ export async function PATCH(req: NextRequest) {
       // Preserve existing notes if no new notes provided (important for partial payments)
       const updateData: any = {
         paymentStatus,
+        isActive: action === 'cancel' ? false : true,
         updatedAt: new Date(),
       };
       // Only update notes if provided (for cancel action), otherwise preserve existing notes
@@ -729,6 +750,7 @@ export async function PATCH(req: NextRequest) {
             paymentStatus: tmtPaymentStatus,
             // Update status based on action
             status: action === 'complete' ? 'COMPLETED' : (action === 'cancel' ? 'CANCELLED' : currentTmtSale.status),
+            isActive: action === 'cancel' ? false : true,
             updatedAt: new Date(),
             notes: notes || currentTmtSale.notes
           },
@@ -786,9 +808,11 @@ export async function PATCH(req: NextRequest) {
           if (product) {
             const itemConvFactor = (item as any).conversionCft ? parseFloat((item as any).conversionCft.toString()) : 1;
             const itemTotalCft = Number(item.quantity) * itemConvFactor;
-            // Cement detected by category name (products are "Konark", "Nuvoco PSC" etc., not "cement")
-            const isCement = (product as any).category?.name?.toLowerCase()?.includes('cement') ?? false;
+            const catName = (product as any).category?.name?.toLowerCase()?.trim() || '';
+            const isCement = catName.includes('cement');
             const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg' || (item as any).stockType === 'damaged';
+            // Only Sand/Chips/Aggregates are true CFT-based bulk; Bricks restore by piece count
+            const isTrueBulkCft = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
             if (isCement && isLoose) {
               // Restore loose cement kg → damagedQuantity
               const newDamagedQuantity = Number(product.damagedQuantity || 0) + Number(item.quantity);
@@ -802,11 +826,17 @@ export async function PATCH(req: NextRequest) {
                 where: { id: product.id },
                 data: { stockQuantity: { increment: Number(item.quantity) }, updatedAt: new Date() }
               });
-            } else {
-              // All other products restore by CFT volume
+            } else if (isTrueBulkCft) {
+              // Sand / Chips / Aggregates — restore CFT volume
               await tx.product.update({
                 where: { id: product.id },
                 data: { stockQuantity: { increment: itemTotalCft }, updatedAt: new Date() }
+              });
+            } else {
+              // Bricks and all other piece-count products — restore raw quantity
+              await tx.product.update({
+                where: { id: product.id },
+                data: { stockQuantity: { increment: Number(item.quantity) }, updatedAt: new Date() }
               });
             }
           }
@@ -906,19 +936,24 @@ export async function PATCH(req: NextRequest) {
               const itemConvFactor = (item as any).conversionCft ? parseFloat((item as any).conversionCft.toString()) : 1;
               const itemTotalCft = Number(item.quantity) * itemConvFactor;
 
+              const catName = (product as any).category?.name?.toLowerCase()?.trim() || '';
+              const isCement = catName.includes('cement');
+              const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg' || (item as any).stockType === 'damaged';
+              // Only Sand/Chips/Aggregates are true CFT-based bulk; Bricks restore by piece count
+              const isTrueBulkCft = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+
               console.log('🔍 [Sales API] Restoring stock for item:', {
                 productId: product.id,
                 productName: product.name,
+                category: catName,
                 unitQuantity: item.quantity,
                 conversionCft: itemConvFactor,
                 totalCft: itemTotalCft,
+                isCement,
+                isTrueBulkCft,
                 currentStock: product.stockQuantity
               });
 
-              // Regular sales: handle cement differently - detect by CATEGORY name not product name
-              const isCement = (product as any).category?.name?.toLowerCase()?.includes('cement') ?? false;
-              const isLoose = (item as any).unit === 'kg' || (item as any).unitName === 'kg' || (item as any).stockType === 'damaged';
-              
               if (isCement && isLoose) {
                 // Restore damagedQuantity for loose cement (kg)
                 const newDamagedQuantity = Number(product.damagedQuantity || 0) + Number(item.quantity);
@@ -947,8 +982,8 @@ export async function PATCH(req: NextRequest) {
                     notes: `Sale #${resultSale.id} Cancellation - Cement Bags Restored`,
                   }
                 });
-              } else {
-                // Restore stockQuantity in CFT for all other products
+              } else if (isTrueBulkCft) {
+                // Sand / Chips / Aggregates — restore CFT volume
                 await tx.product.update({
                   where: { id: product.id },
                   data: {
@@ -956,7 +991,6 @@ export async function PATCH(req: NextRequest) {
                     updatedAt: new Date(),
                   }
                 });
-                // Create Stock Ledger entry for restoration
                 await tx.stockLedger.create({
                   data: {
                     productId: product.id,
@@ -965,6 +999,27 @@ export async function PATCH(req: NextRequest) {
                     unitName: (item as any).unitName || (item as any).unit || 'unit',
                     unitQuantity: Number(item.quantity),
                     cftQuantity: itemTotalCft,
+                    referenceId: resultSale.id,
+                    notes: `Sale #${resultSale.id} Cancellation - Bulk CFT Stock Restored`,
+                  }
+                });
+              } else {
+                // Bricks and all other piece-count products — restore raw quantity
+                await tx.product.update({
+                  where: { id: product.id },
+                  data: {
+                    stockQuantity: { increment: Number(item.quantity) },
+                    updatedAt: new Date(),
+                  }
+                });
+                await tx.stockLedger.create({
+                  data: {
+                    productId: product.id,
+                    shopId: resultSale.shopId,
+                    transactionType: 'ADJUSTMENT',
+                    unitName: (item as any).unitName || (item as any).unit || 'unit',
+                    unitQuantity: Number(item.quantity),
+                    cftQuantity: Number(item.quantity), // piece-count products: cftQty = unitQty
                     referenceId: resultSale.id,
                     notes: `Sale #${resultSale.id} Cancellation - Stock Restored`,
                   }

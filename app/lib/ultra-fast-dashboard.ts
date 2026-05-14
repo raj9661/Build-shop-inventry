@@ -177,8 +177,8 @@ class UltraFastDashboard {
               this.trackPerformance('dashboard_redis_cache', startTime);
               return cachedData;
             }
-          } catch (redisError) {
-            console.warn('⚠️ Redis cache failed, falling back to DB:', redisError);
+          } catch (redisError: any) {
+            console.warn(`⚠️ Redis cache failed, falling back to DB: ${redisError.message || 'Unknown error'}`);
           }
         }
 
@@ -195,8 +195,8 @@ class UltraFastDashboard {
         if (this.redis) {
           try {
             await this.redis.setex(cacheKey, 300, this.serializeBigInt(dashboardData));
-          } catch (e) {
-            // ignore redis set errors
+          } catch (e: any) {
+            // ignore redis set errors silently
           }
         }
 
@@ -253,7 +253,7 @@ class UltraFastDashboard {
           _sum: { finalAmount: true }
         }),
         this.prisma.sale.findMany({
-          where: { shopId: shopId, isActive: true },
+          where: { shopId: shopId },
           select: {
             id: true,
             customer: { select: { name: true, phone: true, address: true } },
@@ -270,7 +270,7 @@ class UltraFastDashboard {
           take: 100
         }),
         this.prisma.tmtSale.findMany({
-          where: { shopId: shopId, isActive: true },
+          where: { shopId: shopId },
           include: {
             items: {
               include: {

@@ -789,7 +789,11 @@ function AddSalePage() {
       return
     }
 
-    const needsConversion = !isDirectSale && currentRegularItem.categoryName && (currentRegularItem.categoryName.toLowerCase().includes("sand") || currentRegularItem.categoryName.toLowerCase().includes("chips") || currentRegularItem.categoryName.toLowerCase().includes("stone") || currentRegularItem.categoryName.toLowerCase().includes("soil")) && currentRegularItem.unit && currentRegularItem.unit !== "cft";
+    const needsConversion = !isDirectSale && currentRegularItem.categoryName &&
+      (currentRegularItem.categoryName.toLowerCase().includes("sand") ||
+        currentRegularItem.categoryName.toLowerCase().includes("chips")) &&
+      currentRegularItem.unit &&
+      currentRegularItem.unit !== "cft";
 
     if (needsConversion && (!currentRegularItem.conversionCft || currentRegularItem.conversionCft <= 0)) {
       toast.error(t("Please enter a valid conversion CFT", "कृपया एक मान्य रूपांतरण सीएफटी दर्ज करें"))
@@ -925,6 +929,9 @@ function AddSalePage() {
           }
         } else if (field === "quantity") {
           const quantityValue = parseQuantity(value.toString());
+          // Sand/Chips: stock stored in CFT — cannot compare to piece/tempo quantity at input time
+          // Ring: inventory managed via TMT inventory system separately
+          // Bricks: piece-count — DO check stock
           const isBypassStockCheck = newItem.categoryName?.toLowerCase()?.includes('sand') ||
             newItem.categoryName?.toLowerCase()?.includes('chips') ||
             newItem.categoryName?.toLowerCase()?.includes('ring');
@@ -933,7 +940,9 @@ function AddSalePage() {
             const product = products.find((p: any) => Number(p.id) === Number(newItem.productId))
             if (product && product.stockQuantity !== null && product.stockQuantity !== undefined) {
               const availableStock = Number(product.stockQuantity) || 0
-              if (quantityValue > availableStock) {
+              // Only block if the unit being sold matches the product's base unit
+              // (e.g. selling 'piece' vs stock in 'piece'; don't block if units differ)
+              if (newItem.unit === product.unit && quantityValue > availableStock) {
                 toast.error(`Insufficient stock! Available: ${availableStock} ${product.unit || ''}. You entered: ${quantityValue}`)
                 return // Don't update quantity if it exceeds stock
               }
@@ -1106,24 +1115,45 @@ function AddSalePage() {
         const itemQty = parseQuantity(item.quantity.toString());
         const rawCost = Number(item.purchasePrice ?? product?.costPrice ?? 0);
         const convFactor = (item.conversionCft && Number(item.conversionCft) > 0) ? Number(item.conversionCft) : null;
-        let itemCost = rawCost;
         const isRing = item.categoryName?.toLowerCase()?.includes('ring');
-        const isBulk = item.categoryName?.toLowerCase()?.includes('sand') || item.categoryName?.toLowerCase()?.includes('chips') || item.categoryName?.toLowerCase()?.includes('stone') || item.categoryName?.toLowerCase()?.includes('soil');
+        // True bulk CFT materials: Sand and Chips only
+        const isBulkCft = item.categoryName?.toLowerCase()?.includes('sand') || item.categoryName?.toLowerCase()?.includes('chips');
+        // Cement: always sold per bag (stockQuantity = bags)
+        const isCementItem = item.categoryName?.toLowerCase()?.includes('cement');
+        // Bricks: always sold per piece (stockQuantity = pieces)
+        const isBricksItem = item.categoryName?.toLowerCase()?.includes('brick');
 
+        let itemCost = rawCost; // default: cost per unit × quantity
+
+        // Compute cost per CFT for bulk items (in case raw cost is per-truck or per-tempo)
         let costPerBaseUnit = rawCost;
         const buyConvFactor = product?.latestConversionCft;
-        if (buyConvFactor && buyConvFactor > 1) {
-          costPerBaseUnit = rawCost / buyConvFactor;
-        } else if (rawCost > 5000) {
-          costPerBaseUnit = rawCost / 400; // Heuristic: large cost implies a truck of ~400 CFT
+        if (!isCementItem && !isBricksItem) {
+          if (buyConvFactor && buyConvFactor > 1) {
+            costPerBaseUnit = rawCost / buyConvFactor;
+          } else if (rawCost > 5000) {
+            costPerBaseUnit = rawCost / 400; // Heuristic: large cost implies a truck of ~400 CFT
+          }
         }
 
         if (isRing && item.unit === 'piece') {
+          // Ring: cost per bundle ÷ bundle size
           const bundleSize = getBundleConfig(item.name || "") || 25;
           itemCost = rawCost / bundleSize;
-        } else if (isBulk && item.unit === 'cft') {
+        } else if (isCementItem) {
+          // Cement: cost per bag — no CFT conversion
+          itemCost = rawCost;
+        } else if (isBricksItem) {
+          // Bricks: cost per piece — no CFT conversion
+          itemCost = rawCost;
+        } else if (isBulkCft && item.unit === 'cft') {
+          // Sand/Chips sold directly in CFT
           itemCost = costPerBaseUnit;
+        } else if (isBulkCft && convFactor) {
+          // Sand/Chips sold in tempo/truck — convert via CFT factor
+          itemCost = convFactor * costPerBaseUnit;
         } else if (convFactor) {
+          // Any other product with a conversion factor
           itemCost = convFactor * costPerBaseUnit;
         }
         return sum + (itemQty * itemCost);
@@ -1219,24 +1249,27 @@ function AddSalePage() {
           return
         }
 
-        // Check stock availability for regular items (SKIP for direct sale)
         if (!isDirectSale && hasRegularItems) {
           for (const item of validItems) {
-            const isBypassStockCheck = item.categoryName?.toLowerCase()?.includes('sand') ||
+            // Sand and Chips: stock is in CFT — bypass piece-count stock check (CFT cannot be compared to pieces)
+            // Rings: oversell is allowed (managed via TMT inventory separately)
+            const isBypassStockCheck =
+              item.categoryName?.toLowerCase()?.includes('sand') ||
               item.categoryName?.toLowerCase()?.includes('chips') ||
               item.categoryName?.toLowerCase()?.includes('ring');
-            if (isBypassStockCheck) continue; // Bypass stock check for Sand, Chips, and Rings
+            if (isBypassStockCheck) continue;
 
             const product = products.find((p: any) => Number(p.id) === Number(item.productId))
             if (product && Number(product.stockQuantity) !== null && Number(product.stockQuantity) !== undefined) {
               const availableStockInBaseUnit = Number(product.stockQuantity) || 0
-              const requestedQty = Number(item.quantity) || 0
+              const requestedQty = parseQuantity(item.quantity.toString()) // use parseQuantity for fraction support
 
               if (availableStockInBaseUnit <= 0) {
                 toast.error(`${product.name} is out of stock! Cannot create sale without Direct Truck Sale.`)
                 return
               }
 
+              // Only block if unit matches product base unit (piece-count products)
               if (item.unit === product.unit && requestedQty > availableStockInBaseUnit) {
                 toast.error(`Insufficient stock for ${product.name}! Available: ${availableStockInBaseUnit} ${product.unit}, Requested: ${requestedQty} ${item.unit}`)
                 return
@@ -1933,21 +1966,38 @@ function AddSalePage() {
                                     let itemCost = rawCost;
                                     const convFactor = (currentRegularItem.conversionCft && Number(currentRegularItem.conversionCft) > 0) ? Number(currentRegularItem.conversionCft) : null;
                                     const isRing = currentRegularItem.categoryName?.toLowerCase()?.includes('ring');
-                                    const isBulk = currentRegularItem.categoryName?.toLowerCase()?.includes('sand') || currentRegularItem.categoryName?.toLowerCase()?.includes('chips') || currentRegularItem.categoryName?.toLowerCase()?.includes('stone') || currentRegularItem.categoryName?.toLowerCase()?.includes('soil');
+                                    // True bulk CFT materials only — Sand and Chips (stock stored in CFT)
+                                    const isBulkCftPreview = currentRegularItem.categoryName?.toLowerCase()?.includes('sand') || currentRegularItem.categoryName?.toLowerCase()?.includes('chips');
+                                    // Cement: sold per bag — cost per bag regardless of conversionCft
+                                    const isCementPreview = currentRegularItem.categoryName?.toLowerCase()?.includes('cement');
+                                    // Bricks: sold per piece — cost per piece regardless of conversionCft
+                                    const isBricksPreview = currentRegularItem.categoryName?.toLowerCase()?.includes('brick');
 
                                     let costPerBaseUnit = rawCost;
                                     const buyConvFactor = product?.latestConversionCft;
-                                    if (buyConvFactor && buyConvFactor > 1) {
-                                      costPerBaseUnit = rawCost / buyConvFactor;
-                                    } else if (rawCost > 5000) {
-                                      costPerBaseUnit = rawCost / 400;
+                                    // Only compute CFT-based cost for true bulk items (not Cement, not Bricks)
+                                    if (!isCementPreview && !isBricksPreview) {
+                                      if (buyConvFactor && buyConvFactor > 1) {
+                                        costPerBaseUnit = rawCost / buyConvFactor;
+                                      } else if (rawCost > 5000) {
+                                        costPerBaseUnit = rawCost / 400;
+                                      }
                                     }
 
                                     if (isRing && currentRegularItem.unit === 'piece') {
                                       const bundleSize = getBundleConfig(currentRegularItem.name || "") || 25;
                                       itemCost = rawCost / bundleSize;
-                                    } else if (isBulk && currentRegularItem.unit === 'cft') {
+                                    } else if (isCementPreview) {
+                                      // Cement: cost per bag × quantity (no CFT factor)
+                                      itemCost = rawCost;
+                                    } else if (isBricksPreview) {
+                                      // Bricks: cost per piece × quantity (no CFT factor)
+                                      itemCost = rawCost;
+                                    } else if (isBulkCftPreview && currentRegularItem.unit === 'cft') {
                                       itemCost = costPerBaseUnit;
+                                    } else if (isBulkCftPreview && convFactor) {
+                                      // Sand/Chips via tempo/truck — multiply by CFT conversion
+                                      itemCost = convFactor * costPerBaseUnit;
                                     } else if (convFactor) {
                                       itemCost = convFactor * costPerBaseUnit;
                                     }

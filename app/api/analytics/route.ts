@@ -76,7 +76,6 @@ export async function GET(req: NextRequest) {
     const summarySales = await prisma.sale.findMany({
       where: {
         ...whereClause,
-        isActive: true,
         saleDate: { gte: summaryStart, lte: summaryEnd }
       }
     });
@@ -107,7 +106,6 @@ export async function GET(req: NextRequest) {
     const historySales = await prisma.sale.findMany({
       where: {
         ...whereClause,
-        isActive: true,
         saleDate: { gte: historyStart, lte: historyEnd }
       },
       include: {
@@ -132,6 +130,10 @@ export async function GET(req: NextRequest) {
     };
 
     const amounts = summarySales.map((sale) => {
+      if (!sale.isActive || sale.paymentStatus === 'CANCELLED') {
+        return { total: 0, paid: 0, due: 0 };
+      }
+
       const total = parseDecimal(sale.finalAmount);
       let paid = 0;
       let due = 0;
@@ -152,7 +154,8 @@ export async function GET(req: NextRequest) {
       return { total, paid, due };
     });
     
-    const totalSales = summarySales.length;
+    const activeSummarySales = summarySales.filter(s => s.isActive && s.paymentStatus !== 'CANCELLED');
+    const totalSales = activeSummarySales.length;
     const totalAmount = amounts.reduce((s, a) => s + a.total, 0);
     const totalPaid = amounts.reduce((s, a) => s + a.paid, 0);
     const totalDue = amounts.reduce((s, a) => s + a.due, 0);
@@ -169,6 +172,8 @@ export async function GET(req: NextRequest) {
     };
 
     summarySales.forEach((sale) => {
+      if (!sale.isActive || sale.paymentStatus === 'CANCELLED') return;
+
       const total = parseDecimal(sale.finalAmount);
       let method = (sale.paymentMethod || 'CASH').toString().toLowerCase();
       
