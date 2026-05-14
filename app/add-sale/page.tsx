@@ -1125,15 +1125,21 @@ function AddSalePage() {
 
         let itemCost = rawCost; // default: cost per unit × quantity
 
-        // Compute cost per CFT for bulk items (in case raw cost is per-truck or per-tempo)
+        // Compute cost per CFT for bulk items (rawCost may be per-truck, per-tempo, or per-CFT)
         let costPerBaseUnit = rawCost;
-        const buyConvFactor = product?.latestConversionCft;
+        const buyConvFactor = product?.latestConversionCft; // CFT per purchase unit (null = unknown)
         if (!isCementItem && !isBricksItem) {
-          if (buyConvFactor && buyConvFactor > 1) {
+          if (buyConvFactor && buyConvFactor > 1 && buyConvFactor !== convFactor) {
+            // Purchase unit differs from sale unit — normalize to per-CFT
             costPerBaseUnit = rawCost / buyConvFactor;
-          } else if (rawCost > 5000) {
-            costPerBaseUnit = rawCost / 400; // Heuristic: large cost implies a truck of ~400 CFT
+          } else if (!buyConvFactor && rawCost > 5000) {
+            // Unknown purchase unit but cost looks like a full-truck price — divide by typical truck CFT
+            costPerBaseUnit = rawCost / 400;
+          } else if (!buyConvFactor) {
+            // rawCost is already per-CFT (or per sale unit) — use as-is
+            costPerBaseUnit = rawCost;
           }
+          // If buyConvFactor === convFactor: rawCost IS the per-unit cost already (no conversion needed)
         }
 
         if (isRing && item.unit === 'piece') {
@@ -1974,14 +1980,19 @@ function AddSalePage() {
                                     const isBricksPreview = currentRegularItem.categoryName?.toLowerCase()?.includes('brick');
 
                                     let costPerBaseUnit = rawCost;
-                                    const buyConvFactor = product?.latestConversionCft;
+                                    const buyConvFactor = product?.latestConversionCft; // null = unknown
                                     // Only compute CFT-based cost for true bulk items (not Cement, not Bricks)
                                     if (!isCementPreview && !isBricksPreview) {
-                                      if (buyConvFactor && buyConvFactor > 1) {
+                                      if (buyConvFactor && buyConvFactor > 1 && buyConvFactor !== convFactor) {
+                                        // Purchase unit differs from sale unit — normalize to per-CFT
                                         costPerBaseUnit = rawCost / buyConvFactor;
-                                      } else if (rawCost > 5000) {
+                                      } else if (!buyConvFactor && rawCost > 5000) {
+                                        // Unknown purchase unit, cost looks like full-truck price
                                         costPerBaseUnit = rawCost / 400;
+                                      } else if (!buyConvFactor) {
+                                        costPerBaseUnit = rawCost; // already per-CFT or per-unit
                                       }
+                                      // If buyConvFactor === convFactor: rawCost IS the per-unit cost already
                                     }
 
                                     if (isRing && currentRegularItem.unit === 'piece') {

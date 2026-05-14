@@ -162,7 +162,7 @@ export async function GET(req: NextRequest) {
         ...product,
         dailyRate,
         latestCostPrice,          // ← new: frontend should prefer this over product.price
-        latestConversionCft: latestStockEntry?.conversionCft ? Number(latestStockEntry.conversionCft) : 1,
+        latestConversionCft: latestStockEntry?.conversionCft ? Number(latestStockEntry.conversionCft) : null,
       };
     });
 
