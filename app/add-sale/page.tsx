@@ -1581,11 +1581,11 @@ function AddSalePage() {
                     <RadioGroup value={customerType} onValueChange={(value) => setCustomerType(value as "existing" | "new")}>
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="existing" id="existing" />
-                        <Label htmlFor="existing">{t("Existing Customer", "मौजूदा ग्राहक")}</Label>
+                        <Label htmlFor="existing" className="cursor-pointer flex-1 py-2 text-base">{t("Existing Customer", "मौजूदा ग्राहक")}</Label>
                       </div>
                       <div className="flex items-center space-x-2">
                         <RadioGroupItem value="new" id="new" />
-                        <Label htmlFor="new">{t("New Customer", "नया ग्राहक")}</Label>
+                        <Label htmlFor="new" className="cursor-pointer flex-1 py-2 text-base">{t("New Customer", "नया ग्राहक")}</Label>
                       </div>
                     </RadioGroup>
 
@@ -2173,19 +2173,19 @@ function AddSalePage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="cash" id="cash" />
-                            <Label htmlFor="cash">{t("Cash", "कैश")}</Label>
+                            <Label htmlFor="cash" className="cursor-pointer flex-1 py-2">{t("Cash", "कैश")}</Label>
                           </div>
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="online" id="online" />
-                            <Label htmlFor="online">{t("Online/Card", "ऑनलाइन/कार्ड")}</Label>
+                            <Label htmlFor="online" className="cursor-pointer flex-1 py-2">{t("Online/Card", "ऑनलाइन/कार्ड")}</Label>
                           </div>
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="loan" id="loan" />
-                            <Label htmlFor="loan">{t("Loan/Credit", "उधार/क्रेडिट")}</Label>
+                            <Label htmlFor="loan" className="cursor-pointer flex-1 py-2">{t("Loan/Credit", "उधार/क्रेडिट")}</Label>
                           </div>
                           <div className="flex items-center space-x-2">
                             <RadioGroupItem value="partial" id="partial" />
-                            <Label htmlFor="partial">{t("Partial", "आंशिक")}</Label>
+                            <Label htmlFor="partial" className="cursor-pointer flex-1 py-2">{t("Partial", "आंशिक")}</Label>
                           </div>
                         </div>
                       </RadioGroup>
@@ -2214,23 +2214,23 @@ function AddSalePage() {
                               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
                                 <div className="flex items-center space-x-2">
                                   <RadioGroupItem value="cash" id="partial-cash" />
-                                  <Label htmlFor="partial-cash">{t("Cash", "कैश")}</Label>
+                                  <Label htmlFor="partial-cash" className="cursor-pointer flex-1 py-2">{t("Cash", "कैश")}</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <RadioGroupItem value="online" id="partial-online" />
-                                  <Label htmlFor="partial-online">{t("Online/Card", "ऑनलाइन/कार्ड")}</Label>
+                                  <Label htmlFor="partial-online" className="cursor-pointer flex-1 py-2">{t("Online/Card", "ऑनलाइन/कार्ड")}</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <RadioGroupItem value="upi" id="partial-upi" />
-                                  <Label htmlFor="partial-upi">{t("UPI", "यूपीआई")}</Label>
+                                  <Label htmlFor="partial-upi" className="cursor-pointer flex-1 py-2">{t("UPI", "यूपीआई")}</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <RadioGroupItem value="cheque" id="partial-cheque" />
-                                  <Label htmlFor="partial-cheque">{t("Cheque", "चेक")}</Label>
+                                  <Label htmlFor="partial-cheque" className="cursor-pointer flex-1 py-2">{t("Cheque", "चेक")}</Label>
                                 </div>
                                 <div className="flex items-center space-x-2">
                                   <RadioGroupItem value="bank_transfer" id="partial-bank" />
-                                  <Label htmlFor="partial-bank">{t("Bank Transfer", "बैंक ट्रांसफर")}</Label>
+                                  <Label htmlFor="partial-bank" className="cursor-pointer flex-1 py-2">{t("Bank Transfer", "बैंक ट्रांसफर")}</Label>
                                 </div>
                               </div>
                             </RadioGroup>
@@ -2479,7 +2479,12 @@ function AddSalePage() {
 
           {/* Bill Modal */}
           {showBillModal && (
-            <Dialog open={showBillModal} onOpenChange={setShowBillModal}>
+            <Dialog open={showBillModal} onOpenChange={(open) => {
+              if (!open) {
+                setShowBillModal(false);
+                resetForm();
+              }
+            }}>
               <DialogContent>
                 {!billType ? (
                   <div className="space-y-4">

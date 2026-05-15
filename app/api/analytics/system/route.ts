@@ -903,8 +903,9 @@ function serializeBigInt(obj: any): string {
       const productCost = Number(item.product?.costPrice || 0);
       const saleCft = Number(item.conversionCft || 0);
       const saleQty = Number(item.quantity || 0);
+      const isBulkUnit = item.unitName && ['cft', 'tempo', 'tractor', 'truck', 'highwa', 'dumper'].includes(item.unitName.toLowerCase());
 
-      if (saleCft > 0) {
+      if (saleCft > 0 && isBulkUnit) {
         // Sold in fractional/bulk units (e.g. tempo = 21 CFT, highwa = 400 CFT)
         // We need the cost per 1 CFT
         const productId = Number(item.productId);
