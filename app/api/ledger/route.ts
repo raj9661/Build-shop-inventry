@@ -1175,7 +1175,7 @@ export async function POST(req: NextRequest) {
     // Determine if it's a debit or credit to calculate running balance
     const isDebit = type === 'debit';
     const amountVal = parseFloat(amount);
-    
+
     // We update the Customer's balance atomically while creating the ledger entry
     // A nested update means we only do 1 round trip instead of downloading all entries
     const customerUpdate = await prisma.customer.update({

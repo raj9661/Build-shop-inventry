@@ -933,6 +933,48 @@ export async function PATCH(req: NextRequest) {
           for (const item of currentSale.items) {
             const product = item.product;
             if (product) {
+              // Check if there is an active auto-created StockEntry for this sale item (Direct Truck Sale)
+              const directStockEntry = await tx.stockEntry.findFirst({
+                where: {
+                  productId: item.productId,
+                  notes: `Auto-created from Direct Sale #${currentSale.id}`,
+                  isActive: true
+                }
+              });
+
+              if (directStockEntry) {
+                console.log('🔍 [Sales API] Direct sale item cancelled - deactivating stock entry and updating supplier balance instead of restocking:', {
+                  productId: item.productId,
+                  stockEntryId: directStockEntry.id,
+                  totalAmount: directStockEntry.totalAmount
+                });
+
+                // Deactivate/Cancel the StockEntry
+                await tx.stockEntry.update({
+                  where: { id: directStockEntry.id },
+                  data: {
+                    isActive: false,
+                    paymentStatus: 'CANCELLED',
+                    notes: directStockEntry.notes ? `${directStockEntry.notes} (Cancelled)` : 'Auto-created from Direct Sale (Cancelled)'
+                  }
+                });
+
+                // Deduct the supplier outstanding balance
+                if (directStockEntry.supplierId) {
+                  await tx.supplier.update({
+                    where: { id: directStockEntry.supplierId },
+                    data: {
+                      outstandingPayment: {
+                        decrement: Number(directStockEntry.totalAmount)
+                      }
+                    }
+                  });
+                }
+                
+                // Skip physical restocking for direct sales
+                continue;
+              }
+
               const itemConvFactor = (item as any).conversionCft ? parseFloat((item as any).conversionCft.toString()) : 1;
               const itemTotalCft = Number(item.quantity) * itemConvFactor;
 

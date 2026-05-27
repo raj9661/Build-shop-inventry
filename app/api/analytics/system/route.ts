@@ -879,20 +879,60 @@ function serializeBigInt(obj: any): string {
     const productIds = Array.from(new Set(saleItems.map(item => Number(item.productId))));
     const latestStockEntries = await prisma.stockEntry.findMany({
       where: {
-        productId: { in: productIds },
-        conversionCft: { not: null }
+        productId: { in: productIds }
       },
       orderBy: { entryDate: 'desc' },
-      select: { productId: true, unitPrice: true, conversionCft: true }
+      select: { productId: true, unitPrice: true, conversionCft: true, unitName: true }
     });
+
+    // Fetch all stock entries that were auto-created from direct sales to use their exact purchase price as cost
+    const directSaleStockEntries = await prisma.stockEntry.findMany({
+      where: {
+        notes: {
+          startsWith: 'Auto-created from Direct Sale #'
+        },
+        isActive: true
+      },
+      select: {
+        productId: true,
+        unitPrice: true,
+        notes: true
+      }
+    });
+
+    const directSaleCostMap = new Map();
+    for (const entry of directSaleStockEntries) {
+      if (entry.notes) {
+        const match = entry.notes.match(/Auto-created from Direct Sale #(\d+)/);
+        if (match) {
+          const saleId = match[1];
+          const key = `${saleId}_${entry.productId}`;
+          directSaleCostMap.set(key, Number(entry.unitPrice));
+        }
+      }
+    }
 
     // Map to store calculated true cost per base unit (e.g. per CFT)
     const trueCostPriceMap = new Map();
+    // Map to store latest unit price for specific unit names
+    const unitCostPriceMap = new Map();
+
     for (const entry of latestStockEntries) {
-      if (!trueCostPriceMap.has(Number(entry.productId))) {
+      const productId = Number(entry.productId);
+      
+      // 1. Build trueCostPriceMap for CFT conversions (if conversionCft is set)
+      if (entry.conversionCft !== null && !trueCostPriceMap.has(productId)) {
         const cft = Number(entry.conversionCft || 1);
         if (cft > 0) {
-          trueCostPriceMap.set(Number(entry.productId), Number(entry.unitPrice) / cft);
+          trueCostPriceMap.set(productId, Number(entry.unitPrice) / cft);
+        }
+      }
+
+      // 2. Build unitCostPriceMap for exact unit name matches
+      if (entry.unitName) {
+        const unitKey = `${productId}_${entry.unitName.toLowerCase().trim()}`;
+        if (!unitCostPriceMap.has(unitKey)) {
+          unitCostPriceMap.set(unitKey, Number(entry.unitPrice));
         }
       }
     }
@@ -903,9 +943,21 @@ function serializeBigInt(obj: any): string {
       const productCost = Number(item.product?.costPrice || 0);
       const saleCft = Number(item.conversionCft || 0);
       const saleQty = Number(item.quantity || 0);
-      const isBulkUnit = item.unitName && ['cft', 'tempo', 'tractor', 'truck', 'highwa', 'dumper'].includes(item.unitName.toLowerCase());
+      const isBulkUnit = item.unitName && [
+        'cft', 'tempo', 'tractor', 'truck', 'highwa', 'dumper', 
+        '407', 'chota_haathi', 'small_hiwa', 'big_hiwa'
+      ].includes(item.unitName.toLowerCase());
 
-      if (saleCft > 0 && isBulkUnit) {
+      const unitKey = item.unitName ? `${item.productId}_${item.unitName.toLowerCase().trim()}` : '';
+      const directKey = `${item.saleId.toString()}_${item.productId.toString()}`;
+
+      if (directSaleCostMap.has(directKey)) {
+        // Direct sale: use the purchase price from the auto-created StockEntry directly
+        itemCogs = saleQty * directSaleCostMap.get(directKey);
+      } else if (unitKey && unitCostPriceMap.has(unitKey)) {
+        // If we have a stock entry with the exact same unit, use that cost price directly
+        itemCogs = saleQty * unitCostPriceMap.get(unitKey);
+      } else if (saleCft > 0 && isBulkUnit) {
         // Sold in fractional/bulk units (e.g. tempo = 21 CFT, highwa = 400 CFT)
         // We need the cost per 1 CFT
         const productId = Number(item.productId);
