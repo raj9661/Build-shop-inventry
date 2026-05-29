@@ -2,25 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-async function writeAuditLog(tx: any, {
-  adminId, action, tableName, recordId, beforeData, afterData, reason, shopId
-}: {
-  adminId: bigint; action: string; tableName: string; recordId: bigint;
-  beforeData: object; afterData?: object | null; reason?: string; shopId: bigint;
-}) {
-  await tx.adminAuditLog.create({
-    data: {
-      adminId,
-      action,
-      tableName,
-      recordId,
-      beforeData: JSON.stringify(beforeData, (_, v) => typeof v === 'bigint' ? v.toString() : v),
-      afterData: afterData ? JSON.stringify(afterData, (_, v) => typeof v === 'bigint' ? v.toString() : v) : null,
-      reason: reason || null,
-      shopId,
-    }
-  });
-}
+import { writeAuditLog } from '../../_auditLogHelper';
+
 
 // PATCH /api/admin/supplier-payments/[id]
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

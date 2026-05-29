@@ -555,8 +555,8 @@ export async function GET(req: NextRequest) {
     const seenSaleIds = new Set<string>();
 
     const entriesForCompletedSales = entriesWithSaleId.filter(entry => {
-      // Include loan_clearing entries (payments)
-      if (entry.type === 'loan_clearing') return true;
+      // Include loan_clearing or item_return entries (payments/credits)
+      if (entry.type === 'loan_clearing' || entry.type === 'item_return') return true;
 
       const amount = Number(entry.amount) || 0;
       const isNegative = amount < 0;
@@ -646,7 +646,7 @@ export async function GET(req: NextRequest) {
       // Determine if Debit or Credit based on type AND amount
       // sale_payment can be negative (Credit/Payment) or positive (Debit/Purchase)
       let isDebit = entry.type === 'debit';
-      let isCredit = entry.type === 'loan_clearing' || entry.type === 'credit';
+      let isCredit = entry.type === 'loan_clearing' || entry.type === 'credit' || entry.type === 'item_return';
 
       if (entry.type === 'sale_payment') {
         if (amount < 0) {
@@ -990,9 +990,9 @@ export async function GET(req: NextRequest) {
     });
     activeTmt.forEach(s => completedSaleIdsSet.add(`tmt-${s.id}`));
 
-    // Count entries linked to completed sales plus all loan_clearing entries
+    // Count entries linked to completed sales plus all loan_clearing/item_return entries
     const filteredTotal = allLedgerEntries.filter(entry => {
-      if (entry.type === 'loan_clearing') return true;
+      if (entry.type === 'loan_clearing' || entry.type === 'item_return') return true;
 
       // Check for Manual Credit Entries to be excluded
       if (entry.type === 'credit') {

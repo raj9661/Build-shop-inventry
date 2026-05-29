@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useLanguage } from "@/hooks/use-language"
+import { getAvailableUnits } from "../lib/tmtUtils"
 
 import {
   Plus,
@@ -80,7 +81,7 @@ interface Customer {
 export default function CustomerLedger() {
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShop, userRole } = useShop()
-  const isAdmin = userRole === 'SUPER_DUPER_ADMIN'
+  const isAdmin = userRole === 'SUPER_DUPER_ADMIN' || userRole === 'SUPER_ADMIN'
 
   // Admin edit/delete state
   const [adminEditEntry, setAdminEditEntry] = useState<LedgerEntry | null>(null)
@@ -102,6 +103,23 @@ export default function CustomerLedger() {
   const [newCustomer, setNewCustomer] = useState({ name: "", phone: "", address: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isSubmittingCustomer, setIsSubmittingCustomer] = useState(false)
+
+  // Return items state
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [returnItems, setReturnItems] = useState<Array<{ productId: string; name: string; quantity: string; conversionCft: string; unit: string; categoryName: string; isTrueBulkCft: boolean; isTmt?: boolean }>>([])
+  const [returnCreditAmount, setReturnCreditAmount] = useState("")
+  const [returnNotes, setReturnNotes] = useState("")
+  const [returnDate, setReturnDate] = useState(new Date().toISOString().split('T')[0])
+  const [availableProducts, setAvailableProducts] = useState<any[]>([])
+  const [availableCategories, setAvailableCategories] = useState<any[]>([])
+  const [returnProductType, setReturnProductType] = useState<'regular' | 'tmt'>('regular')
+  const [returnTmtProducts, setReturnTmtProducts] = useState<any[]>([])
+  const [returnCategoryFilter, setReturnCategoryFilter] = useState("all")
+  const [returnProductSearch, setReturnProductSearch] = useState("")
+  const [returnSelectedProduct, setReturnSelectedProduct] = useState<any>(null)
+  const [returnQty, setReturnQty] = useState("")
+  const [returnConvCft, setReturnConvCft] = useState("")
+  const [isSubmittingReturn, setIsSubmittingReturn] = useState(false)
 
   const [newEntry, setNewEntry] = useState({
     amount: "",
@@ -273,6 +291,118 @@ export default function CustomerLedger() {
   useEffect(() => {
     debouncedCustomerSearch(customerSearchTerm);
   }, [customerSearchTerm, debouncedCustomerSearch]);
+
+  // Fetch available products when return modal opens
+  useEffect(() => {
+    if (isReturnModalOpen && currentShop) {
+      // Reset picker state on open
+      setReturnSelectedProduct(null);
+      setReturnQty("");
+      setReturnConvCft("");
+      setReturnProductSearch("");
+      setReturnCategoryFilter("all");
+      setReturnProductType('regular');
+
+      const fetchProducts = async () => {
+        try {
+          const token = localStorage.getItem('accessToken');
+          // Regular products
+          const res = await fetch(`/api/products?shopId=${currentShop.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          const data = await res.json();
+          if (data.success) {
+            const products = data.data.products;
+            setAvailableProducts(products);
+            const cats = Array.from(new Set(
+              products.map((p: any) => p.category?.name).filter(Boolean)
+            )) as string[];
+            setAvailableCategories(cats);
+          } else {
+            toast.error(t("Failed to load products", "उत्पाद लोड करने में विफल"));
+          }
+          // TMT products
+          const tmtRes = await fetch(`/api/tmt/products?shopId=${currentShop.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (tmtRes.ok) {
+            const tmtData = await tmtRes.json();
+            if (tmtData.success) setReturnTmtProducts(tmtData.data.products || []);
+          }
+        } catch (error) {
+          console.error("Error loading products:", error);
+          toast.error(t("Failed to load products", "उत्पाद लोड करने में विफल"));
+        }
+      };
+      fetchProducts();
+    }
+  }, [isReturnModalOpen, currentShop, t]);
+
+  const handleReturnSubmit = async () => {
+    if (!selectedCustomer) {
+      toast.error(t("Please select a customer first", "कृपया पहले एक ग्राहक चुनें"));
+      return;
+    }
+    if (returnItems.length === 0) {
+      toast.error(t("Please add at least one item to return", "कृपया वापसी के लिए कम से कम एक आइटम जोड़ें"));
+      return;
+    }
+    const credit = parseFloat(returnCreditAmount || "0");
+    if (isNaN(credit) || credit < 0) {
+      toast.error(t("Invalid credit amount", "अमान्य क्रेडिट राशि"));
+      return;
+    }
+    if (!currentShop) {
+      toast.error(t("Please select a shop first", "कृपया पहले एक दुकान चुनें"));
+      return;
+    }
+
+    try {
+      setIsSubmittingReturn(true);
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/sales/return', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          customerId: selectedCustomer,
+          shopId: currentShop.id,
+          date: returnDate,
+          creditAmount: credit,
+          notes: returnNotes,
+          items: returnItems.map(item => ({
+            productId: parseInt(item.productId),
+            quantity: parseFloat(item.quantity),
+            conversionCft: parseFloat(item.conversionCft),
+            unitName: item.unit,
+            isTmt: !!item.isTmt
+          }))
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(t("Items returned and restocked successfully", "सामान सफलतापूर्वक वापस और रीस्टॉक कर दिया गया"));
+        setIsReturnModalOpen(false);
+        // Reset state
+        setReturnItems([]);
+        setReturnCreditAmount("");
+        setReturnNotes("");
+        // Refresh ledger
+        fetchLedgerEntries();
+        // Refresh customers
+        fetchCustomers();
+      } else {
+        toast.error(data.message || t("Failed to submit return", "वापसी सबमिट करने में विफल"));
+      }
+    } catch (error) {
+      console.error("Error submitting return:", error);
+      toast.error(t("Failed to submit return", "वापसी सबमिट करने में विफल"));
+    } finally {
+      setIsSubmittingReturn(false);
+    }
+  };
 
   const selectedCustomerData = customers.find((c) => c.id === selectedCustomer)
 
@@ -695,7 +825,7 @@ export default function CustomerLedger() {
             </div>
           </TableCell>
           <TableCell className="border-r text-xs md:text-sm">
-            {isCredit ? <span className="text-green-700 font-semibold">{entry.description && entry.description.includes('Opening Balance') ? entry.description : 'Payment'}</span> : (singleItem ? <span className="font-medium">{singleItem.name}</span> : <span className="text-gray-400">-</span>)}
+            {isCredit ? <span className="text-green-700 font-semibold">{entry.description && (entry.description.includes('Opening Balance') || entry.description.includes('Return') || entry.description.includes('Returned')) ? entry.description : 'Payment'}</span> : (singleItem ? <span className="font-medium">{singleItem.name}</span> : <span className="text-gray-400">-</span>)}
           </TableCell>
           <TableCell className="border-r text-xs md:text-sm text-center">
             {isCredit || isOpeningBalance ? <span className="text-gray-400">-</span> : (singleItem?.quantity ? `${singleItem.quantity} ${singleItem.unit || ""}` : (entry.qty || <span className="text-gray-400">-</span>))}
@@ -1025,6 +1155,21 @@ export default function CustomerLedger() {
                   <Plus className="h-4 w-4 mr-2" />
                   {t("Add Entry", "एंट्री जोड़ें")}
                 </Button>
+                {isAdmin && (
+                  <Button
+                    onClick={() => {
+                      setReturnItems([]);
+                      setReturnCreditAmount("");
+                      setReturnNotes("");
+                      setReturnDate(new Date().toISOString().split('T')[0]);
+                      setIsReturnModalOpen(true);
+                    }}
+                    className="bg-red-600 border-red-500 hover:bg-red-700 text-white flex-1 sm:flex-none"
+                    disabled={!selectedCustomer}
+                  >
+                    ↩️ {t("Return Items", "सामान वापसी")}
+                  </Button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -1201,6 +1346,431 @@ export default function CustomerLedger() {
             </Tabs>
           </CardContent>
         </Card>
+
+        {/* Return Items Dialog */}
+        <Dialog open={isReturnModalOpen} onOpenChange={setIsReturnModalOpen}>
+          <DialogContent className="w-[95vw] md:max-w-2xl max-h-[92vh] overflow-y-auto p-0 rounded-2xl bg-white shadow-2xl">
+            {/* Hidden title for screen-reader accessibility (Radix requirement) */}
+            <DialogHeader className="sr-only">
+              <DialogTitle>{t("Return Items & Restock", "सामान वापसी और रीस्टॉक")}</DialogTitle>
+            </DialogHeader>
+            {/* Visible gradient header */}
+            <div className="bg-gradient-to-r from-red-600 to-orange-500 text-white p-5 rounded-t-2xl">
+              <div className="flex items-center gap-2 text-xl font-bold">
+                ↩️ {t("Return Items & Restock", "सामान वापसी और रीस्टॉक")}
+              </div>
+              <p className="text-red-100 text-sm mt-1">
+                {t("Select products by category, set qty — items will be restocked in inventory.", "श्रेणी से उत्पाद चुनें, मात्रा सेट करें — इन्वेंट्री में वापस स्टॉक होगा।")}
+              </p>
+              <div className="mt-2 bg-white/20 rounded-lg px-3 py-1.5 text-sm font-semibold inline-flex items-center gap-2">
+                👤 {selectedCustomerData?.name}
+              </div>
+            </div>
+
+            <div className="p-5 space-y-5">
+              {/* Product Picker Panel */}
+              <div className="border border-gray-200 rounded-xl overflow-hidden">
+                <div className="bg-gray-50 px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-700">{t("Add Product to Return", "वापसी के लिए उत्पाद जोड़ें")}</p>
+                  {/* Regular / TMT toggle — same as Cash Sale */}
+                  <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                    <span className={`text-xs font-medium ${returnProductType === 'regular' ? 'text-blue-600' : 'text-gray-400'}`}>
+                      {t("Regular", "सामान्य")}
+                    </span>
+                    <Switch
+                      checked={returnProductType === 'tmt'}
+                      onCheckedChange={(checked) => {
+                        setReturnProductType(checked ? 'tmt' : 'regular');
+                        setReturnSelectedProduct(null);
+                        setReturnQty("");
+                        setReturnConvCft("");
+                        setReturnCategoryFilter("all");
+                      }}
+                    />
+                    <span className={`text-xs font-medium ${returnProductType === 'tmt' ? 'text-blue-600' : 'text-gray-400'}`}>
+                      {t("TMT Bar", "TMT बार")}
+                    </span>
+                  </div>
+                </div>
+                <div className="p-4 space-y-3">
+                  {returnProductType === 'regular' ? (
+                    <>
+                  {/* Row 1: Category + Product search */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Category (श्रेणी)", "श्रेणी")}</Label>
+                      <Select value={returnCategoryFilter} onValueChange={(v) => { setReturnCategoryFilter(v); setReturnSelectedProduct(null); setReturnQty(""); setReturnConvCft(""); }}>
+                        <SelectTrigger className="h-10 text-sm">
+                          <SelectValue placeholder={t("All Categories", "सभी श्रेणियां")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">{t("All Categories (सभी श्रेणियां)", "सभी श्रेणियां")}</SelectItem>
+                          {availableCategories.map((cat: any) => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Product (उत्पाद)", "उत्पाद")}</Label>
+                      <Select
+                        value={returnSelectedProduct ? returnSelectedProduct.id.toString() : ""}
+                        onValueChange={(val) => {
+                          const prod = availableProducts.find(p => p.id.toString() === val);
+                          setReturnSelectedProduct(prod || null);
+                          const catName = prod?.category?.name?.toLowerCase() || '';
+                          const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+                          setReturnConvCft(isBulk ? (prod?.latestConversionCft?.toString() || "1") : "");
+                          setReturnQty("");
+                        }}
+                      >
+                        <SelectTrigger className="h-10 text-sm">
+                          <SelectValue placeholder={t("Select product (उत्पाद चुनें)", "उत्पाद चुनें")} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <div className="px-2 pb-2 pt-1">
+                            <Input
+                              placeholder={t("Search product...", "उत्पाद खोजें...")}
+                              value={returnProductSearch}
+                              onChange={e => setReturnProductSearch(e.target.value)}
+                              className="h-8 text-sm"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </div>
+                          {availableProducts
+                            .filter(p =>
+                              (returnCategoryFilter === 'all' || p.category?.name === returnCategoryFilter) &&
+                              (returnProductSearch === '' || p.name.toLowerCase().includes(returnProductSearch.toLowerCase()))
+                            )
+                            .map(p => (
+                              <SelectItem key={p.id.toString()} value={p.id.toString()}>
+                                <span className="font-medium">{p.name}</span>
+                                <span className="text-gray-400 text-xs ml-1">({p.unit})</span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                    </>
+                  ) : (
+                    /* TMT Product picker */
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("TMT Product (TMT उत्पाद)", "TMT उत्पाद")}</Label>
+                        <Select
+                          value={returnSelectedProduct ? returnSelectedProduct.id.toString() : ""}
+                          onValueChange={(val) => {
+                            const prod = returnTmtProducts.find(p => p.id.toString() === val);
+                            setReturnSelectedProduct(prod ? { ...prod, _isTmt: true, _selectedUnit: 'piece' } : null);
+                            setReturnQty("");
+                          }}
+                        >
+                          <SelectTrigger className="h-10 text-sm">
+                            <SelectValue placeholder={t("Select TMT product", "TMT उत्पाद चुनें")} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {returnTmtProducts.map(p => (
+                              <SelectItem key={p.id.toString()} value={p.id.toString()}>
+                                <span className="font-medium">{p.productName}</span>
+                                <span className="text-gray-400 text-xs ml-1">{p.company?.name} {p.size?.sizeMm}mm</span>
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("TMT Unit", "TMT इकाई")}</Label>
+                        <select
+                          value={returnSelectedProduct?._selectedUnit || 'piece'}
+                          onChange={e => setReturnSelectedProduct((prev: any) => prev ? { ...prev, _selectedUnit: e.target.value } : prev)}
+                          disabled={!returnSelectedProduct}
+                          className="h-10 text-sm rounded-lg w-full border border-gray-300 px-2 disabled:opacity-50"
+                        >
+                          <option value="piece">{t("Piece (पीस)", "पीस")}</option>
+                          <option value="bundle">{t("Bundle (बंडल)", "बंडल")}</option>
+                          <option value="kg">Kg</option>
+                          <option value="ton">{t("Ton (टन)", "टन")}</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Row 2: Qty + CFT + Add button */}
+                  {returnSelectedProduct && (
+                    <div className="flex items-end gap-3">
+                      {/* Unit selector — regular only (TMT unit is already picked above) */}
+                      {!returnSelectedProduct._isTmt && (() => {
+                        const catName = returnSelectedProduct?.category?.name || '';
+                        const unitOptions = getAvailableUnits(catName);
+                        const isCement = catName.toLowerCase() === 'cement';
+                        return (
+                          <div className="flex-1">
+                            <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Unit (इकाई)", "इकाई")}</Label>
+                            {isCement ? (
+                              <Input value="bag" readOnly className="h-10 text-sm bg-gray-100 cursor-not-allowed" />
+                            ) : (
+                              <select
+                                value={returnSelectedProduct?._selectedUnit || ''}
+                                onChange={e => {
+                                  setReturnSelectedProduct((prev: any) => ({ ...prev, _selectedUnit: e.target.value }));
+                                  const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                                  const isBulkCat = catName.toLowerCase().includes('sand') || catName.toLowerCase().includes('chips') || catName.toLowerCase().includes('aggregate');
+                                  if (vehicleUnits.includes(e.target.value) && isBulkCat) {
+                                    setReturnConvCft(returnSelectedProduct?.latestConversionCft?.toString() || '');
+                                  } else {
+                                    setReturnConvCft('');
+                                  }
+                                }}
+                                className="h-10 text-sm rounded-lg w-full border border-gray-300 px-2"
+                              >
+                                <option value="">{t('Select unit', 'इकाई चुनें')}</option>
+                                {unitOptions.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        );
+                      })()}
+                      {/* Quantity */}
+                      <div className="flex-1">
+                        <Label className="text-xs font-semibold text-gray-600 mb-1 block">
+                          {t("Quantity (मात्रा)", "मात्रा")}
+                          {returnSelectedProduct._isTmt && returnSelectedProduct._selectedUnit && (
+                            <span className="text-gray-400 ml-1">({returnSelectedProduct._selectedUnit})</span>
+                          )}
+                        </Label>
+                        <Input
+                          type="number"
+                          placeholder={t("e.g. 10", "उदा. 10")}
+                          value={returnQty}
+                          onChange={e => setReturnQty(e.target.value)}
+                          className="h-10 text-sm"
+                          min="0.01"
+                          step="any"
+                        />
+                      </div>
+                      {/* CFT factor — only for vehicle units on bulk regular categories */}
+                      {!returnSelectedProduct._isTmt && (() => {
+                        const catName = returnSelectedProduct?.category?.name?.toLowerCase() || '';
+                        const selectedUnit = returnSelectedProduct?._selectedUnit || '';
+                        const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                        const isBulkCat = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+                        return (vehicleUnits.includes(selectedUnit) && isBulkCat) ? (
+                          <div className="flex-1">
+                            <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Conv. CFT", "CFT रूपांतरण")}</Label>
+                            <Input
+                              type="number"
+                              placeholder="e.g. 100"
+                              value={returnConvCft}
+                              onChange={e => setReturnConvCft(e.target.value)}
+                              className="h-10 text-sm"
+                              min="0.01"
+                              step="any"
+                            />
+                          </div>
+                        ) : null;
+                      })()}
+                      <Button
+                        onClick={() => {
+                          if (!returnSelectedProduct) return;
+                          const isTmt = !!returnSelectedProduct._isTmt;
+                          const selectedUnit = returnSelectedProduct._selectedUnit || (isTmt ? 'piece' : '');
+                          if (!isTmt && !selectedUnit) {
+                            toast.error(t("Please select a unit", "कृपया इकाई चुनें"));
+                            return;
+                          }
+                          if (!returnQty || parseFloat(returnQty) <= 0) {
+                            toast.error(t("Please enter a valid quantity", "कृपया वैध मात्रा दर्ज करें"));
+                            return;
+                          }
+                          if (returnItems.some(item => item.productId === returnSelectedProduct.id.toString() && !!item.isTmt === isTmt)) {
+                            toast.error(t("Product already in return list", "उत्पाद पहले से सूची में है"));
+                            return;
+                          }
+                          const catName = returnSelectedProduct?.category?.name?.toLowerCase() || '';
+                          const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+                          const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                          const needsCft = !isTmt && vehicleUnits.includes(selectedUnit) && isBulk;
+                          setReturnItems(prev => [
+                            ...prev,
+                            {
+                              productId: returnSelectedProduct.id.toString(),
+                              name: isTmt ? returnSelectedProduct.productName : returnSelectedProduct.name,
+                              quantity: returnQty,
+                              conversionCft: needsCft ? (returnConvCft || "1") : "1",
+                              unit: selectedUnit,
+                              categoryName: isTmt ? 'TMT Bar' : (returnSelectedProduct.category?.name || ''),
+                              isTrueBulkCft: needsCft,
+                              isTmt
+                            }
+                          ]);
+                          setReturnSelectedProduct(null);
+                          setReturnQty("");
+                          setReturnConvCft("");
+                          setReturnProductSearch("");
+                        }}
+                        className="h-10 px-4 bg-orange-500 hover:bg-orange-600 text-white whitespace-nowrap self-end"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />{t("Add", "जोड़ें")}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Items Cart */}
+              {returnItems.length > 0 && (
+                <div className="border border-orange-200 rounded-xl overflow-hidden">
+                  <div className="bg-orange-50 px-4 py-2 border-b border-orange-200 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-orange-700">📦 {t("Items to Return & Restock", "वापसी की सूची")} ({returnItems.length})</p>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {returnItems.map((item, idx) => {
+                      const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                      const showCft = item.isTrueBulkCft && vehicleUnits.includes(item.unit);
+                      const unitOptions = item.isTmt
+                        ? [
+                            { value: 'piece', label: t('Piece (पीस)', 'पीस') },
+                            { value: 'bundle', label: t('Bundle (बंडल)', 'बंडल') },
+                            { value: 'kg', label: 'Kg' },
+                            { value: 'ton', label: t('Ton (टन)', 'टन') }
+                          ]
+                        : getAvailableUnits(item.categoryName || '');
+                      return (
+                        <div key={item.productId} className="flex flex-col gap-2 px-4 py-3">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <div className="font-semibold text-gray-800 text-sm">{item.name}</div>
+                                {item.isTmt && (
+                                  <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">TMT</span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-400">{item.categoryName}</div>
+                            </div>
+                            <button
+                              onClick={() => setReturnItems(prev => prev.filter((_, i) => i !== idx))}
+                              className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap items-end gap-2">
+                            {/* Unit selector */}
+                            <div>
+                              <Label className="text-xs text-gray-400">{t("Unit", "इकाई")}</Label>
+                              <select
+                                value={item.unit}
+                                onChange={e => {
+                                  const newUnit = e.target.value;
+                                  const needsCft = !item.isTmt && vehicleUnits.includes(newUnit) && (item.categoryName?.toLowerCase().includes('sand') || item.categoryName?.toLowerCase().includes('chips') || item.categoryName?.toLowerCase().includes('aggregate'));
+                                  setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, unit: newUnit, isTrueBulkCft: needsCft } : it));
+                                }}
+                                className="h-8 text-sm rounded border border-gray-300 px-1 min-w-[90px]"
+                              >
+                                {unitOptions.map(opt => (
+                                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {/* Quantity */}
+                            <div>
+                              <Label className="text-xs text-gray-400">{t("Qty", "मात्रा")}</Label>
+                              <Input
+                                type="number"
+                                value={item.quantity}
+                                onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, quantity: e.target.value } : it))}
+                                className="h-8 w-20 text-sm"
+                                min="0.01" step="any"
+                              />
+                            </div>
+                            {/* CFT only for vehicle units on bulk sand/chips (regular items only) */}
+                            {showCft && (
+                              <div>
+                                <Label className="text-xs text-gray-400">CFT/unit</Label>
+                                <Input
+                                  type="number"
+                                  value={item.conversionCft}
+                                  onChange={e => setReturnItems(prev => prev.map((it, i) => i === idx ? { ...it, conversionCft: e.target.value } : it))}
+                                  className="h-8 w-20 text-sm"
+                                  min="0.01" step="any"
+                                />
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Credit & Date */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs font-semibold text-gray-600 mb-1 block">💰 {t("Refund / Credit Amount (₹)", "रिफंड / क्रेडिट राशि (₹)")}</Label>
+                  <Input
+                    type="number"
+                    value={returnCreditAmount}
+                    onChange={e => setReturnCreditAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="h-10 text-sm"
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs font-semibold text-gray-600 mb-1 block">📅 {t("Return Date", "वापसी तिथि")}</Label>
+                  <Input
+                    type="date"
+                    value={returnDate}
+                    onChange={e => setReturnDate(e.target.value)}
+                    className="h-10 text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <Label className="text-xs font-semibold text-gray-600 mb-1 block">📝 {t("Reason / Notes", "कारण / टिप्पणी")}</Label>
+                <Textarea
+                  value={returnNotes}
+                  onChange={e => setReturnNotes(e.target.value)}
+                  placeholder={t("e.g. Return due to wrong order...", "उदा: गलत ऑर्डर के कारण वापसी...")}
+                  className="text-sm resize-none"
+                  rows={2}
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-between items-center pt-3 border-t">
+                <div className="text-xs text-gray-500">
+                  {returnItems.length > 0 ? (
+                    <span className="text-orange-600 font-semibold">✅ {returnItems.length} {t("item(s) ready to restock", "उत्पाद रीस्टॉक के लिए तैयार")}</span>
+                  ) : (
+                    <span>{t("No items added yet", "कोई उत्पाद नहीं जोड़ा गया")}</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={() => setIsReturnModalOpen(false)} disabled={isSubmittingReturn}>
+                    {t("Cancel", "रद्द करें")}
+                  </Button>
+                  <Button
+                    onClick={handleReturnSubmit}
+                    disabled={isSubmittingReturn || returnItems.length === 0}
+                    className="bg-red-600 hover:bg-red-700 text-white"
+                  >
+                    {isSubmittingReturn ? (
+                      <><Loader2 className="h-4 w-4 mr-2 animate-spin" />{t("Submitting...", "सबमिट हो रहा है...")}</>
+                    ) : (
+                      <>↩️ {t("Submit Return", "वापसी दर्ज करें")}</>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Add Entry Dialog */}
         <Dialog open={isAddEntryOpen} onOpenChange={setIsAddEntryOpen}>

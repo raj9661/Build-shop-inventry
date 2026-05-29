@@ -261,6 +261,9 @@ export default function AnalyticsDashboard() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [timeRange, setTimeRange] = useState("30")
+  const [customFrom, setCustomFrom] = useState("")
+  const [customTo, setCustomTo] = useState("")
+  const [showCustomPicker, setShowCustomPicker] = useState(false)
   const [activeTab, setActiveTab] = useState("overview")
   const [salesPage, setSalesPage] = useState(1)
   const [salesPerPage] = useState(5)
@@ -290,6 +293,19 @@ export default function AnalyticsDashboard() {
   interface CementMonthPurchase { month: string; brands: Record<string, CementBrandPurchase>; totalQuantity: number; totalCost: number }
   interface CementData { salesByMonth: CementMonthSales[]; purchasesByMonth: CementMonthPurchase[]; allBrands: string[] }
   const [cementData, setCementData] = useState<CementData | null>(null)
+
+  // Compute a human-readable label for the selected date range (used in chart subtitles)
+  const dateRangeLabel = (() => {
+    if (timeRange === 'all') return 'All time'
+    if (timeRange === 'custom' && customFrom && customTo) return `${customFrom} → ${customTo}`
+    if (timeRange === 'custom') return 'Custom range'
+    if (timeRange === '7') return 'Last 7 days'
+    if (timeRange === '30') return 'Last 30 days'
+    if (timeRange === '90') return 'Last 90 days'
+    if (timeRange === '365') return 'Last 12 months'
+    return `Last ${timeRange} days`
+  })()
+
   const [cementLoading, setCementLoading] = useState(false)
   const [cementLoaded, setCementLoaded] = useState(false)
 
@@ -331,14 +347,23 @@ export default function AnalyticsDashboard() {
       // SUPER_DUPER_ADMIN uses system analytics, other users use their assigned shops
       if (userRole === 'SUPER_DUPER_ADMIN') {
         endpoint = '/api/analytics/system'
-        // SUPER_DUPER_ADMIN: show all shops by default, filter only when specific shop selected
-        // ALL_SHOPS_ID is the virtual ID for "All shops" view
         const shopFilter = (currentShopId && currentShopId !== ALL_SHOPS_ID) ? `&shopId=${currentShopId}` : '';
-        endpoint += `?days=${timeRange}${shopFilter}`
+        if (timeRange === 'all') {
+          endpoint += `?days=36500${shopFilter}` // ~100 years = effectively all time
+        } else if (timeRange === 'custom' && customFrom && customTo) {
+          endpoint += `?from=${customFrom}&to=${customTo}${shopFilter}`
+        } else {
+          endpoint += `?days=${timeRange}${shopFilter}`
+        }
       } else {
-        // Other users: use user analytics endpoint for their assigned shops
         endpoint = '/api/analytics/user'
-        endpoint += `?days=${timeRange}`
+        if (timeRange === 'all') {
+          endpoint += `?days=36500`
+        } else if (timeRange === 'custom' && customFrom && customTo) {
+          endpoint += `?from=${customFrom}&to=${customTo}`
+        } else {
+          endpoint += `?days=${timeRange}`
+        }
       }
 
       const response = await fetch(endpoint, {
@@ -370,7 +395,7 @@ export default function AnalyticsDashboard() {
     } finally {
       setLoading(false)
     }
-  }, [currentShopId, timeRange, userRole])
+  }, [currentShopId, timeRange, customFrom, customTo, userRole])
 
   // Load cement analytics (lazy — only when Cement tab is first opened)
   const loadCementAnalytics = useCallback(async () => {
@@ -806,17 +831,99 @@ export default function AnalyticsDashboard() {
         </div>
         <div className="flex items-center gap-4">
           {getRoleBadge(userRole || 'UNKNOWN')}
-          <Select value={timeRange} onValueChange={setTimeRange}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="7">Last 7 days</SelectItem>
-              <SelectItem value="30">Last 30 days</SelectItem>
-              <SelectItem value="90">Last 90 days</SelectItem>
-              <SelectItem value="365">Last year</SelectItem>
-            </SelectContent>
-          </Select>
+
+          {/* ── Time Range Picker ── */}
+          <div className="relative">
+            <Select
+              value={timeRange}
+              onValueChange={(val) => {
+                if (val === 'custom') {
+                  setShowCustomPicker(true);
+                  setTimeRange('custom');
+                } else {
+                  setShowCustomPicker(false);
+                  setTimeRange(val);
+                }
+              }}
+            >
+              <SelectTrigger className="w-44">
+                <SelectValue>
+                  {timeRange === 'all' && '🗓 All Time'}
+                  {timeRange === '7' && 'Last 7 days'}
+                  {timeRange === '30' && 'Last 30 days'}
+                  {timeRange === '90' && 'Last 90 days'}
+                  {timeRange === '365' && 'Last year'}
+                  {timeRange === 'custom' && customFrom && customTo
+                    ? `${customFrom} → ${customTo}`
+                    : timeRange === 'custom' ? 'Custom Range' : null}
+                </SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">🗓 All Time</SelectItem>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+                <SelectItem value="365">Last year</SelectItem>
+                <SelectItem value="custom">📅 Custom Range...</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Inline custom date range picker — appears below the select */}
+            {timeRange === 'custom' && showCustomPicker && (
+              <div className="absolute right-0 top-11 z-50 bg-white border border-gray-200 rounded-xl shadow-xl p-4 w-72">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Custom Date Range</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">From</label>
+                    <input
+                      type="date"
+                      value={customFrom}
+                      onChange={e => setCustomFrom(e.target.value)}
+                      max={customTo || undefined}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1 block">To</label>
+                    <input
+                      type="date"
+                      value={customTo}
+                      onChange={e => setCustomTo(e.target.value)}
+                      min={customFrom || undefined}
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => {
+                        if (!customFrom || !customTo) {
+                          toast.error('Please select both start and end date');
+                          return;
+                        }
+                        setShowCustomPicker(false);
+                        loadAnalytics();
+                      }}
+                      disabled={!customFrom || !customTo}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCustomFrom('');
+                        setCustomTo('');
+                        setTimeRange('30');
+                        setShowCustomPicker(false);
+                      }}
+                      className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-600 text-sm font-medium px-3 py-2 rounded-lg transition-colors"
+                    >
+                      Reset
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
           <Button
             variant={isEditMode ? "default" : "outline"}
             onClick={() => setIsEditMode(!isEditMode)}
@@ -1295,7 +1402,7 @@ export default function AnalyticsDashboard() {
                         {analyticsData?.netProfit !== undefined ? formatCurrency(analyticsData.netProfit) : '₹0'}
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        Revenue − (Expenses + Salary + Supplier)
+                        Revenue − COGS − Expenses − Salary
                       </p>
                     </CardContent>
                   </Card>
@@ -1694,7 +1801,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Revenue by Shop</CardTitle>
-                    <CardDescription>Revenue from all shops</CardDescription>
+                    <CardDescription>Revenue from all shops — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
@@ -1765,7 +1872,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Sales Trend</CardTitle>
-                    <CardDescription>Sales over the last 6 months</CardDescription>
+                    <CardDescription>Sales trend — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
@@ -1830,7 +1937,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Top Products</CardTitle>
-                    <CardDescription>Best selling products</CardDescription>
+                    <CardDescription>Best selling products — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.topProducts && analyticsData.topProducts.length > 0 ? (
@@ -1904,7 +2011,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Sales by Month</CardTitle>
-                    <CardDescription>Monthly sales comparison</CardDescription>
+                    <CardDescription>Monthly sales — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.salesByMonth && analyticsData.salesByMonth.length > 0 ? (
@@ -1968,7 +2075,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Revenue Distribution</CardTitle>
-                    <CardDescription>Revenue share by shop</CardDescription>
+                    <CardDescription>Revenue share by shop — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
@@ -2042,7 +2149,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Shop Performance</CardTitle>
-                    <CardDescription>Revenue trend by shop</CardDescription>
+                    <CardDescription>Revenue trend by shop — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.revenueByShop && analyticsData.revenueByShop.length > 0 ? (
@@ -2108,7 +2215,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Payment Methods</CardTitle>
-                    <CardDescription>Payment method distribution</CardDescription>
+                    <CardDescription>Payment method distribution — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {getPaymentMethodData().length > 0 ? (
@@ -2187,7 +2294,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Expense Trend</CardTitle>
-                    <CardDescription>Expenses over the last 6 months</CardDescription>
+                    <CardDescription>Expenses trend — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.expensesByMonth && analyticsData.expensesByMonth.length > 0 ? (
@@ -2252,7 +2359,7 @@ export default function AnalyticsDashboard() {
                   )}
                   <CardHeader>
                     <CardTitle>Expenses by Category</CardTitle>
-                    <CardDescription>Distribution by expense category</CardDescription>
+                    <CardDescription>Distribution by expense category — {dateRangeLabel}</CardDescription>
                   </CardHeader>
                   <CardContent>
                     {analyticsData?.expensesByCategory && analyticsData.expensesByCategory.length > 0 ? (

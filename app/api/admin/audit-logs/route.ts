@@ -13,19 +13,31 @@ export async function GET(req: NextRequest) {
     const decoded = await validateToken(token);
     if (!decoded)
       return NextResponse.json({ success: false, message: 'Invalid token' }, { status: 401 });
-    if (decoded.role !== 'SUPER_DUPER_ADMIN')
-      return NextResponse.json({ success: false, message: 'Forbidden: SUPER_DUPER_ADMIN only' }, { status: 403 });
+
+    const isSuperAdmin = decoded.role === 'SUPER_DUPER_ADMIN';
 
     const { searchParams } = new URL(req.url);
-    const shopId = searchParams.get('shopId');
+    const shopIdParam = searchParams.get('shopId');
     const tableName = searchParams.get('tableName');
     const fromDate = searchParams.get('fromDate');
     const toDate = searchParams.get('toDate');
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
 
+    // Shop isolation:
+    // - SUPER_DUPER_ADMIN: can filter by any shopId or see all shops
+    // - Others: must supply a shopId param and are locked to it
+    if (!isSuperAdmin && !shopIdParam) {
+      return NextResponse.json({ success: false, message: 'Forbidden: shopId required' }, { status: 403 });
+    }
+
     const where: any = {};
-    if (shopId) where.shopId = BigInt(shopId);
+    if (isSuperAdmin) {
+      if (shopIdParam) where.shopId = BigInt(shopIdParam);
+    } else {
+      where.shopId = BigInt(shopIdParam!);
+    }
+
     if (tableName) where.tableName = tableName;
     if (fromDate || toDate) {
       where.createdAt = {};
@@ -43,6 +55,28 @@ export async function GET(req: NextRequest) {
       prisma.adminAuditLog.count({ where })
     ]);
 
+    // Fetch shop names for all unique shopIds in this page
+    const uniqueShopIds = [...new Set(logs.map(l => l.shopId))];
+    const shopMap: Record<string, string> = {};
+    if (uniqueShopIds.length > 0) {
+      const shops = await prisma.shop.findMany({
+        where: { id: { in: uniqueShopIds } },
+        select: { id: true, name: true }
+      });
+      shops.forEach(s => { shopMap[s.id.toString()] = s.name; });
+    }
+
+    // Fetch all shops for SUPER_DUPER_ADMIN filter dropdown
+    let allShops: { id: number; name: string }[] = [];
+    if (isSuperAdmin) {
+      const shops = await prisma.shop.findMany({
+        where: { isActive: true },
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' }
+      });
+      allShops = shops.map(s => ({ id: Number(s.id), name: s.name }));
+    }
+
     // Serialize BigInt
     const safeLogs = logs.map(log => ({
       id: Number(log.id),
@@ -54,12 +88,13 @@ export async function GET(req: NextRequest) {
       afterData: log.afterData,
       reason: log.reason,
       shopId: Number(log.shopId),
+      shopName: shopMap[log.shopId.toString()] || `Shop #${log.shopId}`,
       createdAt: log.createdAt,
     }));
 
     return NextResponse.json({
       success: true,
-      data: { logs: safeLogs, total, page, pages: Math.ceil(total / limit) }
+      data: { logs: safeLogs, total, page, pages: Math.ceil(total / limit), allShops }
     });
 
   } catch (error) {

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { MobileNav } from '@/components/mobile-nav'
 import { useShop } from '../../contexts/ShopContext'
-import { Shield, Filter, RefreshCw, Loader2, ChevronLeft, ChevronRight, Eye } from 'lucide-react'
+import { Shield, Filter, RefreshCw, Loader2, ChevronLeft, ChevronRight, Eye, Store } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface AuditLog {
@@ -16,6 +16,7 @@ interface AuditLog {
   afterData: string | null
   reason: string | null
   shopId: number
+  shopName: string
   createdAt: string
 }
 
@@ -40,7 +41,11 @@ export default function AuditLogsPage() {
   const [fromDate, setFromDate] = useState('')
   const [toDate, setToDate] = useState('')
   const [tableFilter, setTableFilter] = useState('')
+  const [shopFilter, setShopFilter] = useState('')
+  const [allShops, setAllShops] = useState<{ id: number; name: string }[]>([])
   const [expandedLog, setExpandedLog] = useState<number | null>(null)
+
+  const isSuperAdmin = userRole === 'SUPER_DUPER_ADMIN'
 
   const fetchLogs = useCallback(async () => {
     if (!currentShop) return
@@ -48,7 +53,10 @@ export default function AuditLogsPage() {
     try {
       const token = localStorage.getItem('accessToken')
       const params = new URLSearchParams({
-        shopId: currentShop.id.toString(),
+        // For super admin: send the selected shop filter (or none = all shops)
+        // For others: server will lock to their shop automatically
+        ...(isSuperAdmin && shopFilter ? { shopId: shopFilter } : {}),
+        ...(!isSuperAdmin ? { shopId: currentShop.id.toString() } : {}),
         page: page.toString(),
         limit: '30',
         ...(fromDate && { fromDate }),
@@ -63,6 +71,7 @@ export default function AuditLogsPage() {
         setLogs(data.data.logs)
         setTotalPages(data.data.pages)
         setTotal(data.data.total)
+        if (data.data.allShops?.length) setAllShops(data.data.allShops)
       } else {
         toast.error(data.message || 'Failed to fetch audit logs')
       }
@@ -71,11 +80,11 @@ export default function AuditLogsPage() {
     } finally {
       setLoading(false)
     }
-  }, [currentShop, page, fromDate, toDate, tableFilter])
+  }, [currentShop, page, fromDate, toDate, tableFilter, shopFilter, isSuperAdmin])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
 
-  if (userRole !== 'SUPER_DUPER_ADMIN') {
+  if (!isSuperAdmin) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center">
         <div className="text-center text-white">
@@ -89,7 +98,7 @@ export default function AuditLogsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-
+      <MobileNav />
       <div className="max-w-7xl mx-auto px-4 py-6 pb-20 md:pb-6 space-y-6">
 
         {/* Header */}
@@ -100,20 +109,43 @@ export default function AuditLogsPage() {
             </div>
             <div>
               <h1 className="text-2xl font-bold text-white">Admin Audit Logs</h1>
-              <p className="text-slate-400 text-sm">All record edits and deletions by SUPER_DUPER_ADMIN</p>
+              <p className="text-slate-400 text-sm">
+                All record edits &amp; deletions · Auto-pruned at 7,000 entries
+              </p>
             </div>
           </div>
-          <button
-            onClick={fetchLogs}
-            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-slate-300 transition-colors"
-          >
-            <RefreshCw className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-400 text-sm font-medium">{total.toLocaleString()} total</span>
+            <button
+              onClick={fetchLogs}
+              className="p-2 bg-slate-700 hover:bg-slate-600 rounded-xl text-slate-300 transition-colors"
+            >
+              <RefreshCw className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
         <div className="bg-slate-800/60 backdrop-blur border border-slate-700 rounded-2xl p-4">
           <div className="flex flex-wrap gap-3 items-end">
+
+            {/* Shop filter — SUPER_DUPER_ADMIN only */}
+            <div>
+              <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
+                <Store className="h-3 w-3" /> Shop
+              </label>
+              <select
+                value={shopFilter}
+                onChange={e => { setShopFilter(e.target.value); setPage(1) }}
+                className="bg-slate-700 border border-slate-600 text-white rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-amber-500 min-w-[160px]"
+              >
+                <option value="">All Shops</option>
+                {allShops.map(s => (
+                  <option key={s.id} value={s.id.toString()}>{s.name}</option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-xs text-slate-400 mb-1">From Date</label>
               <input
@@ -145,16 +177,29 @@ export default function AuditLogsPage() {
                 <option value="SupplierPayment">Supplier Payment</option>
               </select>
             </div>
-            {(fromDate || toDate || tableFilter) && (
+            {(fromDate || toDate || tableFilter || shopFilter) && (
               <button
-                onClick={() => { setFromDate(''); setToDate(''); setTableFilter(''); setPage(1) }}
+                onClick={() => { setFromDate(''); setToDate(''); setTableFilter(''); setShopFilter(''); setPage(1) }}
                 className="px-3 py-2 bg-red-600/20 text-red-400 border border-red-600/30 rounded-lg text-sm hover:bg-red-600/30"
               >
                 Clear Filters
               </button>
             )}
-            <div className="ml-auto text-slate-400 text-sm self-end">
-              {total} total records
+
+            {/* Log capacity indicator */}
+            <div className="ml-auto flex flex-col items-end gap-1 self-end">
+              <span className="text-slate-400 text-xs">Log Capacity</span>
+              <div className="flex items-center gap-2">
+                <div className="w-28 h-2 bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${
+                      total > 6500 ? 'bg-red-500' : total > 5000 ? 'bg-amber-400' : 'bg-emerald-500'
+                    }`}
+                    style={{ width: `${Math.min(100, (total / 7000) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-xs text-slate-400">{total}/7,000</span>
+              </div>
             </div>
           </div>
         </div>
@@ -177,6 +222,7 @@ export default function AuditLogsPage() {
                 <thead>
                   <tr className="bg-slate-900/50 text-slate-400 text-xs uppercase tracking-wider">
                     <th className="px-4 py-3 text-left">When</th>
+                    <th className="px-4 py-3 text-left">Shop</th>
                     <th className="px-4 py-3 text-left">Action</th>
                     <th className="px-4 py-3 text-left">Table</th>
                     <th className="px-4 py-3 text-left">Record ID</th>
@@ -195,6 +241,12 @@ export default function AuditLogsPage() {
                         <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
                           <div className="font-medium">{new Date(log.createdAt).toLocaleDateString('en-IN')}</div>
                           <div className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="flex items-center gap-1 text-slate-300 text-xs">
+                            <Store className="h-3 w-3 text-slate-500" />
+                            {log.shopName}
+                          </span>
                         </td>
                         <td className="px-4 py-3">
                           <span className={`px-2 py-1 rounded-full text-xs font-bold ${actionColors[log.action] || 'bg-slate-700 text-slate-300'}`}>
@@ -220,7 +272,7 @@ export default function AuditLogsPage() {
                       </tr>
                       {expandedLog === log.id && (
                         <tr key={`${log.id}-detail`}>
-                          <td colSpan={6} className="px-4 pb-4 bg-slate-900/30">
+                          <td colSpan={7} className="px-4 pb-4 bg-slate-900/30">
                             <div className="grid md:grid-cols-2 gap-4 pt-2">
                               <div>
                                 <p className="text-xs font-semibold text-slate-400 mb-1 uppercase">Before</p>

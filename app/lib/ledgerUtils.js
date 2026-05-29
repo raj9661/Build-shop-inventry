@@ -25,7 +25,7 @@ async function calculateRunningBalance(tx, customerId, newEntries) {
     // - loan_clearing with positive amount = manual payment via ledger UI (SUBTRACT)
     for (const entry of allEntries) {
       const amount = entry.amount ? new Prisma.Decimal(entry.amount) : new Prisma.Decimal(0);
-      if (entry.type === 'loan_clearing') {
+      if (entry.type === 'loan_clearing' || entry.type === 'item_return') {
         runningBalance = runningBalance.minus(amount);
       } else {
         // sale_payment: positive adds, negative subtracts naturally

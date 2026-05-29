@@ -73,6 +73,8 @@ export default function CustomerDetails() {
         return "bg-green-100 text-green-800 border-green-200"
       case "loan_clearing":
         return "bg-blue-100 text-blue-800 border-blue-200"
+      case "item_return":
+        return "bg-orange-100 text-orange-800 border-orange-200"
       default:
         return "bg-gray-100 text-gray-800 border-gray-200"
     }
@@ -203,6 +205,8 @@ export default function CustomerDetails() {
                         <Badge variant="outline" className={getPaymentTypeColor(payment.type)}>
                           {payment.type === "sale_payment"
                             ? t("Sale Payment", "बिक्री भुगतान")
+                            : payment.type === "item_return"
+                            ? t("Item Return", "सामान वापसी")
                             : t("Loan Clearing", "उधार चुकाना")}
                         </Badge>
                       </div>
@@ -243,6 +247,8 @@ export default function CustomerDetails() {
                         <Badge variant="outline" className={getPaymentTypeColor(payment.type)}>
                           {payment.type === "sale_payment"
                             ? t("Sale Payment", "बिक्री भुगतान")
+                            : payment.type === "item_return"
+                            ? t("Item Return", "सामान वापसी")
                             : t("Loan Clearing", "उधार चुकाना")}
                         </Badge>
                       </TableCell>

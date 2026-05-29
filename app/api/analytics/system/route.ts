@@ -64,22 +64,30 @@ export async function GET(req: NextRequest) {
 
     console.log('✅ Access granted for role:', decoded.role, 'fetching analytics data...');
 
-    // Get shop filter from query parameters
     const { searchParams } = new URL(req.url);
     const shopIdParam = searchParams.get('shopId');
     const days = parseInt(searchParams.get('days') || '30');
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
     const shopId = shopIdParam ? parseInt(shopIdParam) : null;
 
     console.log('🏪 Shop filter:', shopId ? `Shop ID: ${shopId}` : 'All shops');
-    console.log('📅 Date range:', days, 'days');
+    console.log('📅 Date range:', fromParam && toParam ? `${fromParam} → ${toParam}` : `${days} days`);
     console.log('👤 Current user ID:', decoded.userId);
 
-    // Calculate date range
-    // Special handling for "today" (days=1) - use calendar day instead of rolling 24 hours
+    // Calculate date range — prefer explicit from/to over days
     const endDate = new Date();
     const startDate = new Date();
 
-    if (days === 1) {
+    if (fromParam && toParam) {
+      // Custom date range: from start of fromParam day to end of toParam day
+      const from = new Date(fromParam);
+      const to = new Date(toParam);
+      startDate.setFullYear(from.getFullYear(), from.getMonth(), from.getDate());
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setFullYear(to.getFullYear(), to.getMonth(), to.getDate());
+      endDate.setHours(23, 59, 59, 999);
+    } else if (days === 1) {
       // For "today", set to start and end of current calendar day
       startDate.setHours(0, 0, 0, 0);
       endDate.setHours(23, 59, 59, 999);
@@ -603,7 +611,14 @@ export async function GET(req: NextRequest) {
             ...(allowedShopIds.length > 0 ? { shopId: { in: allowedShopIds as any } } : { shopId: { in: [] as any } })
           }
         },
-        include: { product: { select: { costPrice: true } } }
+        select: {
+          saleId: true,
+          productId: true,
+          quantity: true,
+          conversionCft: true,
+          unitName: true,
+          product: { select: { costPrice: true } }
+        }
       }),
       prisma.tmtSaleItem.findMany({
         where: {
@@ -708,41 +723,77 @@ export async function GET(req: NextRequest) {
       method, amount: data.amount, count: data.count
     }));
 
-    // 3. Sales & Expenses by Month
-    const numMonths = Math.max(1, Math.ceil(days / 30));
-    const monthsToShow = Math.min(numMonths, 12);
-    const monthIndices = Array.from({ length: monthsToShow }, (_, i) => monthsToShow - 1 - i);
-    
-    const monthlyData = monthIndices.map(i => {
-      const now = new Date();
-      const targetYear = now.getUTCFullYear();
-      const targetMonth = now.getUTCMonth() - i;
-      const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
-      
-      const mSales = combinedSales.filter(s => {
-        const d = new Date(s.saleDate);
-        return d >= monthStart && d <= monthEnd;
-      });
-      const mExpenses = expenses.filter(e => {
-        const d = new Date(e.date);
-        return d >= monthStart && d <= monthEnd;
-      });
+    // 3. Sales & Expenses — adaptive granularity based on date range
+    // Use actual date-range span so custom ranges show the right buckets
+    const effectiveDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-      const revenue = mSales.reduce((sum, s) => sum + s.amount, 0);
-      const salesCount = mSales.length;
-      const totalExp = mExpenses.reduce((sum, e) => sum + Number(e.amount), 0);
+    type ChartBucket = { label: string; salesCount: number; revenue: number; expenses: number };
+    let chartBuckets: ChartBucket[] = [];
 
-      return {
-        month: monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
-        salesCount,
-        revenue,
-        expenses: totalExp
-      };
-    });
+    if (effectiveDays <= 31) {
+      // ── Daily grouping ──────────────────────────────────────────────
+      for (let i = 0; i < effectiveDays; i++) {
+        const dayStart = new Date(startDate);
+        dayStart.setDate(startDate.getDate() + i);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart);
+        dayEnd.setHours(23, 59, 59, 999);
 
-    const salesByMonth = monthlyData.map(d => ({ month: d.month, sales: d.salesCount, revenue: d.revenue }));
-    const expensesByMonth = monthlyData.map(d => ({ month: d.month, expenses: d.expenses }));
+        const dSales = combinedSales.filter(s => { const d = new Date(s.saleDate); return d >= dayStart && d <= dayEnd; });
+        const dExp   = expenses.filter(e   => { const d = new Date(e.date);    return d >= dayStart && d <= dayEnd; });
+
+        chartBuckets.push({
+          label: dayStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }),
+          salesCount: dSales.length,
+          revenue: dSales.reduce((s, x) => s + x.amount, 0),
+          expenses: dExp.reduce((s, e) => s + Number(e.amount), 0)
+        });
+      }
+    } else if (effectiveDays <= 90) {
+      // ── Weekly grouping ─────────────────────────────────────────────
+      const weekCount = Math.ceil(effectiveDays / 7);
+      for (let w = 0; w < weekCount; w++) {
+        const wStart = new Date(startDate);
+        wStart.setDate(startDate.getDate() + w * 7);
+        wStart.setHours(0, 0, 0, 0);
+        const wEnd = new Date(wStart);
+        wEnd.setDate(wStart.getDate() + 6);
+        wEnd.setHours(23, 59, 59, 999);
+
+        const wSales = combinedSales.filter(s => { const d = new Date(s.saleDate); return d >= wStart && d <= wEnd; });
+        const wExp   = expenses.filter(e   => { const d = new Date(e.date);    return d >= wStart && d <= wEnd; });
+
+        chartBuckets.push({
+          label: `${wStart.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}`,
+          salesCount: wSales.length,
+          revenue: wSales.reduce((s, x) => s + x.amount, 0),
+          expenses: wExp.reduce((s, e) => s + Number(e.amount), 0)
+        });
+      }
+    } else {
+      // ── Monthly grouping ────────────────────────────────────────────
+      const numMonths = Math.min(Math.max(1, Math.ceil(effectiveDays / 30)), 12);
+      const anchor = new Date(endDate);
+      for (let i = numMonths - 1; i >= 0; i--) {
+        const targetYear  = anchor.getFullYear();
+        const targetMonth = anchor.getMonth() - i;
+        const mStart = new Date(targetYear, targetMonth, 1, 0, 0, 0, 0);
+        const mEnd   = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+        const mSales = combinedSales.filter(s => { const d = new Date(s.saleDate); return d >= mStart && d <= mEnd; });
+        const mExp   = expenses.filter(e   => { const d = new Date(e.date);    return d >= mStart && d <= mEnd; });
+
+        chartBuckets.push({
+          label: mStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+          salesCount: mSales.length,
+          revenue: mSales.reduce((s, x) => s + x.amount, 0),
+          expenses: mExp.reduce((s, e) => s + Number(e.amount), 0)
+        });
+      }
+    }
+
+    const salesByMonth   = chartBuckets.map(b => ({ month: b.label, sales: b.salesCount, revenue: b.revenue }));
+    const expensesByMonth = chartBuckets.map(b => ({ month: b.label, expenses: b.expenses }));
 
     // 4. Expenses by Category
     const expCategoryMap = new Map<string, number>();
@@ -815,7 +866,7 @@ export async function GET(req: NextRequest) {
           let realBalance = 0;
           for (const entry of c.ledgerEntries) {
             const amount = Number(entry.amount);
-            if (entry.type === 'loan_clearing') {
+            if (entry.type === 'loan_clearing' || entry.type === 'item_return') {
               realBalance -= amount;
             } else {
               // sale_payment: positive = debit (adds), negative = credit (subtracts naturally)
@@ -999,17 +1050,21 @@ function serializeBigInt(obj: any): string {
 
     const totalCostPrice = generalCostPrice + tmtCostPrice;
     
-    // Default netProfit computation logic
-    const netProfit = revenue - totalAllExpenses;
+    // Net Profit = Revenue − Cost Price (COGS) − Expenses − Salary
+    // rawExpenses already includes both shop expenses + salary (employeePayments)
+    const netProfit = revenue - totalCostPrice - rawExpenses;
 
-    // ROI (Return on Investment) = (Net Profit / Total Expenses) * 100
-    const roi = totalAllExpenses > 0 ? (netProfit / totalAllExpenses) * 100 : 0;
+    // Total cost basis for ROI = COGS + all operating expenses
+    const totalCostBasis = totalCostPrice + rawExpenses;
 
-    // ROS (Return on Sales) = (Net Profit / Total Sales) * 100
+    // ROI (Return on Investment) = (Net Profit / Total Cost Basis) * 100
+    const roi = totalCostBasis > 0 ? (netProfit / totalCostBasis) * 100 : 0;
+
+    // ROS (Return on Sales) = (Net Profit / Revenue) * 100
     const ros = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
-    // Gross Margin = ((Revenue - Expenses) / Revenue) * 100
-    const grossMargin = revenue > 0 ? ((revenue - totalAllExpenses) / revenue) * 100 : 0;
+    // Gross Margin = Net Profit / Revenue * 100
+    const grossMargin = revenue > 0 ? (netProfit / revenue) * 100 : 0;
 
     console.log('📊 Business Metrics calculated:', {
       revenue,
@@ -1169,11 +1224,13 @@ function serializeBigInt(obj: any): string {
       headers: { 'Content-Type': 'application/json' }
     });
 
-  } catch (error) {
-    console.error('System analytics error:', error);
+  } catch (error: any) {
+    console.error('❌ System analytics error:', error?.message || error);
+    console.error('❌ Error stack:', error?.stack);
     return NextResponse.json({
       success: false,
-      message: 'Failed to fetch system analytics'
+      message: 'Failed to fetch system analytics',
+      detail: error?.message
     }, { status: 500 });
   }
 } 

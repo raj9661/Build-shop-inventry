@@ -27,9 +27,11 @@ export async function GET(req: NextRequest) {
 
     const { searchParams } = new URL(req.url);
     const days = parseInt(searchParams.get('days') || '30');
+    const fromParam = searchParams.get('from');
+    const toParam = searchParams.get('to');
     const shopIdParam = searchParams.get('shopId');
 
-    console.log('🔍 User analytics API called:', { userId: decoded.userId, days, shopIdParam });
+    console.log('🔍 User analytics API called:', { userId: decoded.userId, days, fromParam, toParam, shopIdParam });
 
     // Get shop filter based on user's access
     const shopFilter = await getShopFilter(token);
@@ -58,12 +60,22 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    // Calculate date range
+    // Calculate date range — prefer explicit from/to over days
     const endDate = new Date();
     endDate.setHours(23, 59, 59, 999);
     const startDate = new Date();
-    startDate.setDate(endDate.getDate() - days);
-    startDate.setHours(0, 0, 0, 0);
+
+    if (fromParam && toParam) {
+      const from = new Date(fromParam);
+      const to = new Date(toParam);
+      startDate.setFullYear(from.getFullYear(), from.getMonth(), from.getDate());
+      startDate.setHours(0, 0, 0, 0);
+      endDate.setFullYear(to.getFullYear(), to.getMonth(), to.getDate());
+      endDate.setHours(23, 59, 59, 999);
+    } else {
+      startDate.setDate(endDate.getDate() - days);
+      startDate.setHours(0, 0, 0, 0);
+    }
 
     // Get sales data
     const [
@@ -163,67 +175,74 @@ export async function GET(req: NextRequest) {
       }
     };
 
-    // Get sales and expenses by month in parallel
-    const numMonths = Math.max(1, Math.ceil(days / 30));
-    const monthsToShow = Math.min(numMonths, 12);
-    const monthIndices = Array.from({ length: monthsToShow }, (_, i) => monthsToShow - 1 - i);
+    // Get sales and expenses by date — fetch all at once, bucket in-memory for adaptive granularity
+    const effectiveDays = Math.max(1, Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
 
-    const monthPromises = monthIndices.map(async (i) => {
-      const now = new Date();
-      const targetYear = now.getUTCFullYear();
-      const targetMonth = now.getUTCMonth() - i;
-      const monthStart = new Date(Date.UTC(targetYear, targetMonth, 1, 0, 0, 0, 0));
-      const monthEnd = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
+    const [allSalesInRange, allTmtSalesInRange, allExpensesInRange] = await Promise.all([
+      prisma.sale.findMany({
+        where: { isActive: true, saleDate: { gte: startDate, lte: endDate }, ...whereClause },
+        select: { saleDate: true, finalAmount: true }
+      }),
+      prisma.tmtSale.findMany({
+        where: { isActive: true, saleDate: { gte: startDate, lte: endDate }, ...whereClause },
+        select: { saleDate: true, totalAmount: true }
+      }),
+      prisma.expense.findMany({
+        where: { isActive: true, date: { gte: startDate, lte: endDate }, ...whereClause },
+        select: { date: true, amount: true }
+      })
+    ]);
 
-      const [monthSales, monthTmtSales, monthExpenses] = await Promise.all([
-        prisma.sale.aggregate({
-          where: {
-            isActive: true,
-            saleDate: { gte: monthStart, lte: monthEnd },
-            ...whereClause
-          },
-          _sum: { finalAmount: true },
-          _count: { id: true }
-        }),
-        prisma.tmtSale.aggregate({
-          where: {
-            isActive: true,
-            saleDate: { gte: monthStart, lte: monthEnd },
-            ...whereClause
-          },
-          _sum: { totalAmount: true },
-          _count: { id: true }
-        }),
-        prisma.expense.aggregate({
-          where: {
-            isActive: true,
-            date: { gte: monthStart, lte: monthEnd },
-            ...whereClause
-          },
-          _sum: { amount: true }
-        })
-      ]);
+    type ChartBucket = { label: string; sales: number; revenue: number; expenses: number };
+    const chartBuckets: ChartBucket[] = [];
 
-      const monthLabel = monthStart.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-      const salesCount = (monthSales._count.id || 0) + (monthTmtSales._count.id || 0);
-      const revenue = Number(monthSales._sum.finalAmount || 0) + Number(monthTmtSales._sum.totalAmount || 0);
-      const expenses = Number(monthExpenses._sum.amount || 0);
+    const buildBuckets = (bucketDefs: { start: Date; end: Date; label: string }[]) => {
+      for (const { start, end, label } of bucketDefs) {
+        const bSales = allSalesInRange.filter(s => { const d = new Date(s.saleDate); return d >= start && d <= end; });
+        const bTmt   = allTmtSalesInRange.filter(s => { const d = new Date(s.saleDate); return d >= start && d <= end; });
+        const bExp   = allExpensesInRange.filter(e => { const d = new Date(e.date); return d >= start && d <= end; });
+        chartBuckets.push({
+          label,
+          sales: bSales.length + bTmt.length,
+          revenue: bSales.reduce((s, x) => s + Number(x.finalAmount || 0), 0)
+                 + bTmt.reduce((s, x) => s + Number(x.totalAmount || 0), 0),
+          expenses: bExp.reduce((s, e) => s + Number(e.amount || 0), 0)
+        });
+      }
+    };
 
-      return { month: monthLabel, sales: salesCount, revenue, expenses };
-    });
+    if (effectiveDays <= 31) {
+      // ── Daily buckets ────────────────────────────────────────────────
+      const defs = Array.from({ length: effectiveDays }, (_, i) => {
+        const s = new Date(startDate); s.setDate(startDate.getDate() + i); s.setHours(0, 0, 0, 0);
+        const e = new Date(s); e.setHours(23, 59, 59, 999);
+        return { start: s, end: e, label: s.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) };
+      });
+      buildBuckets(defs);
+    } else if (effectiveDays <= 90) {
+      // ── Weekly buckets ────────────────────────────────────────────────
+      const weekCount = Math.ceil(effectiveDays / 7);
+      const defs = Array.from({ length: weekCount }, (_, w) => {
+        const s = new Date(startDate); s.setDate(startDate.getDate() + w * 7); s.setHours(0, 0, 0, 0);
+        const e = new Date(s); e.setDate(s.getDate() + 6); e.setHours(23, 59, 59, 999);
+        return { start: s, end: e, label: s.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) };
+      });
+      buildBuckets(defs);
+    } else {
+      // ── Monthly buckets ────────────────────────────────────────────────
+      const numMonths = Math.min(Math.max(1, Math.ceil(effectiveDays / 30)), 12);
+      const anchor = new Date(endDate);
+      const defs = Array.from({ length: numMonths }, (_, i) => {
+        const idx = numMonths - 1 - i;
+        const s = new Date(anchor.getFullYear(), anchor.getMonth() - idx, 1, 0, 0, 0, 0);
+        const e = new Date(anchor.getFullYear(), anchor.getMonth() - idx + 1, 0, 23, 59, 59, 999);
+        return { start: s, end: e, label: s.toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) };
+      });
+      buildBuckets(defs);
+    }
 
-    const monthlyData = await Promise.all(monthPromises);
-    
-    const salesByMonth = monthlyData.map(d => ({
-      month: d.month,
-      sales: d.sales,
-      revenue: d.revenue
-    }));
-    
-    const expensesByMonth = monthlyData.map(d => ({
-      month: d.month,
-      expenses: d.expenses
-    }));
+    const salesByMonth   = chartBuckets.map(b => ({ month: b.label, sales: b.sales, revenue: b.revenue }));
+    const expensesByMonth = chartBuckets.map(b => ({ month: b.label, expenses: b.expenses }));
 
     // Get expenses by category
     const expensesByCategory = await prisma.expense.groupBy({
@@ -382,8 +401,8 @@ export async function GET(req: NextRequest) {
         let realBalance = 0;
         for (const entry of c.ledgerEntries) {
           const amount = Number(entry.amount);
-          if (entry.type === 'loan_clearing') {
-            // Manual payments stored as positive — always subtract
+          if (entry.type === 'loan_clearing' || entry.type === 'item_return') {
+            // Manual payments/credits stored as positive — always subtract
             realBalance -= amount;
           } else {
             // sale_payment: positive = debit (adds), negative = credit (subtracts naturally)
@@ -416,10 +435,19 @@ export async function GET(req: NextRequest) {
 
     const totalAllExpenses = rawExpenses + supplierPaymentsAmt;
     const totalRevenueValue = Number(totalRevenueObj._sum.finalAmount || 0);
-    const netProfit = totalRevenueValue - totalAllExpenses;
-    const roi = totalAllExpenses > 0 ? (netProfit / totalAllExpenses) * 100 : 0;
+
+    // Net Profit = Revenue − Cost Price (COGS) − Shop Expenses − Salary
+    // supplierPaymentsAmt = payments made to suppliers for purchasing stock = COGS proxy
+    // rawExpenses = shop running costs + salary (employee payments)
+    const cogs = supplierPaymentsAmt;
+    const netProfit = totalRevenueValue - cogs - rawExpenses;
+
+    // Total cost basis = COGS + all operating expenses
+    const totalCostBasis = cogs + rawExpenses;
+    const roi = totalCostBasis > 0 ? (netProfit / totalCostBasis) * 100 : 0;
     const ros = totalRevenueValue > 0 ? (netProfit / totalRevenueValue) * 100 : 0;
-    const grossMargin = totalRevenueValue > 0 ? ((totalRevenueValue - totalAllExpenses) / totalRevenueValue) * 100 : 0;
+    const grossMargin = totalRevenueValue > 0 ? (netProfit / totalRevenueValue) * 100 : 0;
+
 
     // Format the response data
     const analyticsData = {
