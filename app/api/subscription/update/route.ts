@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // PUT - Update user's subscription plan
 export async function PUT(req: NextRequest) {
@@ -166,7 +165,6 @@ export async function PUT(req: NextRequest) {
       message: 'Failed to update subscription' 
     }, { status: 500 });
   } finally {
-    await prisma.$disconnect();
   }
 }
 

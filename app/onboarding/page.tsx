@@ -208,8 +208,8 @@ export default function CustomerOnboarding() {
             startDate: new Date(),
             endDate: new Date(Date.now() + (formData.selectedPlan.includes('YEARLY') ? 365 : 30) * 24 * 60 * 60 * 1000),
             trialEndDate: formData.selectedPlan === 'TRIAL_30_DAYS' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) : null,
-            price: SUBSCRIPTION_PLANS[formData.selectedPlan].price,
-            currency: SUBSCRIPTION_PLANS[formData.selectedPlan].currency,
+            price: (SUBSCRIPTION_PLANS as any)[formData.selectedPlan].price,
+            currency: (SUBSCRIPTION_PLANS as any)[formData.selectedPlan].currency,
             autoRenew: true
           }
         })

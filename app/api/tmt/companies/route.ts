@@ -1,10 +1,9 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 import { canAccessShop } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // GET /api/tmt/companies - Get all TMT companies (isolated per SUPER_DUPER_ADMIN)
 export async function GET(request: NextRequest) {

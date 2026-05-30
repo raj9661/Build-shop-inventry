@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { emailService } from './emailService';
 
-const prisma = new PrismaClient();
 
 interface NotificationSettings {
   emailNotifications: boolean;

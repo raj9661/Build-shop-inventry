@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import { useState, useEffect, useCallback, useRef, memo } from "react"
 import { useLanguage } from "@/hooks/use-language"
 import { useShop } from "@/app/contexts/ShopContext"
@@ -193,6 +196,8 @@ interface SaleDocument {
 const DocCard = memo(function DocCard({
   doc, onDelete, formatFileSize,
 }: { doc: SaleDocument; onDelete: (id: string) => void; formatFileSize: (n: number) => string }) {
+
+
   return (
     <div className="border rounded-xl p-3 flex flex-col bg-gray-50 hover:bg-indigo-50/30 transition-colors">
       <div className="flex justify-between items-start mb-2">
@@ -262,6 +267,7 @@ const DocCard = memo(function DocCard({
 
 // ─── Main page ───────────────────────────────────────────────────────────────
 export default function SaleDocuments() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { currentShop, userRole } = useShop()
 
@@ -433,6 +439,10 @@ export default function SaleDocuments() {
     </Card>
   )
 
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-50 pb-20 md:pb-8">
 
@@ -576,6 +586,8 @@ function DocumentUploadForm({ idPrefix, onUploadSuccess, formatFileSize }: { idP
     setPreviewUrl(null)
     setFileInputKey(Date.now())
   }, [previewUrl])
+
+
 
   return (
     <Card className="shadow-md border-0 bg-white h-full">

@@ -1,10 +1,9 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 import { serializeBigInt } from '@/app/lib/serializationUtils';
 
-const prisma = new PrismaClient();
 
 export async function GET(req: NextRequest) {
   try {

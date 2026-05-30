@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import React, { useEffect, useState } from "react";
 import { useShop } from "../contexts/ShopContext";
 import { Input } from "@/components/ui/input";
@@ -34,6 +37,7 @@ function formatTmtStockDisplay(prod: any & { latestConversionCft?: number }) {
 }
 
 export default function InventoryPage() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const router = useRouter();
   const { currentShopId, userRole } = useShop();
   const isAdmin = userRole === 'SUPER_DUPER_ADMIN';
@@ -348,6 +352,10 @@ export default function InventoryPage() {
       setEditing({ id: null, field: null });
     }
   };
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="max-w-7xl mx-auto p-4 space-y-6">

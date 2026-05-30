@@ -1,5 +1,7 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
 import React, { useState, useEffect, useMemo, useCallback, useRef, Fragment } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -79,6 +81,7 @@ interface Customer {
 }
 
 export default function CustomerLedger() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShop, userRole } = useShop()
   const isAdmin = userRole === 'SUPER_DUPER_ADMIN' || userRole === 'SUPER_ADMIN'
@@ -922,6 +925,9 @@ export default function CustomerLedger() {
 
   // State for dropdown visibility
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-purple-100">

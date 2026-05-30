@@ -61,6 +61,9 @@ import {
   Cell,
 } from "recharts"
 import { useSearchParams, useRouter } from "next/navigation"
+import { useAuthGuard } from '@/app/hooks/use-auth-guard'
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen'
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen'
 
 interface ShopStats {
   id: number
@@ -110,6 +113,7 @@ const DEFAULT_WIDGETS: WidgetConfig[] = [
 function SuperDuperAdminDashboardContent() {
   console.log('🔍 [SuperDuperAdminDashboard] Component rendering')
   // All hooks must be before any return!
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { userRole, setCurrentShop, shops: contextShops, currentShopId, refreshShops } = useShop()
   const { canCreate: canCreateShop, currentCount: shopCount, limit: shopLimit, loading: limitsLoading, refreshLimits } = useShopLimits()
@@ -830,6 +834,22 @@ function SuperDuperAdminDashboardContent() {
   }
 
   // Access check - must be after all hooks
+  if (!authReady) {
+    return <AuthLoadingScreen />
+  }
+
+  if (!isAuthenticated) {
+    return <SessionExpiredScreen />
+  }
+
+  if (loading || limitsLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      </div>
+    )
+  }
+
   if (!hasAccess) {
     console.log('❌ Access Denied - User Role:', userRole, 'Local Role:', localUserRole)
     return (

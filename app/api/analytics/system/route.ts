@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // Virtual shop ID for "All shops" analytics view
 const ALL_SHOPS_ID = -1

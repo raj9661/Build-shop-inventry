@@ -1,11 +1,10 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 import ultraFastDashboard from '@/app/lib/ultra-fast-dashboard';
 import { performance } from 'perf_hooks';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 // Helper function to safely serialize BigInt values for JSON response
 function serializeBigInt(obj: any): any {
@@ -147,7 +146,6 @@ export async function GET(req: NextRequest) {
       code: 'DASHBOARD_ERROR'
     }, { status: 500 });
   } finally {
-    await prisma.$disconnect();
   }
 }
 

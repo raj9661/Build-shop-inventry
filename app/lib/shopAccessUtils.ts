@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma';
 import { validateToken } from './tokenUtils'
 
-const prisma = new PrismaClient()
 
 // Simple in-memory cache for shop assignments (in production, use Redis)
 const shopAssignmentCache = new Map<string, any>();

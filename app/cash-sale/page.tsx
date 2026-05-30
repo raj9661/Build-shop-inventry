@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -66,6 +69,7 @@ type CashSaleItem = {
 };
 
 export default function CashSale() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShopId } = useShop()
   const [items, setItems] = useState<CashSaleItem[]>([])
@@ -497,6 +501,10 @@ export default function CashSale() {
   }
 
   const total = items.reduce((acc, item) => acc + item.quantity * item.price, 0)
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">

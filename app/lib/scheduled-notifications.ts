@@ -1,7 +1,6 @@
+import { prisma } from '@/lib/prisma';
 import { notificationService } from './notification-service';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 class ScheduledNotifications {
   // Run daily tasks

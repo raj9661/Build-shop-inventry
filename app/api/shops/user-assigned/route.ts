@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getUserAssignedShops } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // GET - Get shops assigned to the current user
 export async function GET(req: NextRequest) {

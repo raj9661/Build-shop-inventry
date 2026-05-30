@@ -17,47 +17,58 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: 'Unauthorized' }, { status: 401 });
     }
 
+    // Pagination params
+    const { searchParams } = new URL(req.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1'));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50')));
+    const skip = (page - 1) * limit;
+
     // Build tenant-safe where clause from cached shopIds
     const shopClause = getShopWhereClause(ctx);
+    const whereClause = { ...shopClause, isActive: true };
 
-    const sales = await prisma.sale.findMany({
-      where: { ...shopClause, isActive: true },
-      select: {
-        id: true,
-        shopId: true,
-        saleDate: true,
-        totalAmount: true,
-        finalAmount: true,
-        discount: true,
-        transportFare: true,
-        vehicleNumber: true,
-        driverName: true,
-        paymentMethod: true,
-        paymentStatus: true,
-        notes: true,
-        status: true,
-        updatedAt: true,
-        createdAt: true,
-        customer: { select: { name: true, phone: true } },
-        shop: { select: { name: true, location: true } },
-        items: {
-          where: { isActive: true },
-          select: {
-            id: true,
-            quantity: true,
-            unitName: true,
-            unit: true,
-            conversionCft: true,
-            unitPrice: true,
-            totalPrice: true,
-            product: { select: { name: true, sku: true } },
+    const [sales, totalCount] = await Promise.all([
+      prisma.sale.findMany({
+        where: whereClause,
+        select: {
+          id: true,
+          shopId: true,
+          saleDate: true,
+          totalAmount: true,
+          finalAmount: true,
+          discount: true,
+          transportFare: true,
+          vehicleNumber: true,
+          driverName: true,
+          paymentMethod: true,
+          paymentStatus: true,
+          notes: true,
+          status: true,
+          updatedAt: true,
+          createdAt: true,
+          customer: { select: { name: true, phone: true } },
+          shop: { select: { name: true, location: true } },
+          items: {
+            where: { isActive: true },
+            select: {
+              id: true,
+              quantity: true,
+              unitName: true,
+              unit: true,
+              conversionCft: true,
+              unitPrice: true,
+              totalPrice: true,
+              product: { select: { name: true, sku: true } },
+            },
           },
         },
-      },
-      orderBy: { saleDate: 'desc' },
-    });
+        orderBy: { saleDate: 'desc' },
+        take: limit,
+        skip,
+      }),
+      prisma.sale.count({ where: whereClause }),
+    ]);
 
-    // Map Prisma payment method to frontend format
     const mapPaymentMethodToFrontend = (method: string) => {
       switch (method) {
         case 'CASH':
@@ -86,94 +97,36 @@ export async function GET(req: NextRequest) {
 
     // Map fields for frontend compatibility
     const mappedSales = sales.map(sale => {
-      // Debug: Log the raw sale data from API
-      console.log('API sale data:', {
-        id: sale.id,
-        paymentStatus: sale.paymentStatus,
-        updatedAt: sale.updatedAt,
-        updatedAtType: typeof sale.updatedAt,
-        updatedAtString: sale.updatedAt ? sale.updatedAt.toString() : 'null'
-      });
-
       // Calculate payment amounts based on payment status and method
       let paidAmount = 0;
       let dueAmount = 0;
       let paymentType = 'cash';
 
       // For both PENDING and COMPLETED sales, use the same logic to preserve payment info
-      // This ensures completed sales show the exact same info as when they were active
       if (sale.paymentStatus === 'PENDING' || sale.paymentStatus === 'COMPLETED') {
         // Check notes FIRST for payment info (most reliable for partial payments)
         const partialPaymentMatch = sale.notes?.match(/Partial Payment: ₹(\d+(?:\.\d+)?) via (\w+), Due: ₹(\d+(?:\.\d+)?)/);
         const loanMatch = sale.notes?.match(/Loan\/Credit Sale: Full amount due \(₹(\d+(?:\.\d+)?)\)/);
         const hasLoanNote = sale.notes?.includes('Loan/Credit Sale');
 
-        console.log('🔍 [Sales API] Payment parsing (PENDING/COMPLETED):', {
-          saleId: sale.id,
-          paymentStatus: sale.paymentStatus,
-          notes: sale.notes,
-          paymentMethod: sale.paymentMethod,
-          partialMatch: partialPaymentMatch,
-          loanMatch: loanMatch,
-          hasLoanNote: hasLoanNote
-        });
-
         if (partialPaymentMatch) {
-          // This is a partial payment - amounts are in notes (same for both PENDING and COMPLETED)
           paidAmount = parseFloat(partialPaymentMatch[1]);
           dueAmount = parseFloat(partialPaymentMatch[3]);
           paymentType = 'partial';
-          console.log('🔍 [Sales API] Parsed partial payment:', {
-            saleId: sale.id,
-            paidAmount,
-            dueAmount,
-            paymentType,
-            paymentStatus: sale.paymentStatus
-          });
         } else if (loanMatch || hasLoanNote) {
-          // Loan/credit sale - detected from notes (same for both PENDING and COMPLETED)
           paidAmount = 0;
           dueAmount = parseDecimal(sale.finalAmount);
           paymentType = 'loan';
-          console.log('🔍 [Sales API] Detected loan/credit sale from notes:', {
-            saleId: sale.id,
-            paidAmount,
-            dueAmount,
-            paymentType,
-            paymentStatus: sale.paymentStatus,
-            finalAmount: parseDecimal(sale.finalAmount)
-          });
         } else if (sale.paymentMethod === 'CASH' || sale.paymentMethod === 'CARD' ||
           sale.paymentMethod === 'UPI' || sale.paymentMethod === 'BANK_TRANSFER' ||
           sale.paymentMethod === 'CHEQUE') {
-          // Cash/Online payment (fully paid) - same for both PENDING and COMPLETED
           paidAmount = parseDecimal(sale.finalAmount);
           dueAmount = 0;
           paymentType = sale.paymentMethod ? mapPaymentMethodToFrontend(sale.paymentMethod) : 'cash';
-          console.log('🔍 [Sales API] Detected cash/online payment:', {
-            saleId: sale.id,
-            paymentMethod: sale.paymentMethod,
-            paidAmount,
-            dueAmount,
-            paymentType,
-            paymentStatus: sale.paymentStatus,
-            finalAmount: parseDecimal(sale.finalAmount)
-          });
         } else {
-          // No notes and no payment method = Loan/credit sale
           paidAmount = 0;
           dueAmount = parseDecimal(sale.finalAmount);
           paymentType = 'loan';
-          console.log('🔍 [Sales API] Defaulting to loan/credit (no payment method or notes):', {
-            saleId: sale.id,
-            paymentMethod: sale.paymentMethod,
-            notes: sale.notes,
-            paidAmount,
-            dueAmount,
-            paymentType,
-            paymentStatus: sale.paymentStatus,
-            finalAmount: parseDecimal(sale.finalAmount)
-          });
         }
       }
 
@@ -226,7 +179,18 @@ export async function GET(req: NextRequest) {
       return mappedSale
     });
 
-    return NextResponse.json({ success: true, data: { sales: mappedSales } });
+    return NextResponse.json({
+      success: true,
+      data: {
+        sales: mappedSales,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit),
+        },
+      },
+    });
   } catch (error) {
     console.error('Get sales error:', error);
     return NextResponse.json({ success: false, message: 'Failed to fetch sales' }, { status: 500 });

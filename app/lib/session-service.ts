@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import { securityService } from './security-service';
 
-const prisma = new PrismaClient();
 
 interface SessionInfo {
   userId: number;

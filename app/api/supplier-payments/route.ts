@@ -1,8 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PaymentMethod } from '@prisma/client';
+import { PaymentMethod } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {

@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import React, { useState, useEffect, useCallback } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -203,6 +206,8 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
     );
   }
 
+
+
   return (
     <div className="space-y-4">
       <div className="space-y-2 min-h-[300px]">
@@ -256,6 +261,7 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
 }
 
 export default function AnalyticsDashboard() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { userRole, shops, currentShopId, switchShop } = useShop()
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
@@ -818,6 +824,10 @@ export default function AnalyticsDashboard() {
       </div>
     )
   }
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="container mx-auto p-6 space-y-6">

@@ -23,6 +23,9 @@ import {
   Settings,
   Download
 } from 'lucide-react';
+import { useAuthGuard } from '@/app/hooks/use-auth-guard';
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen';
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import { useLanguage } from '@/hooks/use-language';
@@ -57,6 +60,7 @@ interface SubscriptionData {
 }
 
 export default function SubscriptionPage() {
+  const { authReady, isAuthenticated } = useAuthGuard();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
@@ -189,6 +193,9 @@ export default function SubscriptionPage() {
   const handleBackToDashboard = () => {
     router.push('/dashboard');
   };
+
+  if (!authReady) return <AuthLoadingScreen />;
+  if (!isAuthenticated) return <SessionExpiredScreen />;
 
   if (loading) {
     return (

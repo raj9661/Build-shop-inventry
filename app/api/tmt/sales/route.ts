@@ -1,5 +1,5 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import {
   getTmtProduct,
   convertToKg,
@@ -12,7 +12,6 @@ import { validateToken } from '@/app/lib/tokenUtils';
 import { canAccessShop } from '@/app/lib/shopAccessUtils';
 import { createPurchaseEntry, createPaymentEntry } from '@/app/lib/ledgerUtils';
 
-const prisma = new PrismaClient();
 
 
 

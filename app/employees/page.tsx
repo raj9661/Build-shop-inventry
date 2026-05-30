@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import { useState, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -103,6 +106,7 @@ const salaryTypeOptions = [
 const daysOfWeek = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function Employees() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShop } = useShop()
   const [employees, setEmployees] = useState<Employee[]>([])
@@ -594,6 +598,10 @@ export default function Employees() {
       toast.error('Failed to delete payment');
     }
   };
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 to-emerald-100">

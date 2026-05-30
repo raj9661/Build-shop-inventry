@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 // Enhanced TMT Bar Unit Conversion Utilities
 // Updated to work with the new TMT database schema
 
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 // TMT Bar Unit Types
 export type TmtUnitType = 'ton' | 'bundle' | 'piece' | 'kg';

@@ -13,6 +13,9 @@ import {
   ArrowLeft,
   Loader2
 } from 'lucide-react';
+import { useAuthGuard } from '@/app/hooks/use-auth-guard';
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen';
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen';
 import { toast } from 'sonner';
 
 interface SubscriptionPlan {
@@ -36,6 +39,7 @@ interface SubscriptionPlansProps {
 }
 
 export default function SubscriptionPlans({ currentPlan, onPlanSelect }: SubscriptionPlansProps) {
+  const { authReady, isAuthenticated } = useAuthGuard();
   const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<string | null>(currentPlan || null);
   const [loading, setLoading] = useState(true);
@@ -110,6 +114,9 @@ export default function SubscriptionPlans({ currentPlan, onPlanSelect }: Subscri
     
     return `${formatNumber(limits.shops)} Shops • ${formatNumber(limits.products)} Products • ${formatNumber(limits.users)} Users`;
   };
+
+  if (!authReady) return <AuthLoadingScreen />;
+  if (!isAuthenticated) return <SessionExpiredScreen />;
 
   if (loading) {
     return (

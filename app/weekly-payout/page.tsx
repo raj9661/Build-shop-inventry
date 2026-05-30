@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -40,6 +43,7 @@ type PaymentData = {
 }
 
 export default function WeeklyPayout() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { language, toggleLanguage, t } = useLanguage()
   const { currentShop } = useShop()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
@@ -68,6 +72,10 @@ export default function WeeklyPayout() {
     }
     fetchSuppliers()
   }, [currentShop])
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

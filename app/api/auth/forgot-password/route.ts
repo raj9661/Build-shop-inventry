@@ -1,11 +1,10 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import emailService from '@/app/lib/emailService';
 import redisService from '@/app/lib/redis-service';
 
-const prisma = new PrismaClient();
 
 export async function POST(req: NextRequest) {
   try {

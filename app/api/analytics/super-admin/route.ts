@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getUserShopAccess } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // Helper: Check for SUPER_DUPER_ADMIN role
 function requireSuperDuperAdmin(user: any) {

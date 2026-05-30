@@ -218,11 +218,6 @@ export async function GET(req: NextRequest) {
           // Parse payment information from notes if available
           // CRITICAL: Notes parsing must happen first and must be preserved for partial payments
           if (sale.notes) {
-            console.log('🔍 [Ledger] Checking notes for payment info:', {
-              saleId: sale.id,
-              notes: sale.notes,
-              notesLength: sale.notes?.length
-            });
 
             // Try multiple patterns to extract payment info
             // Format: "Partial Payment: ₹4000 via UPI, Due: ₹500"
@@ -236,13 +231,6 @@ export async function GET(req: NextRequest) {
               paidAmount = 0;
               dueAmount = Number(loanMatch[1]);
               paymentType = 'loan';
-              console.log('🔍 [Ledger] ✅ Detected loan/credit sale from notes:', {
-                saleId: sale.id,
-                paidAmount,
-                dueAmount,
-                paymentType,
-                notes: sale.notes
-              });
             } else if (partialMatch && partialMatch[1] && partialMatch[3]) {
               paidAmount = Number(partialMatch[1]);
               dueAmount = Number(partialMatch[3]);
@@ -255,14 +243,6 @@ export async function GET(req: NextRequest) {
               } else {
                 partialPaymentMethod = methodLower; // Keep as-is (upi, cash, etc.)
               }
-              console.log('🔍 [Ledger] ✅ Parsed partial payment from notes (exact format):', {
-                saleId: sale.id,
-                paidAmount,
-                dueAmount,
-                partialPaymentMethod,
-                originalMethod: partialMatch[2],
-                notes: sale.notes
-              });
             } else {
               // Try alternative format without strict spacing
               const altMatch = sale.notes.match(/Partial Payment.*?₹(\d+(?:\.\d+)?).*?via\s+(\w+).*?Due.*?₹(\d+(?:\.\d+)?)/i);
@@ -277,14 +257,6 @@ export async function GET(req: NextRequest) {
                 } else {
                   partialPaymentMethod = methodLower; // Keep as-is (upi, cash, etc.)
                 }
-                console.log('🔍 [Ledger] ✅ Parsed partial payment from notes (alt format):', {
-                  saleId: sale.id,
-                  paidAmount,
-                  dueAmount,
-                  partialPaymentMethod,
-                  originalMethod: altMatch[2],
-                  notes: sale.notes
-                });
               } else {
                 // Try even more flexible pattern - just look for "Partial Payment" and amounts
                 const flexibleMatch = sale.notes.match(/Partial Payment.*?(\d+(?:\.\d+)?).*?via.*?(\w+).*?Due.*?(\d+(?:\.\d+)?)/i);
@@ -298,21 +270,7 @@ export async function GET(req: NextRequest) {
                   } else {
                     partialPaymentMethod = methodLower;
                   }
-                  console.log('🔍 [Ledger] ✅ Parsed partial payment from notes (flexible format):', {
-                    saleId: sale.id,
-                    paidAmount,
-                    dueAmount,
-                    partialPaymentMethod,
-                    originalMethod: flexibleMatch[2],
-                    notes: sale.notes
-                  });
                 } else {
-                  console.log('🔍 [Ledger] ⚠️ No partial payment pattern matched in notes:', {
-                    saleId: sale.id,
-                    notes: sale.notes,
-                    notesIncludesPartial: sale.notes.includes('Partial Payment'),
-                    notesIncludesPartialCase: sale.notes.toLowerCase().includes('partial payment')
-                  });
                 }
               }
             }
@@ -370,28 +328,10 @@ export async function GET(req: NextRequest) {
           if (paymentType === 'partial' && paidAmount > 0 && dueAmount > 0) {
             const calculatedDue = finalAmount - paidAmount;
             if (Math.abs(dueAmount - calculatedDue) > 0.01) {
-              console.log('🔍 [Ledger] Adjusting due amount to match:', {
-                saleId: sale.id,
-                originalDue: dueAmount,
-                calculatedDue,
-                finalAmount,
-                paidAmount
-              });
               dueAmount = calculatedDue;
             }
           }
 
-          console.log('🔍 [Ledger] Sale payment info:', {
-            saleId: sale.id,
-            finalAmount,
-            paidAmount,
-            dueAmount,
-            paymentType,
-            partialPaymentMethod,
-            paymentMethod: sale.paymentMethod,
-            paymentStatus: sale.paymentStatus,
-            hasNotes: !!sale.notes
-          });
 
           return [`regular-${sale.id}`, {
             finalAmount,
@@ -548,7 +488,6 @@ export async function GET(req: NextRequest) {
     );
     const activeSaleIds = Array.from(allSaleIdsFromEntries).filter(key => !completedSaleKeys.has(key));
     if (activeSaleIds.length > 0) {
-      console.log('🔍 [Ledger] Filtering out active sales from ledger:', activeSaleIds);
     }
 
     // Track which sales we have already included as a "Purchase" entry to prevent duplicates
@@ -632,12 +571,6 @@ export async function GET(req: NextRequest) {
       return false;
     });
 
-    console.log('🔍 [Ledger] Filtered entries:', {
-      totalEntries: entriesWithSaleId.length,
-      completedEntries: entriesForCompletedSales.length,
-      completedSales: completedSaleKeys.size,
-      activeSalesFiltered: activeSaleIds.length
-    });
 
     // Now process entries for frontend
     let processedEntries = entriesForCompletedSales.map(entry => {
@@ -708,16 +641,6 @@ export async function GET(req: NextRequest) {
                 saleInfo.partialPaymentMethod = 'cash'; // Default
               }
             }
-            console.log('🔍 [Ledger] Detected partial payment from amounts, updating paymentType:', {
-              saleId: entry.saleId,
-              paid,
-              due,
-              total,
-              originalPaymentType: saleInfo.paymentType,
-              updatedPaymentType: paymentTypeFromSale,
-              partialPaymentMethod: saleInfo.partialPaymentMethod,
-              paymentMethod: saleInfo.paymentMethod
-            });
           }
 
           if (paymentTypeFromSale === 'partial') {
@@ -753,53 +676,15 @@ export async function GET(req: NextRequest) {
 
             const methodLabel = mapPaymentMethodLabel(methodEnum);
             paymentMode = methodLabel ? `Partial ${methodLabel}` : 'Partial Payment';
-            console.log('🔍 [Ledger] Setting partial payment mode:', {
-              saleId: entry.saleId,
-              paymentType: paymentTypeFromSale,
-              partialPaymentMethod: saleInfo.partialPaymentMethod,
-              paymentMethod: saleInfo.paymentMethod,
-              methodEnum,
-              methodLabel,
-              paymentMode,
-              paid,
-              due,
-              total
-            });
           } else if (paymentTypeFromSale === 'loan') {
             // Loan/credit sale
             paymentMode = 'Loan/Credit';
-            console.log('🔍 [Ledger] Setting loan payment mode:', {
-              saleId: entry.saleId,
-              paymentType: paymentTypeFromSale,
-              paymentMode,
-              paid,
-              due,
-              total
-            });
           } else if (paymentTypeFromSale === 'online') {
             // Online/Card payment - use same label as active sales dashboard
             paymentMode = 'Online/Card';
-            console.log('🔍 [Ledger] Setting online payment mode:', {
-              saleId: entry.saleId,
-              paymentType: paymentTypeFromSale,
-              paymentMethod: saleInfo.paymentMethod,
-              paymentMode,
-              paid,
-              due,
-              total
-            });
           } else {
             // Cash payment (default)
             paymentMode = 'Cash';
-            console.log('🔍 [Ledger] Setting cash payment mode:', {
-              saleId: entry.saleId,
-              paymentType: paymentTypeFromSale,
-              paymentMethod: saleInfo.paymentMethod,
-              paymentMode,
-              paid,
-              due,
-              total
-            });
           }
 
           // Use actual sale items if available
@@ -890,14 +775,6 @@ export async function GET(req: NextRequest) {
 
       // Debug log for entries with partial payments
       if (isDebit && paid > 0 && due > 0) {
-        console.log('🔍 [Ledger] Returning entry with partial payment:', {
-          id: result.id,
-          paymentMode: result.paymentMode,
-          paid: result.paid,
-          due: result.due,
-          total: result.total,
-          isPartial: result.isPartial
-        });
       }
 
       return result;
@@ -1070,15 +947,6 @@ export async function GET(req: NextRequest) {
     if (responseData.entries && responseData.entries.length > 0) {
       const firstEntry = responseData.entries[0];
       if (firstEntry.isPartial || firstEntry.paid || firstEntry.due) {
-        console.log('🔍 [Ledger] Final API response entry:', {
-          id: firstEntry.id,
-          paymentMode: firstEntry.paymentMode,
-          paid: firstEntry.paid,
-          due: firstEntry.due,
-          total: firstEntry.total,
-          isPartial: firstEntry.isPartial,
-          runningBalance: firstEntry.runningBalance
-        });
       }
     }
 

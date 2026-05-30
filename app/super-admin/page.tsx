@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -86,6 +89,7 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
     );
   }
 
+
   return (
     <div className="space-y-4">
       <div className="space-y-2 min-h-[300px]">
@@ -140,6 +144,7 @@ function HighestBalanceCustomersList({ customers, totalBalance }: { customers: N
 
 
 export default function SuperAdminDashboard() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { userRole, currentShop, shops } = useShop()
   const [stats, setStats] = useState<SuperAdminStats>({
@@ -302,6 +307,10 @@ export default function SuperAdminDashboard() {
       color: "text-red-600" 
     },
   ]
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="flex flex-col gap-6">

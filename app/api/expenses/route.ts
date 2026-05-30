@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // GET - List all expenses
 export async function GET(req: NextRequest) {

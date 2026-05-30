@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -51,6 +54,7 @@ interface InventoryFilters {
 }
 
 export default function TmtInventoryPage() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { currentShopId } = useShop()
   
@@ -167,6 +171,10 @@ export default function TmtInventoryPage() {
       </div>
     )
   }
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -295,7 +303,7 @@ export default function TmtInventoryPage() {
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ size, percent }) => `${size} (${(percent * 100).toFixed(0)}%)`}
+                    label={({ size, percent }: any) => `${size} (${((percent || 0) * 100).toFixed(0)}%)`}
                     outerRadius={80}
                     fill="#8884d8"
                     dataKey="tons"

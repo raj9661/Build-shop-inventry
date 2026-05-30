@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { signIn } from 'next-auth/react';
 
-const prisma = new PrismaClient();
 
 // Helper function to log login attempts with proper IP and User Agent
 async function logLoginAttempt(

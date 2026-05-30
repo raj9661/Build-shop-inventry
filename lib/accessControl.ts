@@ -53,7 +53,7 @@ const ROLE_PERMISSIONS = {
 
 // Check if user has permission
 export function hasPermission(userRole: string, permission: string): boolean {
-  const permissions = ROLE_PERMISSIONS[userRole] || [];
+  const permissions = (ROLE_PERMISSIONS as any)[userRole] || [];
   return permissions.includes('*') || permissions.includes(permission);
 }
 
@@ -63,12 +63,12 @@ export function requireRole(allowedRoles: string[]) {
     try {
       const session = await getServerSession(authOptions);
       
-      if (!session?.user?.id) {
+      if (!session || !(session.user as any)?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
       const user = await prisma.user.findUnique({
-        where: { id: BigInt(session.user.id) },
+        where: { id: BigInt((session.user as any).id) },
         select: { role: true, isActive: true }
       });
 
@@ -94,12 +94,12 @@ export function requirePermission(permission: string) {
     try {
       const session = await getServerSession(authOptions);
       
-      if (!session?.user?.id) {
+      if (!session || !(session.user as any)?.id) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
       }
 
       const user = await prisma.user.findUnique({
-        where: { id: BigInt(session.user.id) },
+        where: { id: BigInt((session.user as any).id) },
         select: { role: true, isActive: true }
       });
 

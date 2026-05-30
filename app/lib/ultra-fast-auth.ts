@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import Redis from 'ioredis';
@@ -30,7 +30,6 @@ const ULTRA_REDIS_CONFIG = {
 };
 
 class UltraFastAuth {
-  private prisma: PrismaClient;
   private redis: Redis;
   private userCache: Map<string, { data: any; timestamp: number }> = new Map();
   private passwordCache: Map<string, { hash: string; timestamp: number }> = new Map();
@@ -39,16 +38,6 @@ class UltraFastAuth {
   private readonly PASSWORD_CACHE_TTL = 600000; // 10 minutes
 
   constructor() {
-    this.prisma = new PrismaClient({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-      // Ultra-fast Prisma config
-      log: ['error'], // Only log errors
-    });
-
     if (process.env.REDIS_URL) {
       this.redis = new Redis(process.env.REDIS_URL, {
         lazyConnect: true,
@@ -142,7 +131,7 @@ class UltraFastAuth {
       }
 
       // 3. Database lookup (slowest, but necessary)
-      const user = await this.prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
         select: {
           id: true,
@@ -196,7 +185,7 @@ class UltraFastAuth {
       }
 
       // Get password from database
-      const user = await this.prisma.user.findUnique({
+      const user = await prisma.user.findUnique({
         where: { email: normalizedEmail },
         select: { password: true, isActive: true }
       });
@@ -269,7 +258,7 @@ class UltraFastAuth {
       ]);
 
       // Update last login asynchronously (don't wait)
-      this.prisma.user.update({
+      prisma.user.update({
         where: { id: user.id },
         data: { lastLoginAt: new Date() }
       }).catch(console.error);
@@ -309,7 +298,7 @@ class UltraFastAuth {
 
       // Update lastLoginAt timestamp
       try {
-        await this.prisma.user.update({
+        await prisma.user.update({
           where: { id: user.id },
           data: { lastLoginAt: new Date() }
         });
@@ -358,7 +347,7 @@ class UltraFastAuth {
     userAgent?: string
   ) {
     try {
-      await this.prisma.loginLog.create({
+      await prisma.loginLog.create({
         data: {
           userId: Number(userId),
           ipAddress: ipAddress || 'Unknown',
@@ -396,7 +385,7 @@ class UltraFastAuth {
   // Cleanup
   async disconnect(): Promise<void> {
     await Promise.all([
-      this.prisma.$disconnect(),
+      // Note: prisma singleton is managed globally; do not disconnect here
       this.redis.quit()
     ]);
   }

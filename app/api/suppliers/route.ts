@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // GET - Get all suppliers for user's accessible shops
 export async function GET(req: NextRequest) {

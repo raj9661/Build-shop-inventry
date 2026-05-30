@@ -5,6 +5,9 @@ import { MobileNav } from '@/components/mobile-nav'
 import { useShop } from '../../contexts/ShopContext'
 import { Shield, Filter, RefreshCw, Loader2, ChevronLeft, ChevronRight, Eye, Store } from 'lucide-react'
 import { toast } from 'sonner'
+import { useAuthGuard } from '@/app/hooks/use-auth-guard'
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen'
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen'
 
 interface AuditLog {
   id: number
@@ -32,6 +35,7 @@ const actionColors: Record<string, string> = {
 }
 
 export default function AuditLogsPage() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { currentShop, userRole } = useShop()
   const [logs, setLogs] = useState<AuditLog[]>([])
   const [loading, setLoading] = useState(true)
@@ -83,6 +87,9 @@ export default function AuditLogsPage() {
   }, [currentShop, page, fromDate, toDate, tableFilter, shopFilter, isSuperAdmin])
 
   useEffect(() => { fetchLogs() }, [fetchLogs])
+
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   if (!isSuperAdmin) {
     return (

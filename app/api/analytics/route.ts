@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // Helper function to safely serialize BigInt values for JSON response
 function serializeBigInt(obj: any): string {

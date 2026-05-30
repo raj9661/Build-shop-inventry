@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { emailService } from '@/app/lib/email-service';
 
-const prisma = new PrismaClient();
 
 // Generate a 6-digit verification code
 function generateVerificationCode(): string {

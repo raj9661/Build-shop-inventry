@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -19,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { getAvailableUnits } from "../lib/tmtUtils";
 import AdminEditModal from '../components/admin/AdminEditModal';
 import AdminDeleteConfirm from '../components/admin/AdminDeleteConfirm';
+
 
 // Real suppliers will be loaded from API
 
@@ -55,6 +59,8 @@ type Supplier = {
 
 export default function Suppliers() {
   const { language, toggleLanguage, t } = useLanguage()
+  const { authReady, isAuthenticated } = useAuthGuard()
+  const router = useRouter()
   const { currentShop } = useShop()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
@@ -95,6 +101,7 @@ export default function Suppliers() {
   const [adminPayEdit, setAdminPayEdit] = useState<any | null>(null);
   const [adminPayDelete, setAdminPayDelete] = useState<any | null>(null);
 
+
   const handleAdminPayEdit = async (changes: Record<string, any>, reason: string) => {
     if (!adminPayEdit) return;
     const token = localStorage.getItem('accessToken');
@@ -128,7 +135,6 @@ export default function Suppliers() {
       await loadSuppliers(true);
     }
   };
-
   // Load user role from localStorage on mount
   useEffect(() => {
     try {
@@ -641,10 +647,13 @@ export default function Suppliers() {
     return language === "hi" ? found.labelHi : found.label;
   }
 
+  // ─── Auth Guards (use shared hook) ────────────────────────────────────────────
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
+
   if (!currentShop) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-
         <div className="p-4 pb-20 md:pb-4">
           <Card className="shadow-lg border-0 bg-white rounded-2xl">
             <CardContent className="p-6 text-center">

@@ -1,8 +1,7 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import redisService from './redis-service';
 import { PaginationInput } from './validation-schemas';
 
-const prisma = new PrismaClient();
 
 interface PaginationResult<T> {
   data: T[];

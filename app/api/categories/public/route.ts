@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // GET: Get all active categories with their types (public access)
 export async function GET(req: NextRequest) {

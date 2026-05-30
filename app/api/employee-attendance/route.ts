@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // GET /api/employee-attendance?employeeId=&month=&year=
 export async function GET(req: NextRequest) {

@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
 import { validateToken } from '@/app/lib/tokenUtils'
 import { getShopFilter, canAccessShop } from '@/app/lib/shopAccessUtils'
 
-const prisma = new PrismaClient()
 
 // GET /api/tmt/bars - Get all TMT bars for a shop
 export async function GET(request: NextRequest) {

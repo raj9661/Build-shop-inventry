@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
@@ -6,7 +6,6 @@ import os from 'os';
 import { promisify } from 'util';
 
 const execAsync = promisify(exec);
-const prisma = new PrismaClient();
 
 interface BackupSettings {
   backupFrequency: string;

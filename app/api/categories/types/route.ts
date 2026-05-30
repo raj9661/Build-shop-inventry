@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 function requireSuperAdmin(user: any) {
   return user && (user.role === 'SUPER_DUPER_ADMIN' || user.role === 'SUPER_ADMIN');

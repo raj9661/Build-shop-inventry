@@ -1,7 +1,6 @@
+const { prisma } = require('../../lib/prisma');
 const jwt = require('jsonwebtoken');
-const { PrismaClient } = require('@prisma/client');
 
-const prisma = new PrismaClient();
 
 // Helper function to decode base64 JWT secret
 const getDecodedJWTSecret = () => {

@@ -1,7 +1,8 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import bcrypt from 'bcryptjs';
+import speakeasy from 'speakeasy';
+import { getRootAdminId } from '@/lib/userUtils';
 
-const prisma = new PrismaClient();
 
 interface PasswordPolicy {
   minLength: number;
@@ -22,16 +23,24 @@ class SecurityService {
   private settingsCacheTime: number = 0;
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
-  private async getSecuritySettings(): Promise<SecuritySettings> {
+  private async getSecuritySettings(userId?: number): Promise<SecuritySettings> {
     try {
-      if (this.cachedSettings && Date.now() - this.settingsCacheTime < this.CACHE_TTL) {
+      const cacheKey = userId ? `tenant_${userId}` : 'global';
+      // Simplified caching for this context: if we have global cache and no userId, return it
+      if (!userId && this.cachedSettings && Date.now() - this.settingsCacheTime < this.CACHE_TTL) {
         return this.cachedSettings;
+      }
+
+      let customerId: bigint | null = null;
+      if (userId) {
+        customerId = await getRootAdminId(userId);
       }
 
       const systemSetting = await prisma.websiteSetting.findFirst({ 
         where: { 
-          customerId: null, // Global platform setting
-          type: 'SEO_META_TAGS' // Use any type for system settings
+          customerId: customerId, 
+          type: 'SEO_META_TAGS',
+          key: 'system_settings'
         } 
       });
 
@@ -132,19 +141,33 @@ class SecurityService {
   // Check if MFA is required for a user
   async isMFARequired(userId: number): Promise<boolean> {
     try {
-      const settings = await this.getSecuritySettings();
-      if (!settings.requireMFA) return false;
-
-      // Check if user has MFA enabled
-      const user2FA = await prisma.user2FASetting.findUnique({
-        where: { userId }
-      });
-
-      return user2FA?.isEnabled || false;
+      const settings = await this.getSecuritySettings(userId);
+      return settings.requireMFA || false;
     } catch (error) {
       console.error('Error checking MFA requirement:', error);
       return false;
     }
+  }
+
+  // TOTP Methods
+  generateMfaSecret(email: string) {
+    const secret = speakeasy.generateSecret({
+      name: `InventryPro (${email})`,
+      length: 20
+    });
+    return {
+      secret: secret.base32,
+      otpauthUrl: secret.otpauth_url
+    };
+  }
+
+  verifyMfaToken(secret: string, token: string): boolean {
+    return speakeasy.totp.verify({
+      secret,
+      encoding: 'base32',
+      token,
+      window: 1 // allows 30 seconds before and after
+    });
   }
 
   // Get session timeout in milliseconds

@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import React, { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -79,6 +82,7 @@ interface Pagination {
 }
 
 export default function CashSaleHistoryPage() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const router = useRouter()
   const { userRole, shops } = useShop()
 
@@ -260,6 +264,10 @@ export default function CashSaleHistoryPage() {
       </div>
     )
   }
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">

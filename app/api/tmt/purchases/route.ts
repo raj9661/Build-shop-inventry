@@ -1,5 +1,5 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { 
   getTmtProduct, 
   convertToKg, 
@@ -11,7 +11,6 @@ import {
 import { validateToken } from '@/app/lib/tokenUtils';
 import { canAccessShop } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 // GET /api/tmt/purchases - Get all TMT purchases for a shop (isolated per SUPER_DUPER_ADMIN)
 export async function GET(request: NextRequest) {

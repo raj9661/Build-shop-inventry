@@ -1,9 +1,9 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient, PaymentStatus } from '@prisma/client';
+import { PaymentStatus } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import ultraFastDashboard from '@/app/lib/ultra-fast-dashboard';
 
-const prisma = new PrismaClient();
 
 // POST - Create a new cash sale
 export async function POST(req: NextRequest) {

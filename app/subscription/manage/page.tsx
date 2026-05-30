@@ -16,6 +16,9 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react';
+import { useAuthGuard } from '@/app/hooks/use-auth-guard';
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen';
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen';
 import { toast } from 'sonner';
 
 interface SubscriptionData {
@@ -47,6 +50,7 @@ interface SubscriptionData {
 }
 
 export default function SubscriptionManagement() {
+  const { authReady, isAuthenticated } = useAuthGuard();
   const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -132,6 +136,9 @@ export default function SubscriptionManagement() {
   const handleDownloadInvoice = () => {
     toast.info('Invoice download feature coming soon');
   };
+
+  if (!authReady) return <AuthLoadingScreen />;
+  if (!isAuthenticated) return <SessionExpiredScreen />;
 
   if (loading) {
     return (

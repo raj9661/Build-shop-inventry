@@ -1,11 +1,10 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { canCreateUser, canCreateRole } from '@/app/lib/subscriptionUtils';
 import { getUserAccessibleShops, getUserFilter } from '@/app/lib/dataIsolationUtils';
 import * as bcrypt from 'bcryptjs';
 
-const prisma = new PrismaClient();
 
 // GET - List users (with proper isolation)
 export async function GET(req: NextRequest) {

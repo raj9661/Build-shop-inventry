@@ -4,6 +4,8 @@ import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { NextRequest } from 'next/server';
+import { getRootAdminId } from './userUtils';
+import { securityService } from '@/app/lib/security-service';
 
 const prisma = new PrismaClient();
 
@@ -107,10 +109,36 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
+      if (trigger === 'update' && session?.mfaStatus === 'VERIFIED') {
+        token.mfaStatus = 'VERIFIED';
+      }
+
       if (user) {
         token.role = (user as any).role;
         token.emailVerified = (user as any).emailVerified;
+        
+        // MFA Check
+        const userId = parseInt(user.id);
+        const isMFARequired = await securityService.isMFARequired(userId);
+        console.log(`[AUTH] User ID: ${userId}, Require MFA: ${isMFARequired}`);
+        
+        if (isMFARequired) {
+          const user2FA = await prisma.user2FASetting.findUnique({
+            where: { userId: BigInt(userId) }
+          });
+          console.log(`[AUTH] User2FA:`, user2FA);
+          
+          if (user2FA?.isEnabled) {
+            token.mfaStatus = 'VERIFICATION_REQUIRED';
+          } else {
+            token.mfaStatus = 'SETUP_REQUIRED';
+          }
+        } else {
+          token.mfaStatus = 'VERIFIED';
+        }
+        
+        console.log(`[AUTH] Final MFA Status: ${token.mfaStatus}`);
         
         // Update lastLoginAt timestamp for successful login asynchronously without blocking
         prisma.user.update({
@@ -129,16 +157,39 @@ export const authOptions: NextAuthOptions = {
             jwtSecret = Buffer.from(jwtSecret, 'base64').toString('utf-8');
           }
           
+          // Fetch dynamic timeout
+          const rootAdminId = await getRootAdminId(user.id);
+          const systemSetting = await prisma.websiteSetting.findFirst({
+            where: {
+              customerId: rootAdminId,
+              type: 'SEO_META_TAGS',
+              key: 'system_settings'
+            }
+          });
+          
+          let sessionTimeout = 24 * 60; // 24 hours default in minutes
+          if (systemSetting) {
+            try {
+              const settingsData = JSON.parse(systemSetting.value);
+              if (settingsData?.security?.sessionTimeout) {
+                sessionTimeout = settingsData.security.sessionTimeout;
+              }
+            } catch (e) {
+              console.error('Failed to parse system settings for session timeout', e);
+            }
+          }
+          
           const apiToken = jwt.sign(
             {
               userId: parseInt(user.id), // Convert string to number
               email: user.email,
               role: (user as any).role,
+              mfaStatus: token.mfaStatus,
               iat: Math.floor(Date.now() / 1000)
             },
             jwtSecret || 'fallback-secret',
             {
-              expiresIn: '24h',
+              expiresIn: `${sessionTimeout}m`,
               issuer: 'building-materials-inventory',
               audience: 'building-materials-users',
               algorithm: 'HS256'
@@ -166,6 +217,7 @@ export const authOptions: NextAuthOptions = {
         (session.user as any).emailVerified = token.emailVerified as boolean;
         // Include the API token in the session
         (session as any).apiToken = token.apiToken;
+        (session as any).mfaStatus = token.mfaStatus;
       }
       return session;
     }

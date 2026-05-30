@@ -1,7 +1,6 @@
+import { prisma } from '@/lib/prisma';
 import { backupService } from './backup-service';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 class ScheduledBackupService {
   private intervalId: NodeJS.Timeout | null = null;

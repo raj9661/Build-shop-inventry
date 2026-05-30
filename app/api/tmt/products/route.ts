@@ -1,11 +1,10 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
 import { getTmtProductsForShop } from '../../../lib/tmtUtils'
 import { validateToken } from '../../../lib/tokenUtils'
 import { canAccessShop } from '../../../lib/shopAccessUtils'
 import { serializeBigInt } from '../../../lib/serializationUtils'
 
-const prisma = new PrismaClient()
 
 export async function GET(request: NextRequest) {
   try {
@@ -426,7 +425,6 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -612,7 +610,6 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -870,7 +867,6 @@ export async function PUT(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }
 
@@ -992,6 +988,5 @@ export async function DELETE(request: NextRequest) {
       { status: 500 }
     )
   } finally {
-    await prisma.$disconnect()
   }
 }

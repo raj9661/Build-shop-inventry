@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // GET - Get current user's subscription status
 export async function GET(req: NextRequest) {
@@ -329,7 +328,6 @@ export async function GET(req: NextRequest) {
       message: 'Failed to fetch subscription status' 
     }, { status: 500 });
   } finally {
-    await prisma.$disconnect();
   }
 }
 

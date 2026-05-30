@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '@/lib/prisma';
 import Redis from 'ioredis';
 import { performance } from 'perf_hooks';
 
@@ -45,7 +45,6 @@ interface DashboardStats {
 }
 
 class UltraFastDashboard {
-  private prisma: PrismaClient;
   private redis: Redis | null = null;
   private memoryCache: Map<string, DashboardCache> = new Map();
   private performanceMetrics: Map<string, number[]> = new Map();
@@ -54,13 +53,6 @@ class UltraFastDashboard {
   private readonly VERSION = '1.0.0';
 
   constructor() {
-    this.prisma = new PrismaClient({
-      datasources: {
-        db: { url: process.env.DATABASE_URL },
-      },
-      log: ['error'],
-    });
-
     if (process.env.REDIS_URL) {
       try {
         this.redis = new Redis(process.env.REDIS_URL, {
@@ -233,17 +225,17 @@ class UltraFastDashboard {
       endOfToday.setHours(23, 59, 59, 999);
 
       const results = await Promise.all([
-        this.prisma.sale.count({
+        prisma.sale.count({
           where: {
             shopId: shopId,
             paymentStatus: 'COMPLETED',
             updatedAt: { gte: startOfToday, lte: endOfToday }
           }
         }),
-        this.prisma.product.count({ where: { shopId: shopId, isActive: true } }),
-        this.prisma.customer.count({ where: { shopId: shopId, isActive: true } }),
-        this.prisma.employee.count({ where: { shopId: shopId, isActive: true } }),
-        this.prisma.sale.aggregate({
+        prisma.product.count({ where: { shopId: shopId, isActive: true } }),
+        prisma.customer.count({ where: { shopId: shopId, isActive: true } }),
+        prisma.employee.count({ where: { shopId: shopId, isActive: true } }),
+        prisma.sale.aggregate({
           where: {
             shopId: shopId,
             isActive: true,
@@ -252,7 +244,7 @@ class UltraFastDashboard {
           },
           _sum: { finalAmount: true }
         }),
-        this.prisma.sale.findMany({
+        prisma.sale.findMany({
           where: { shopId: shopId },
           select: {
             id: true,
@@ -269,7 +261,7 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' },
           take: 100
         }),
-        this.prisma.tmtSale.findMany({
+        prisma.tmtSale.findMany({
           where: { shopId: shopId },
           include: {
             items: {
@@ -288,7 +280,7 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' },
           take: 100
         }),
-        this.prisma.product.findMany({
+        prisma.product.findMany({
           where: { shopId: shopId, isActive: true, stockQuantity: { lte: 10 } },
           select: {
             id: true,
@@ -300,7 +292,7 @@ class UltraFastDashboard {
           orderBy: { stockQuantity: 'asc' },
           take: 10
         }),
-        this.prisma.expense.findMany({
+        prisma.expense.findMany({
           where: {
             shopId: shopId,
             isActive: true,
@@ -309,7 +301,7 @@ class UltraFastDashboard {
           orderBy: { createdAt: 'desc' },
           take: 10
         }),
-        this.prisma.product.findMany({
+        prisma.product.findMany({
           where: { shopId: shopId, isActive: true, stockQuantity: { gt: 0 } },
           select: { id: true, name: true, unit: true, price: true, stockQuantity: true }
         })
@@ -449,7 +441,7 @@ class UltraFastDashboard {
       const groupedSales = this.groupMixedSales(allSales);
 
       // 4. Fetch today's rates for stock display
-      const dailyRates = await this.prisma.dailyProductPrice.findMany({
+      const dailyRates = await prisma.dailyProductPrice.findMany({
         where: { productId: { in: products.map(p => p.id) }, date: startOfToday },
         select: { productId: true, price: true }
       });
@@ -608,7 +600,7 @@ class UltraFastDashboard {
         await this.redis.quit();
       } catch (e) {}
     }
-    await this.prisma.$disconnect();
+    // Note: prisma singleton is managed globally; do not disconnect here
   }
 }
 

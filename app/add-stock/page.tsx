@@ -1,5 +1,8 @@
 "use client"
 
+import { useAuthGuard } from "@/app/hooks/use-auth-guard"
+import { AuthLoadingScreen, SessionExpiredScreen } from "@/app/components/auth-guard-screens"
+
 import type React from "react"
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/ui/button"
@@ -97,6 +100,7 @@ const syncStockEntry = async (stock: StockEntry) => {
 }
 
 export default function AddStock() {
+  const { authReady, isAuthenticated } = useAuthGuard()
   const { t } = useLanguage()
   const { saveData, isOnline } = useOfflineSync<StockEntry>("offline-stock-entries", syncStockEntry)
   const { currentShopId } = useShop();
@@ -706,6 +710,10 @@ export default function AddStock() {
       setIsSubmitting(false)
     }
   }, [validateForm, currentShopId, formData, isOnline, createStockEntry, saveData, handleReset, toast])
+
+  // Auth guard
+  if (!authReady) return <AuthLoadingScreen />
+  if (!isAuthenticated) return <SessionExpiredScreen />
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">

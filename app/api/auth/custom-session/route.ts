@@ -1,11 +1,10 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { sessionService } from '@/app/lib/session-service';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
 
 // GET: Check session status - supports both NextAuth.js and custom JWT
 export async function GET(req: NextRequest) {

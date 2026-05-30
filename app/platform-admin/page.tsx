@@ -15,6 +15,9 @@ import {
   Shield,
   BarChart3
 } from 'lucide-react';
+import { useAuthGuard } from '@/app/hooks/use-auth-guard';
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen';
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen';
 
 interface PlatformOverview {
   totalCustomers: number;
@@ -57,6 +60,7 @@ interface Violation {
 }
 
 export default function PlatformAdminDashboard() {
+  const { authReady, isAuthenticated } = useAuthGuard();
   const [overview, setOverview] = useState<PlatformOverview | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [violations, setViolations] = useState<Violation[]>([]);
@@ -108,7 +112,7 @@ export default function PlatformAdminDashboard() {
     };
     
     return (
-      <Badge className={statusColors[status] || 'bg-gray-100 text-gray-800'}>
+      <Badge className={(statusColors as any)[status] || 'bg-gray-100 text-gray-800'}>
         {status}
       </Badge>
     );
@@ -124,11 +128,14 @@ export default function PlatformAdminDashboard() {
     };
     
     return (
-      <Badge className={severityColors[severity] || 'bg-gray-100 text-gray-800'}>
+      <Badge className={(severityColors as any)[severity] || 'bg-gray-100 text-gray-800'}>
         Level {severity}
       </Badge>
     );
   };
+
+  if (!authReady) return <AuthLoadingScreen />;
+  if (!isAuthenticated) return <SessionExpiredScreen />;
 
   if (loading) {
     return (

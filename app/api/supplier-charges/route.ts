@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 
-const prisma = new PrismaClient();
 
 // POST - Add an extra charge (e.g. vehicle fare) to a supplier's balance
 // Only SUPER_DUPER_ADMIN can use this endpoint

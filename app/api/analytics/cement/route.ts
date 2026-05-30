@@ -1,9 +1,8 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server';
-import { PrismaClient } from '@prisma/client';
 import { validateToken } from '@/app/lib/tokenUtils';
 import { getShopFilter } from '@/app/lib/shopAccessUtils';
 
-const prisma = new PrismaClient();
 
 function serializeBigInt(obj: any): string {
   return JSON.stringify(obj, (_, value) =>
@@ -213,6 +212,5 @@ export async function GET(req: NextRequest) {
     console.error('Cement analytics error:', error);
     return NextResponse.json({ success: false, message: 'Failed to fetch cement analytics', error: error.message }, { status: 500 });
   } finally {
-    await prisma.$disconnect();
   }
 }

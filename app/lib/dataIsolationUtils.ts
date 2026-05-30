@@ -1,7 +1,6 @@
-import { PrismaClient } from '@prisma/client'
+import { prisma } from '@/lib/prisma';
 import { validateToken } from './tokenUtils'
 
-const prisma = new PrismaClient()
 
 export interface UserAccessInfo {
   userId: number

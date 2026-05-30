@@ -1,8 +1,7 @@
+import { prisma } from '@/lib/prisma';
 import { NextRequest, NextResponse } from 'next/server'
-import { PrismaClient } from '@prisma/client'
 import { validateToken } from '@/app/lib/tokenUtils'
 
-const prisma = new PrismaClient()
 
 function requireSuperDuperAdmin(user: any) {
   return user && user.role === 'SUPER_DUPER_ADMIN';
@@ -61,8 +60,9 @@ export async function GET(req: NextRequest) {
 
     const systemSetting = await prisma.websiteSetting.findFirst({ 
       where: { 
-        customerId: null, // Global platform setting
-        type: 'SEO_META_TAGS' // Use any type for system settings
+        customerId: BigInt(decoded.userId), // Tenant-specific setting
+        type: 'SEO_META_TAGS', // Use any type for system settings
+        key: 'system_settings'
       } 
     })
     if (!systemSetting) {
@@ -168,16 +168,19 @@ export async function PUT(req: NextRequest) {
     const body = await req.json()
     const updated = await prisma.websiteSetting.upsert({
       where: { 
-        id: 1 // Use a fixed ID for system settings
+        customerId_type_key: {
+          customerId: BigInt(decoded.userId),
+          type: 'SEO_META_TAGS',
+          key: 'system_settings'
+        }
       },
       update: { 
         value: JSON.stringify(body),
         updatedAt: new Date()
       },
       create: { 
-        id: 1,
-        customerId: null, // Global platform setting
-        type: 'SEO_META_TAGS', // Use any type for system settings
+        customerId: BigInt(decoded.userId), // Tenant isolated setting
+        type: 'SEO_META_TAGS',
         key: 'system_settings',
         value: JSON.stringify(body),
         isActive: true,

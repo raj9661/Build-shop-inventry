@@ -5,16 +5,13 @@ import { useSession, getSession } from 'next-auth/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import {
-  Users,
-  CreditCard,
-  ShoppingCart,
-  BarChart3,
-  Settings,
-  LogOut
-} from 'lucide-react';
+
+import { Users, CreditCard, ShoppingCart, BarChart3, Settings, LogOut } from 'lucide-react';
 import { NotificationBell } from '@/app/components/notification-bell';
 import { DashboardContent } from './dashboard-content';
+import { useAuthGuard } from '@/app/hooks/use-auth-guard';
+import { AuthLoadingScreen } from '@/app/components/auth-loading-screen';
+import { SessionExpiredScreen } from '@/app/components/session-expired-screen';
 
 interface User {
   id: number;
@@ -24,91 +21,23 @@ interface User {
 }
 
 export default function Dashboard() {
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
+  const { authReady, isAuthenticated } = useAuthGuard();
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        // Hybrid approach: Use NextAuth session first, fallback to JWT token
-        if (session?.user) {
-          console.log('🔍 [Dashboard] Using NextAuth session:', session.user);
-          setUser({
-            id: parseInt((session.user as any).id),
-            name: session.user.name || '',
-            email: session.user.email || '',
-            role: (session.user as any).role || ''
-          });
-
-          // Store API token for API calls
-          if ((session as any).apiToken) {
-            localStorage.setItem('accessToken', (session as any).apiToken);
-          }
-        } else {
-          // Fallback to JWT token validation
-          const token = localStorage.getItem('accessToken');
-          if (!token || token === 'undefined' || token === 'null') {
-            setLoading(false);
-            return;
-          }
-
-          const response = await fetch('/api/auth/custom-session', {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            setUser(data.user);
-          } else {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('userRole');
-          }
-        }
-      } catch (error) {
-        console.error('Auth check failed:', error);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('userRole');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (status !== 'loading') {
-      checkAuth();
+    if (session?.user) {
+      setUser({
+        id: parseInt((session.user as any).id) || 0,
+        name: session.user.name || '',
+        email: session.user.email || '',
+        role: (session.user as any).role || ''
+      });
     }
-  }, [session, status]);
+  }, [session]);
 
-  if (loading || status === 'loading') {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Card className="w-96">
-          <CardHeader>
-            <CardTitle>Access Denied</CardTitle>
-            <CardDescription>Please sign in to access the dashboard</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button onClick={() => window.location.href = '/login'} className="w-full">
-              Sign In
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  if (!authReady) return <AuthLoadingScreen />;
+  if (!isAuthenticated || !user) return <SessionExpiredScreen />;
 
   const handleSignOut = () => {
     localStorage.removeItem('accessToken');
