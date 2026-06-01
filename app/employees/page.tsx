@@ -525,6 +525,23 @@ export default function Employees() {
       return;
     }
 
+    let finalNotes = notes;
+    if (!finalNotes) {
+      if (employee.salaryType === 'weekly' || employee.salaryType === 'hourly') {
+        const now = new Date();
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+        const start = new Date(now.setDate(diff));
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        const weekLabel = `${start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+        finalNotes = `Weekly Salary - ${weekLabel}`;
+      } else {
+        finalNotes = 'Salary payment';
+      }
+    }
+
     isProcessingPaymentRef.current = true;
     try {
       const token = localStorage.getItem('accessToken');
@@ -547,7 +564,7 @@ export default function Employees() {
           paymentMethod: 'CASH',
           paymentDate: new Date().toISOString().split('T')[0],
           shopId: currentShop.id,
-          notes: notes || 'Salary payment'
+          notes: finalNotes
         })
       });
 

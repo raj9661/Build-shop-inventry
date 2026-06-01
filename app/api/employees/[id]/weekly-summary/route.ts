@@ -69,7 +69,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     // Assuming payments have notes that contain the weekKey, or we do a simple check
     // if a payment was made around that week. For simplicity, we check if any payment date falls within the week or after.
     const weeklySalaries = Array.from(weeksMap.entries()).map(([key, data]) => {
-      const weekLabel = `${data.startDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - ${data.endDate.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+      const weekLabel = `${data.startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${data.endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
       
       // Amount calculation
       let amount = 0;
@@ -84,8 +84,22 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         amount = (data.hours / 8) * (Number(employee.salary) || 0);
       }
 
-      // Check if paid (Look for a payment with this exact week string in notes, or if there's a payment made on or after the end date of this week that hasn't been assigned yet)
-      const isPaid = employee.payments.some(p => p.notes?.includes(weekLabel));
+      // Check if paid (Look for a payment with this exact week string in notes, or if there's a generic payment made within this week)
+      const isPaid = employee.payments.some(p => {
+        if (p.notes?.includes(weekLabel)) return true;
+        
+        // Also consider a payment made during this week with generic notes as paying for this week
+        const pDate = new Date(p.paymentDate);
+        const isGenericPayment = !p.notes || p.notes === 'Salary payment' || p.notes === 'Salary';
+        
+        // Use a slightly expanded window for the week (e.g., allow payment on the following Monday/Tuesday)
+        // Or simply check if the payment date falls within the week (Monday to Sunday)
+        if (isGenericPayment && pDate >= data.startDate && pDate <= data.endDate) {
+          return true;
+        }
+        
+        return false;
+      });
 
       return {
         weekKey: key,

@@ -41,9 +41,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const qtyDelta = newQty - oldQty;
     const totalAmountDelta = newTotalAmount - oldTotalAmount;
 
+    // Run the core DB updates in a transaction with a 15s timeout
     const updatedEntry = await prisma.$transaction(async (tx) => {
-      const before = { ...entry };
-
       const updated = await tx.stockEntry.update({
         where: { id: entryId },
         data: {
@@ -69,37 +68,35 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const willBePending = (paymentStatus || entry.paymentStatus) === 'PENDING';
 
       if (wasPending && willBePending && totalAmountDelta !== 0) {
-        // Still pending: adjust by amount delta
         await tx.supplier.update({
           where: { id: entry.supplierId },
           data: { outstandingPayment: { increment: totalAmountDelta } }
         });
       } else if (wasPending && !willBePending) {
-        // Marked as paid: clear old outstanding
         await tx.supplier.update({
           where: { id: entry.supplierId },
           data: { outstandingPayment: { decrement: oldTotalAmount } }
         });
       } else if (!wasPending && willBePending) {
-        // Reverted to pending: add new amount
         await tx.supplier.update({
           where: { id: entry.supplierId },
           data: { outstandingPayment: { increment: newTotalAmount } }
         });
       }
 
-      await writeAuditLog(tx, {
-        adminId: BigInt(decoded.userId),
-        action: 'EDIT',
-        tableName: 'StockEntry',
-        recordId: entryId,
-        beforeData: before,
-        afterData: updated,
-        reason,
-        shopId: entry.shopId,
-      });
-
       return updated;
+    }, { timeout: 15000 });
+
+    // Write audit log OUTSIDE the transaction (avoids timeout from prune queries)
+    await writeAuditLog(prisma, {
+      adminId: BigInt(decoded.userId),
+      action: 'EDIT',
+      tableName: 'StockEntry',
+      recordId: entryId,
+      beforeData: entry,
+      afterData: updatedEntry,
+      reason,
+      shopId: entry.shopId,
     });
 
     return NextResponse.json({
@@ -155,17 +152,18 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
           data: { outstandingPayment: { decrement: Number(entry.totalAmount) } }
         });
       }
+    }, { timeout: 15000 });
 
-      await writeAuditLog(tx, {
-        adminId: BigInt(decoded.userId),
-        action: 'DELETE',
-        tableName: 'StockEntry',
-        recordId: entryId,
-        beforeData: entry,
-        afterData: null,
-        reason,
-        shopId: entry.shopId,
-      });
+    // Write audit log OUTSIDE the transaction (avoids timeout from prune queries)
+    await writeAuditLog(prisma, {
+      adminId: BigInt(decoded.userId),
+      action: 'DELETE',
+      tableName: 'StockEntry',
+      recordId: entryId,
+      beforeData: entry,
+      afterData: null,
+      reason,
+      shopId: entry.shopId,
     });
 
     return NextResponse.json({ success: true, message: 'Stock entry deleted' });
