@@ -2108,7 +2108,8 @@ function AddSalePage() {
                                 </td>
                                 <td className="px-6 py-4">
                                   <span className="font-medium">{item.quantity}</span> <span className="text-gray-500">{item.unit}</span>
-                                  {Number(item.conversionCft) > 0 && (
+                                  {Number(item.conversionCft) > 0 &&
+                                    (item.categoryName?.toLowerCase()?.includes('sand') || item.categoryName?.toLowerCase()?.includes('chips')) && (
                                     <div className="text-[10px] text-blue-600 font-bold mt-1">
                                       {t("Total:", "कुल:")} {(parseQuantity(item.quantity.toString()) * Number(item.conversionCft)).toFixed(2)} CFT
                                     </div>
