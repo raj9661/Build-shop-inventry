@@ -43,24 +43,26 @@ export async function writeAuditLog(
 
   // Rolling window: delete oldest logs if we exceed MAX_AUDIT_LOGS
   // Run outside tx to avoid lock contention — fire-and-forget style
-  try {
-    const total = await prisma.adminAuditLog.count();
-    if (total > MAX_AUDIT_LOGS) {
-      const excess = total - MAX_AUDIT_LOGS;
-      // Find the IDs of the oldest `excess` records
-      const oldest = await prisma.adminAuditLog.findMany({
-        orderBy: { createdAt: 'asc' },
-        take: excess,
-        select: { id: true },
-      });
-      if (oldest.length > 0) {
-        await prisma.adminAuditLog.deleteMany({
-          where: { id: { in: oldest.map((r) => r.id) } },
+  (async () => {
+    try {
+      const total = await prisma.adminAuditLog.count();
+      if (total > MAX_AUDIT_LOGS) {
+        const excess = total - MAX_AUDIT_LOGS;
+        // Find the IDs of the oldest `excess` records
+        const oldest = await prisma.adminAuditLog.findMany({
+          orderBy: { createdAt: 'asc' },
+          take: excess,
+          select: { id: true },
         });
+        if (oldest.length > 0) {
+          await prisma.adminAuditLog.deleteMany({
+            where: { id: { in: oldest.map((r) => r.id) } },
+          });
+        }
       }
+    } catch (pruneError) {
+      // Non-fatal — log prune failure should not break the main operation
+      console.error('[AuditLog] Failed to prune old logs:', pruneError);
     }
-  } catch (pruneError) {
-    // Non-fatal — log prune failure should not break the main operation
-    console.error('[AuditLog] Failed to prune old logs:', pruneError);
-  }
+  })();
 }
