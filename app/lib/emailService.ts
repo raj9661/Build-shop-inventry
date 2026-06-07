@@ -1,11 +1,11 @@
 import nodemailer from 'nodemailer';
 
-// Email configuration
+// Email configuration — reads from environment variables
 const emailConfig = {
   service: 'gmail',
   auth: {
-    user: 'balajeetraders545@gmail.com',
-    pass: 'gtko qaft nlob ogml' // App password for Gmail
+    user: process.env.SMTP_USER || 'balajeetraders545@gmail.com',
+    pass: process.env.SMTP_PASS || 'gtko qaft nlob ogml'
   }
 };
 
@@ -562,10 +562,17 @@ export const emailService = {
       const template = emailTemplates.passwordResetLink(resetUrl, userName);
 
       const mailOptions = {
-        from: `"Shop Inventory System" <${emailConfig.auth.user}>`,
+        from: `"InventoryPro Support" <${emailConfig.auth.user}>`,
+        replyTo: emailConfig.auth.user,
         to: email,
         subject: template.subject,
-        html: template.html
+        html: template.html,
+        // Plain-text fallback improves deliverability and avoids spam filters
+        text: `Hello ${userName},\n\nYou requested a password reset for your InventoryPro account.\n\nClick the link below to reset your password (expires in 30 minutes):\n${resetUrl}\n\nIf you did not request this, please ignore this email.\n\n— InventoryPro Support`,
+        headers: {
+          'X-Priority': '1',
+          'X-Mailer': 'InventoryPro Mailer',
+        }
       };
 
       const result = await transporter.sendMail(mailOptions);

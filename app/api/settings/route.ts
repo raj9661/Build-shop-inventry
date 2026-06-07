@@ -13,7 +13,7 @@ function requireSuperDuperAdmin(user: any) {
 export async function GET(req: NextRequest) {
   try {
     let decoded: any = null;
-    
+
     // Check if this is a NextAuth.js request (has cookies)
     const cookies = req.headers.get('cookie');
     if (cookies && cookies.includes('next-auth.session-token')) {
@@ -53,17 +53,17 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
       }
     }
-    
+
     if (!requireSuperDuperAdmin(decoded)) {
       return NextResponse.json({ success: false, message: 'Insufficient permissions' }, { status: 403 });
     }
 
-    const systemSetting = await prisma.websiteSetting.findFirst({ 
-      where: { 
+    const systemSetting = await prisma.websiteSetting.findFirst({
+      where: {
         customerId: BigInt(decoded.userId), // Tenant-specific setting
         type: 'SEO_META_TAGS', // Use any type for system settings
         key: 'system_settings'
-      } 
+      }
     })
     if (!systemSetting) {
       // Return default settings if not set in database
@@ -120,7 +120,7 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     let decoded: any = null;
-    
+
     // Check if this is a NextAuth.js request (has cookies)
     const cookies = req.headers.get('cookie');
     if (cookies && cookies.includes('next-auth.session-token')) {
@@ -160,25 +160,25 @@ export async function PUT(req: NextRequest) {
         return NextResponse.json({ success: false, message: 'Invalid or expired token' }, { status: 401 });
       }
     }
-    
+
     if (!requireSuperDuperAdmin(decoded)) {
       return NextResponse.json({ success: false, message: 'Insufficient permissions' }, { status: 403 });
     }
 
     const body = await req.json()
     const updated = await prisma.websiteSetting.upsert({
-      where: { 
+      where: {
         customerId_type_key: {
           customerId: BigInt(decoded.userId),
           type: 'SEO_META_TAGS',
           key: 'system_settings'
         }
       },
-      update: { 
+      update: {
         value: JSON.stringify(body),
         updatedAt: new Date()
       },
-      create: { 
+      create: {
         customerId: BigInt(decoded.userId), // Tenant isolated setting
         type: 'SEO_META_TAGS',
         key: 'system_settings',

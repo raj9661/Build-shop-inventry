@@ -68,9 +68,10 @@ export async function POST(req: NextRequest) {
       }
     });
 
-    // Create the reset url using request origin
-    const origin = req.headers.get('origin') || 'http://localhost:3000';
-    const resetUrl = `${origin}/reset-password?token=${resetToken}`;
+    // Always use NEXTAUTH_URL so the link works from any device/network.
+    // Using request `origin` would produce a localhost URL useless outside the server machine.
+    const appBaseUrl = (process.env.NEXTAUTH_URL || 'http://localhost:3000').replace(/\/$/, '');
+    const resetUrl = `${appBaseUrl}/reset-password?token=${encodeURIComponent(resetToken)}`;
 
     // Send the email
     const emailSent = await emailService.sendPasswordResetLink(user.email, resetUrl, user.name);

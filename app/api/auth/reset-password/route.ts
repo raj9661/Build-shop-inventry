@@ -18,14 +18,18 @@ export async function POST(req: NextRequest) {
         }
 
         // Verify JWT token signature and expiry (Latest Tech)
+        // Token is URL-encoded in the email link — decode it first
         let decodedToken;
         try {
             const jwtSecret = process.env.JWT_SECRET || 'fallback-secret-for-development';
-            decodedToken = jwt.verify(token, jwtSecret) as { userId: number, email: string, purpose: string };
+            const rawToken = decodeURIComponent(token);
+            decodedToken = jwt.verify(rawToken, jwtSecret) as { userId: number, email: string, purpose: string };
 
             if (decodedToken.purpose !== 'password_reset') {
                 throw new Error('Invalid token purpose');
             }
+            // Re-assign token to decoded form for hashing below
+            Object.assign(req, { _decodedRawToken: rawToken });
         } catch (error) {
             return NextResponse.json({
                 success: false,
@@ -34,8 +38,10 @@ export async function POST(req: NextRequest) {
             }, { status: 400 });
         }
 
-        // Hash the incoming token to match what's stored in the database
-        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        // Hash the incoming token to match what's stored in the database.
+        // Must decode first since the token was URL-encoded in the email link.
+        const rawToken = decodeURIComponent(token);
+        const hashedToken = crypto.createHash('sha256').update(rawToken).digest('hex');
 
         // Find the user with this token and ensure it has not expired in DB
         const user = await prisma.user.findFirst({

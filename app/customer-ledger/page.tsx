@@ -809,7 +809,7 @@ export default function CustomerLedger() {
   function renderLedgerRow(entry: LedgerEntry, index: number) {
     const isCredit = entry.type === 'credit';
     const isOpeningBalance = entry.items && entry.items.length > 0 && entry.items[0]?.name.toLowerCase().includes('opening balance');
-    
+
     // Fallback single row rendering
     if (isCredit || isOpeningBalance || !entry.items || entry.items.length <= 1) {
       const singleItem = entry.items && entry.items.length > 0 ? entry.items[0] : null;
@@ -1401,63 +1401,63 @@ export default function CustomerLedger() {
                 <div className="p-4 space-y-3">
                   {returnProductType === 'regular' ? (
                     <>
-                  {/* Row 1: Category + Product search */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Category (श्रेणी)", "श्रेणी")}</Label>
-                      <Select value={returnCategoryFilter} onValueChange={(v) => { setReturnCategoryFilter(v); setReturnSelectedProduct(null); setReturnQty(""); setReturnConvCft(""); }}>
-                        <SelectTrigger className="h-10 text-sm">
-                          <SelectValue placeholder={t("All Categories", "सभी श्रेणियां")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="all">{t("All Categories (सभी श्रेणियां)", "सभी श्रेणियां")}</SelectItem>
-                          {availableCategories.map((cat: any) => (
-                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Product (उत्पाद)", "उत्पाद")}</Label>
-                      <Select
-                        value={returnSelectedProduct ? returnSelectedProduct.id.toString() : ""}
-                        onValueChange={(val) => {
-                          const prod = availableProducts.find(p => p.id.toString() === val);
-                          setReturnSelectedProduct(prod || null);
-                          const catName = prod?.category?.name?.toLowerCase() || '';
-                          const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
-                          setReturnConvCft(isBulk ? (prod?.latestConversionCft?.toString() || "1") : "");
-                          setReturnQty("");
-                        }}
-                      >
-                        <SelectTrigger className="h-10 text-sm">
-                          <SelectValue placeholder={t("Select product (उत्पाद चुनें)", "उत्पाद चुनें")} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <div className="px-2 pb-2 pt-1">
-                            <Input
-                              placeholder={t("Search product...", "उत्पाद खोजें...")}
-                              value={returnProductSearch}
-                              onChange={e => setReturnProductSearch(e.target.value)}
-                              className="h-8 text-sm"
-                              onClick={e => e.stopPropagation()}
-                            />
-                          </div>
-                          {availableProducts
-                            .filter(p =>
-                              (returnCategoryFilter === 'all' || p.category?.name === returnCategoryFilter) &&
-                              (returnProductSearch === '' || p.name.toLowerCase().includes(returnProductSearch.toLowerCase()))
-                            )
-                            .map(p => (
-                              <SelectItem key={p.id.toString()} value={p.id.toString()}>
-                                <span className="font-medium">{p.name}</span>
-                                <span className="text-gray-400 text-xs ml-1">({p.unit})</span>
-                              </SelectItem>
-                            ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                      {/* Row 1: Category + Product search */}
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Category (श्रेणी)", "श्रेणी")}</Label>
+                          <Select value={returnCategoryFilter} onValueChange={(v) => { setReturnCategoryFilter(v); setReturnSelectedProduct(null); setReturnQty(""); setReturnConvCft(""); }}>
+                            <SelectTrigger className="h-10 text-sm">
+                              <SelectValue placeholder={t("All Categories", "सभी श्रेणियां")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="all">{t("All Categories (सभी श्रेणियां)", "सभी श्रेणियां")}</SelectItem>
+                              {availableCategories.map((cat: any) => (
+                                <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div>
+                          <Label className="text-xs font-semibold text-gray-600 mb-1 block">{t("Product (उत्पाद)", "उत्पाद")}</Label>
+                          <Select
+                            value={returnSelectedProduct ? returnSelectedProduct.id.toString() : ""}
+                            onValueChange={(val) => {
+                              const prod = availableProducts.find(p => p.id.toString() === val);
+                              setReturnSelectedProduct(prod || null);
+                              const catName = prod?.category?.name?.toLowerCase() || '';
+                              const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+                              setReturnConvCft(isBulk ? (prod?.latestConversionCft?.toString() || "1") : "");
+                              setReturnQty("");
+                            }}
+                          >
+                            <SelectTrigger className="h-10 text-sm">
+                              <SelectValue placeholder={t("Select product (उत्पाद चुनें)", "उत्पाद चुनें")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <div className="px-2 pb-2 pt-1">
+                                <Input
+                                  placeholder={t("Search product...", "उत्पाद खोजें...")}
+                                  value={returnProductSearch}
+                                  onChange={e => setReturnProductSearch(e.target.value)}
+                                  className="h-8 text-sm"
+                                  onClick={e => e.stopPropagation()}
+                                />
+                              </div>
+                              {availableProducts
+                                .filter(p =>
+                                  (returnCategoryFilter === 'all' || p.category?.name === returnCategoryFilter) &&
+                                  (returnProductSearch === '' || p.name.toLowerCase().includes(returnProductSearch.toLowerCase()))
+                                )
+                                .map(p => (
+                                  <SelectItem key={p.id.toString()} value={p.id.toString()}>
+                                    <span className="font-medium">{p.name}</span>
+                                    <span className="text-gray-400 text-xs ml-1">({p.unit})</span>
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
                     </>
                   ) : (
                     /* TMT Product picker */
@@ -1520,7 +1520,7 @@ export default function CustomerLedger() {
                                 value={returnSelectedProduct?._selectedUnit || ''}
                                 onChange={e => {
                                   setReturnSelectedProduct((prev: any) => ({ ...prev, _selectedUnit: e.target.value }));
-                                  const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                                  const vehicleUnits = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'highwa'];
                                   const isBulkCat = catName.toLowerCase().includes('sand') || catName.toLowerCase().includes('chips') || catName.toLowerCase().includes('aggregate');
                                   if (vehicleUnits.includes(e.target.value) && isBulkCat) {
                                     setReturnConvCft(returnSelectedProduct?.latestConversionCft?.toString() || '');
@@ -1561,7 +1561,7 @@ export default function CustomerLedger() {
                       {!returnSelectedProduct._isTmt && (() => {
                         const catName = returnSelectedProduct?.category?.name?.toLowerCase() || '';
                         const selectedUnit = returnSelectedProduct?._selectedUnit || '';
-                        const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                        const vehicleUnits = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'highwa'];
                         const isBulkCat = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
                         return (vehicleUnits.includes(selectedUnit) && isBulkCat) ? (
                           <div className="flex-1">
@@ -1597,7 +1597,7 @@ export default function CustomerLedger() {
                           }
                           const catName = returnSelectedProduct?.category?.name?.toLowerCase() || '';
                           const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
-                          const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                          const vehicleUnits = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'highwa'];
                           const needsCft = !isTmt && vehicleUnits.includes(selectedUnit) && isBulk;
                           setReturnItems(prev => [
                             ...prev,
@@ -1634,15 +1634,15 @@ export default function CustomerLedger() {
                   </div>
                   <div className="divide-y divide-gray-100">
                     {returnItems.map((item, idx) => {
-                      const vehicleUnits = ['tempo','chota_haathi','tractor','407','small_hiwa','big_hiwa','highwa'];
+                      const vehicleUnits = ['tempo', 'chota_haathi', 'tractor', '407', 'small_hiwa', 'big_hiwa', 'highwa'];
                       const showCft = item.isTrueBulkCft && vehicleUnits.includes(item.unit);
                       const unitOptions = item.isTmt
                         ? [
-                            { value: 'piece', label: t('Piece (पीस)', 'पीस') },
-                            { value: 'bundle', label: t('Bundle (बंडल)', 'बंडल') },
-                            { value: 'kg', label: 'Kg' },
-                            { value: 'ton', label: t('Ton (टन)', 'टन') }
-                          ]
+                          { value: 'piece', label: t('Piece (पीस)', 'पीस') },
+                          { value: 'bundle', label: t('Bundle (बंडल)', 'बंडल') },
+                          { value: 'kg', label: 'Kg' },
+                          { value: 'ton', label: t('Ton (टन)', 'टन') }
+                        ]
                         : getAvailableUnits(item.categoryName || '');
                       return (
                         <div key={item.productId} className="flex flex-col gap-2 px-4 py-3">
@@ -2087,14 +2087,16 @@ export default function CustomerLedger() {
                 { key: 'date', label: 'Date', type: 'date', value: adminEditEntry.date },
                 { key: 'amount', label: 'Amount (₹)', type: 'number', value: adminEditEntry.total || adminEditEntry.paid, min: 0, step: 0.01 },
                 { key: 'description', label: 'Description', type: 'textarea', value: adminEditEntry.description || adminEditEntry.items?.map(i => i.name).join(', ') || '' },
-                { key: 'method', label: 'Payment Method', type: 'select', value: (adminEditEntry.paymentMode?.toUpperCase() === 'LOAN/CREDIT' || adminEditEntry.paymentMode?.toUpperCase() === 'LOAN') ? 'LOAN' : adminEditEntry.paymentMode?.toUpperCase() || 'CASH', options: [
-                  { value: 'CASH', label: 'Cash' },
-                  { value: 'UPI', label: 'UPI' },
-                  { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
-                  { value: 'CHEQUE', label: 'Cheque' },
-                  { value: 'LOAN', label: 'Loan' },
-                  { value: 'OTHER', label: 'Other' },
-                ]},
+                {
+                  key: 'method', label: 'Payment Method', type: 'select', value: (adminEditEntry.paymentMode?.toUpperCase() === 'LOAN/CREDIT' || adminEditEntry.paymentMode?.toUpperCase() === 'LOAN') ? 'LOAN' : adminEditEntry.paymentMode?.toUpperCase() || 'CASH', options: [
+                    { value: 'CASH', label: 'Cash' },
+                    { value: 'UPI', label: 'UPI' },
+                    { value: 'BANK_TRANSFER', label: 'Bank Transfer' },
+                    { value: 'CHEQUE', label: 'Cheque' },
+                    { value: 'LOAN', label: 'Loan' },
+                    { value: 'OTHER', label: 'Other' },
+                  ]
+                },
               ] : []}
               onSave={handleAdminLedgerEdit}
               onClose={() => setAdminEditEntry(null)}
