@@ -208,7 +208,7 @@ export async function POST(req: NextRequest) {
     const {
       customerId, customerInfo, shopId, saleDate, totalAmount, finalAmount, discount, taxAmount, paymentStatus, notes,
       items, payment_type, paid_amount, partial_payment_method, isDirectSale, supplierId, supplierInfo,
-      transportFare, vehicleNumber, driverName
+      transportFare, vehicleNumber, driverName, transportSupplierId, transportItemName
     } = body;
     
     const hasItems = items && Array.isArray(items) && items.length > 0;
@@ -565,6 +565,49 @@ export async function POST(req: NextRequest) {
           shopId: shopId
         });
         console.log('🔍 [Sales API] Ledger payment entry created (paidAmount:', paidAmount, ')');
+      }
+
+      // 5. Auto-create supplier EXTRA_CHARGE for transport fare
+      // When a transport fare is entered with a supplier selected, automatically add the fare
+      // to the supplier's ledger as an EXTRA_CHARGE (same as /api/supplier-charges does)
+      const fareAmount = Number(transportFare || 0);
+      if (fareAmount > 0 && transportSupplierId) {
+        console.log('🚛 [Sales API] Auto-creating supplier transport fare charge:', {
+          transportSupplierId,
+          fareAmount,
+          transportItemName: transportItemName || 'Transport',
+          saleId: createdSale.id
+        });
+
+        // Validate supplier exists
+        const fareSupplier = await tx.supplier.findUnique({ where: { id: BigInt(transportSupplierId) } });
+        if (fareSupplier) {
+          // Create SupplierPayment with negative amount (charge added to balance)
+          // Notes prefix "EXTRA_CHARGE:" matches the pattern used by /api/supplier-charges
+          const fareDescription = `FAIR - ${transportItemName || 'Transport'} (Sale #${createdSale.id})`;
+          await tx.supplierPayment.create({
+            data: {
+              supplierId: BigInt(transportSupplierId),
+              amount: -fareAmount, // negative = charge added to balance
+              paymentMethod: 'OTHER',
+              paymentDate: new Date(saleDate),
+              shopId: BigInt(shopId),
+              notes: `EXTRA_CHARGE: ${fareDescription}`,
+              isActive: true
+            }
+          });
+
+          // Increment outstanding payment by the fare amount
+          const currentOutstanding = Number(fareSupplier.outstandingPayment ?? 0);
+          await tx.supplier.update({
+            where: { id: BigInt(transportSupplierId) },
+            data: { outstandingPayment: currentOutstanding + fareAmount }
+          });
+
+          console.log('🚛 [Sales API] Supplier transport fare charge created successfully for supplier:', fareSupplier.name, 'Amount:', fareAmount);
+        } else {
+          console.warn('🚛 [Sales API] Transport supplier not found, skipping auto-fare. ID:', transportSupplierId);
+        }
       }
 
       return createdSale;

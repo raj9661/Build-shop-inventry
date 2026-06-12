@@ -240,10 +240,11 @@ function AddSalePage() {
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
   });
 
-  // Transport-related state
+  // Transport/Supplier fare state
   const [transportFare, setTransportFare] = useState<number>(0)
-  const [vehicleNumber, setVehicleNumber] = useState("")
-  const [driverName, setDriverName] = useState("")
+  const [transportItemName, setTransportItemName] = useState("")
+  const [transportSupplierId, setTransportSupplierId] = useState<number | null>(null)
+  const [transportSupplierName, setTransportSupplierName] = useState("")
 
   // Load TMT products from inventory (only products with stock)
   const loadTmtProducts = async () => {
@@ -1088,8 +1089,9 @@ function AddSalePage() {
 
         // Reset transport fields
         setTransportFare(0)
-        setVehicleNumber("")
-        setDriverName("")
+        setTransportItemName("")
+        setTransportSupplierId(null)
+        setTransportSupplierName("")
 
         console.log('🔄 [AddSale] Form reset completed')
       }
@@ -1321,8 +1323,10 @@ function AddSalePage() {
               cgst: cgstAmount * regularRatio,
               sgst: sgstAmount * regularRatio,
               transportFare: Number(transportFare || 0) * regularRatio,
-              vehicleNumber: vehicleNumber || null,
-              driverName: driverName || null,
+              vehicleNumber: transportItemName || null,
+              driverName: transportSupplierName || null,
+              transportSupplierId: transportSupplierId || null,
+              transportItemName: transportItemName || null,
               items: validItems.map(item => {
                 if (item.name && item.name.toLowerCase().includes("cement") && item.unit === "kg") {
                   return {
@@ -1360,8 +1364,10 @@ function AddSalePage() {
               cgst: cgstAmount * tmtRatio,
               sgst: sgstAmount * tmtRatio,
               transportFare: Number(transportFare || 0) * tmtRatio,
-              vehicleNumber: vehicleNumber || null,
-              driverName: driverName || null,
+              vehicleNumber: transportItemName || null,
+              driverName: transportSupplierName || null,
+              transportSupplierId: transportSupplierId || null,
+              transportItemName: transportItemName || null,
               items: tmtSaleItems.map(item => ({
                 productId: item.productId,
                 soldQuantity: item.quantity,
@@ -1449,8 +1455,8 @@ function AddSalePage() {
               cgst: cgstAmount,
               sgst: sgstAmount,
               transportFare: Number(transportFare || 0),
-              vehicleNumber: vehicleNumber || '',
-              driverName: driverName || '',
+              vehicleNumber: transportItemName || '',
+              driverName: transportSupplierName || '',
               finalAmount: finalAmount,
               payment_type: paymentMethod,
               paid_amount: amountPaid,
@@ -2293,10 +2299,11 @@ function AddSalePage() {
                       </div>
                     </div>
 
-                    {/* Transport Details */}
+                    {/* Supplier Details (Transport Fair) */}
                     <div className="space-y-4">
-                      <h3 className="text-lg font-semibold">{t("Transport Details", "परिवहन विवरण")}</h3>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border p-4 rounded-lg bg-gray-50/50">
+                      <h3 className="text-lg font-semibold">{t("Supplier Details", "सप्लायर विवरण")}</h3>
+                      <p className="text-sm text-gray-500">{t("If using supplier's vehicle for delivery, add the transport fare here. It will be automatically added to the supplier's ledger.", "अगर डिलीवरी के लिए सप्लायर की गाड़ी का उपयोग कर रहे हैं, तो यहां परिवहन शुल्क जोड़ें। यह सप्लायर के खाते में स्वचालित रूप से जुड़ जाएगा।")}</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 border p-4 rounded-lg bg-orange-50/50">
                         <div>
                           <Label htmlFor="transportFare">{t("Transport Fare", "परिवहन शुल्क")}</Label>
                           <Input
@@ -2310,22 +2317,34 @@ function AddSalePage() {
                           />
                         </div>
                         <div>
-                          <Label htmlFor="vehicleNumber">{t("Vehicle Number", "गाड़ी नंबर")}</Label>
+                          <Label htmlFor="transportItemName">{t("Item Name", "आइटम का नाम")}</Label>
                           <Input
-                            id="vehicleNumber"
-                            value={vehicleNumber}
-                            onChange={e => setVehicleNumber(e.target.value)}
-                            placeholder="UP 32 XX 0000"
+                            id="transportItemName"
+                            value={transportItemName}
+                            onChange={e => setTransportItemName(e.target.value)}
+                            placeholder={t("e.g. Motinagar, Cement", "जैसे मोतीनगर, सीमेंट")}
                           />
                         </div>
                         <div>
-                          <Label htmlFor="driverName">{t("Driver Name", "ड्राइवर का नाम")}</Label>
-                          <Input
-                            id="driverName"
-                            value={driverName}
-                            onChange={e => setDriverName(e.target.value)}
-                            placeholder={t("Enter driver name", "ड्राइवर का नाम दर्ज करें")}
-                          />
+                          <Label htmlFor="transportSupplier">{t("Supplier Name", "सप्लायर का नाम")}</Label>
+                          <Select
+                            value={transportSupplierId ? transportSupplierId.toString() : ""}
+                            onValueChange={(v) => {
+                              const id = parseInt(v);
+                              setTransportSupplierId(id);
+                              const sup = suppliers.find(s => Number(s.id) === id);
+                              setTransportSupplierName(sup?.name || '');
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue placeholder={t("Select supplier", "सप्लायर चुनें")} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {suppliers.map((s) => (
+                                <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         </div>
                       </div>
                     </div>
