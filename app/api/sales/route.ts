@@ -208,7 +208,8 @@ export async function POST(req: NextRequest) {
     const {
       customerId, customerInfo, shopId, saleDate, totalAmount, finalAmount, discount, taxAmount, paymentStatus, notes,
       items, payment_type, paid_amount, partial_payment_method, isDirectSale, supplierId, supplierInfo,
-      transportFare, vehicleNumber, driverName, transportSupplierId, transportItemName
+      transportFare, vehicleNumber, driverName, transportSupplierId, transportItemName,
+      stockBypassUsed
     } = body;
     
     const hasItems = items && Array.isArray(items) && items.length > 0;
@@ -615,6 +616,34 @@ export async function POST(req: NextRequest) {
 
     // Invalidate dashboard cache for this shop (non-blocking)
     invalidateShopDashboard(BigInt(shopId)).catch(() => {});
+
+    // Log stock bypass usage in audit trail (outside transaction to avoid deadlocks)
+    if (stockBypassUsed) {
+      try {
+        const itemNames = items?.map((i: any) => i.name || 'Unknown').join(', ') || 'N/A';
+        await prisma.adminAuditLog.create({
+          data: {
+            adminId: BigInt(ctx.userId),
+            action: 'STOCK_BYPASS_SALE',
+            tableName: 'Sale',
+            recordId: BigInt(sale.id),
+            beforeData: JSON.stringify({ stockBypassEnabled: true }),
+            afterData: JSON.stringify({
+              saleId: sale.id.toString(),
+              items: itemNames,
+              totalAmount: finalAmount,
+              userId: ctx.userId.toString()
+            }),
+            reason: `Sale created with stock bypass. Items: ${itemNames}`,
+            shopId: BigInt(shopId),
+          }
+        });
+        console.log('🛡️ [Sales API] Stock bypass audit log created for sale:', sale.id);
+      } catch (auditError) {
+        console.error('🛡️ [Sales API] Failed to create stock bypass audit log:', auditError);
+        // Non-blocking — don't fail the sale if audit log fails
+      }
+    }
     try {
       await ultraFastDashboard.clearAllShopDashboardCaches(shopId);
     } catch (e) {

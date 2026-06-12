@@ -246,6 +246,24 @@ function AddSalePage() {
   const [transportSupplierId, setTransportSupplierId] = useState<number | null>(null)
   const [transportSupplierName, setTransportSupplierName] = useState("")
 
+  // Stock bypass state (controlled by SUPER_DUPER_ADMIN per-shop setting)
+  const [stockBypassEnabled, setStockBypassEnabled] = useState(false)
+
+  // Fetch stock bypass setting when shop changes
+  useEffect(() => {
+    if (currentShopId) {
+      const token = localStorage.getItem('accessToken')
+      fetch(`/api/settings/stock-bypass?shopId=${currentShopId}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+        .then(r => r.json())
+        .then(d => setStockBypassEnabled(d.enabled || false))
+        .catch(() => setStockBypassEnabled(false))
+    } else {
+      setStockBypassEnabled(false)
+    }
+  }, [currentShopId])
+
   // Load TMT products from inventory (only products with stock)
   const loadTmtProducts = async () => {
     try {
@@ -940,7 +958,7 @@ function AddSalePage() {
             newItem.categoryName?.toLowerCase()?.includes('chips') ||
             newItem.categoryName?.toLowerCase()?.includes('ring');
 
-          if (!isDirectSale && newItem.productId && !isBypassStockCheck) {
+          if (!isDirectSale && newItem.productId && !isBypassStockCheck && !stockBypassEnabled) {
             const product = products.find((p: any) => Number(p.id) === Number(newItem.productId))
             if (product && product.stockQuantity !== null && product.stockQuantity !== undefined) {
               const availableStock = Number(product.stockQuantity) || 0
@@ -1260,7 +1278,7 @@ function AddSalePage() {
           return
         }
 
-        if (!isDirectSale && hasRegularItems) {
+        if (!isDirectSale && hasRegularItems && !stockBypassEnabled) {
           for (const item of validItems) {
             // Sand and Chips: stock is in CFT — bypass piece-count stock check (CFT cannot be compared to pieces)
             // Rings: oversell is allowed (managed via TMT inventory separately)
@@ -1346,7 +1364,8 @@ function AddSalePage() {
               supplierInfo: selectedSupplier?.id === 0 ? {
                 name: selectedSupplier.name, phone: selectedSupplier.phone, address: selectedSupplier.address
               } : undefined,
-              ...(customerInfo ? { customerInfo } : {})
+              ...(customerInfo ? { customerInfo } : {}),
+              ...(stockBypassEnabled ? { stockBypassUsed: true } : {})
             };
 
             regularResult = await salesService.createSale(regularSaleData);
@@ -1377,7 +1396,8 @@ function AddSalePage() {
               paymentMethod: paymentMethod,
               paidAmount: amountPaid * tmtRatio,
               partialPaymentMethod: paymentMethod === "partial" ? partialPaymentMethod : null,
-              ...(customerInfo && !regularResult ? { customerInfo } : {}) // Only create new customer once
+              ...(customerInfo && !regularResult ? { customerInfo } : {}), // Only create new customer once
+              ...(stockBypassEnabled ? { stockBypassUsed: true } : {})
             };
 
             const res = await fetch('/api/tmt/sales', {
@@ -1825,6 +1845,25 @@ function AddSalePage() {
                   )}
 
                   <div className="space-y-8">
+                    {/* Stock Bypass Warning Badge */}
+                    {stockBypassEnabled && (
+                      <div className="bg-orange-50 border border-orange-300 rounded-xl p-4 flex items-center gap-3">
+                        <div className="bg-orange-100 p-2 rounded-lg">
+                          <svg className="w-5 h-5 text-orange-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-orange-800">
+                            {t("⚠️ Stock Bypass Enabled", "⚠️ स्टॉक बायपास सक्षम")}
+                          </p>
+                          <p className="text-xs text-orange-600">
+                            {t("Out-of-stock items can be sold. Sales will be logged for audit.", "आउट-ऑफ-स्टॉक आइटम बेचे जा सकते हैं। बिक्री ऑडिट के लिए लॉग की जाएगी।")}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Shopping Cart Header & Toggle */}
                     <div className="bg-white p-6 rounded-xl border shadow-sm space-y-6">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b pb-4">

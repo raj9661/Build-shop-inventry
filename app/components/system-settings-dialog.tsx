@@ -20,6 +20,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Globe,
   Shield,
+  ShieldAlert,
   Database,
   Bell,
   Palette,
@@ -72,6 +73,9 @@ interface SystemSettings {
     retentionDays: number
     autoBackup: boolean
   }
+  stockBypass: {
+    shopIds: number[]
+  }
 }
 
 interface CreateUserDialogProps {
@@ -121,6 +125,9 @@ const getDefaultSettings = (): SystemSettings => ({
     backupFrequency: "daily",
     retentionDays: 30,
     autoBackup: true
+  },
+  stockBypass: {
+    shopIds: []
   }
 });
 
@@ -131,14 +138,33 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const { toast } = useToast()
+  const [shops, setShops] = useState<any[]>([])
 
   const [settings, setSettings] = useState<SystemSettings>(getDefaultSettings())
 
   useEffect(() => {
     if (open) {
       loadSettings()
+      loadShops()
     }
   }, [open])
+
+  const loadShops = async () => {
+    try {
+      const token = localStorage.getItem('accessToken')
+      const response = await fetch('/api/shops/user-assigned', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
+      if (response.ok) {
+        const data = await response.json()
+        // API returns { success, data: { shops: [...] } }
+        const shopsList = data?.data?.shops || data?.shops || data?.data || []
+        setShops(Array.isArray(shopsList) ? shopsList : [])
+      }
+    } catch (error) {
+      console.error('Failed to load shops:', error)
+    }
+  }
 
   const loadSettings = async () => {
     setLoading(true)
@@ -164,7 +190,8 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
           },
           notifications: { ...getDefaultSettings().notifications, ...(data?.notifications || {}) },
           appearance: { ...getDefaultSettings().appearance, ...(data?.appearance || {}) },
-          database: { ...getDefaultSettings().database, ...(data?.database || {}) }
+          database: { ...getDefaultSettings().database, ...(data?.database || {}) },
+          stockBypass: { ...getDefaultSettings().stockBypass, ...(data?.stockBypass || {}) }
         })
       }
     } catch (error) {
@@ -246,6 +273,7 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
   }
 
   const currentSettings = settings?.general ? settings : getDefaultSettings();
+  const safeShops = Array.isArray(shops) ? shops : [];
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -765,6 +793,69 @@ export function SystemSettingsDialog({ onUserCreated, open: controlledOpen, onOp
                       />
                       <Label htmlFor="autoBackup">Automatic Backup</Label>
                     </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Stock Bypass Settings */}
+              <Card className="border-orange-200">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldAlert className="h-5 w-5 text-orange-600" />
+                    Stock Bypass Settings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-gray-600">
+                    Allow sales even when items are out of stock for selected shops. Stock quantities may go negative.
+                  </p>
+                  <div className="flex items-start space-x-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                    <ShieldAlert className="h-4 w-4 text-orange-600 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-orange-800">⚠️ Warning</p>
+                      <p className="text-orange-600">When enabled, any user of the selected shop can sell out-of-stock items. Stock quantities may go negative. All bypass sales are logged in audit trail.</p>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {safeShops.length === 0 ? (
+                      <p className="text-sm text-gray-400 italic">Loading shops...</p>
+                    ) : (
+                      safeShops.map((shop: any) => {
+                        const shopId = Number(shop.id);
+                        const isEnabled = (currentSettings.stockBypass?.shopIds || []).includes(shopId);
+                        return (
+                          <div key={shop.id} className={`flex items-center justify-between p-3 rounded-lg border ${
+                            isEnabled ? 'bg-orange-50 border-orange-300' : 'bg-gray-50 border-gray-200'
+                          }`}>
+                            <div className="flex items-center space-x-3">
+                              <div className={`w-3 h-3 rounded-full ${isEnabled ? 'bg-orange-500' : 'bg-gray-300'}`}></div>
+                              <div>
+                                <span className="text-sm font-medium">{shop.name}</span>
+                                {shop.location && <span className="text-xs text-gray-500 ml-2">({shop.location})</span>}
+                              </div>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              {isEnabled && <Badge variant="outline" className="text-orange-600 border-orange-300 text-xs">Bypass ON</Badge>}
+                              <Switch
+                                checked={isEnabled}
+                                onCheckedChange={(checked) => {
+                                  setSettings(prev => {
+                                    const currentIds = prev.stockBypass?.shopIds || [];
+                                    const newIds = checked
+                                      ? [...currentIds, shopId]
+                                      : currentIds.filter((id: number) => id !== shopId);
+                                    return {
+                                      ...prev,
+                                      stockBypass: { shopIds: newIds }
+                                    };
+                                  });
+                                }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </CardContent>
               </Card>
