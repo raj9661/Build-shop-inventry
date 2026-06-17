@@ -1423,10 +1423,20 @@ export default function CustomerLedger() {
                             value={returnSelectedProduct ? returnSelectedProduct.id.toString() : ""}
                             onValueChange={(val) => {
                               const prod = availableProducts.find(p => p.id.toString() === val);
-                              setReturnSelectedProduct(prod || null);
-                              const catName = prod?.category?.name?.toLowerCase() || '';
-                              const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
-                              setReturnConvCft(isBulk ? (prod?.latestConversionCft?.toString() || "1") : "");
+                              if (prod) {
+                                const catName = prod.category?.name?.toLowerCase() || '';
+                                const isCement = catName === 'cement';
+                                const defaultUnit = isCement ? 'bag' : (prod.unit || '').toLowerCase();
+                                setReturnSelectedProduct({
+                                  ...prod,
+                                  _selectedUnit: defaultUnit
+                                });
+                                const isBulk = catName.includes('sand') || catName.includes('chips') || catName.includes('aggregate');
+                                setReturnConvCft(isBulk ? (prod.latestConversionCft?.toString() || "1") : "");
+                              } else {
+                                setReturnSelectedProduct(null);
+                                setReturnConvCft("");
+                              }
                               setReturnQty("");
                             }}
                           >
@@ -1582,8 +1592,25 @@ export default function CustomerLedger() {
                         onClick={() => {
                           if (!returnSelectedProduct) return;
                           const isTmt = !!returnSelectedProduct._isTmt;
-                          const selectedUnit = returnSelectedProduct._selectedUnit || (isTmt ? 'piece' : '');
+                          let selectedUnit = returnSelectedProduct._selectedUnit;
                           if (!isTmt && !selectedUnit) {
+                            const catName = returnSelectedProduct?.category?.name?.toLowerCase() || '';
+                            if (catName === 'cement') {
+                              selectedUnit = 'bag';
+                            } else {
+                              selectedUnit = (returnSelectedProduct.unit || '').toLowerCase();
+                            }
+                            if (!selectedUnit) {
+                              const unitOptions = getAvailableUnits(returnSelectedProduct?.category?.name || '');
+                              if (unitOptions.length > 0) {
+                                selectedUnit = unitOptions[0].value;
+                              }
+                            }
+                          }
+                          if (isTmt && !selectedUnit) {
+                            selectedUnit = 'piece';
+                          }
+                          if (!selectedUnit) {
                             toast.error(t("Please select a unit", "कृपया इकाई चुनें"));
                             return;
                           }

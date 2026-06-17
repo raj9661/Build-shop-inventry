@@ -189,14 +189,11 @@ export async function POST(req: NextRequest) {
       console.error('Redis dashboard invalidation failed:', err);
     });
 
-    return new NextResponse(serializeBigInt({
+    return NextResponse.json(serializeBigInt({
       success: true,
       message: 'Items returned and restocked successfully',
       data: result
-    }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    }), { status: 200 });
 
   } catch (error) {
     console.error('Customer item return error:', error);
