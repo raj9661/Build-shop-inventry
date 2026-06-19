@@ -1075,10 +1075,10 @@ model TmtPurchaseItem {
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   product           TmtProduct  @relation(fields: [productId], references: [id])
-  // onDelete: Cascade � purchase items are transactional children
+  // onDelete: Cascade  purchase items are transactional children
   purchase          TmtPurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
 
-  // Removed: @@index([isActive]) � low cardinality
+  // Removed: @@index([isActive])  low cardinality
   @@index([purchaseId]) // Items per purchase (invoice view)
   @@index([productId])  // Purchase history per product
 }
@@ -1088,6 +1088,8 @@ model TmtInventory {
   productId             BigInt
   availableQtyKg        Decimal    @db.Decimal(12, 3)
   reservedQtyKg         Decimal    @default(0) @db.Decimal(12, 3)
+  availablePieces       Decimal?   @default(0) @db.Decimal(12, 3)
+  availableBundles      Decimal?   @default(0) @db.Decimal(12, 3)
   lastUpdated           DateTime   @default(now())
   isActive              Boolean    @default(true)
   createdAt             DateTime   @default(now())
@@ -1105,10 +1107,10 @@ model TmtInventory {
   totalAmountFromPieces Decimal?   @db.Decimal(12, 2)
   product               TmtProduct @relation(fields: [productId], references: [id])
   shop                  Shop       @relation(fields: [shopId], references: [id])
-  // onDelete: SetNull � supplier is optional; inventory survives supplier removal
+  // onDelete: SetNull  supplier is optional; inventory survives supplier removal
   supplier              Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
 
-  // Removed: @@index([isActive]), @@index([lastUpdated]) � low cardinality / low value standalone
+  // Removed: @@index([isActive]), @@index([lastUpdated])  low cardinality / low value standalone
   @@unique([productId, shopId])
   @@index([productId])   // Inventory per product
   @@index([shopId])      // Tenant-scoped inventory

@@ -229,8 +229,11 @@ export async function POST(request: NextRequest) {
           }
         });
 
-        // Update inventory
-        await updateTmtInventory(productId, parseInt(shopId), equivalentKg, 'add');
+        // Update inventory — add KG and track pieces/bundles by original unit
+        await updateTmtInventory(productId, parseInt(shopId), equivalentKg, 'add', {
+          unitType:    unitType,          // e.g. 'bundle' purchased
+          rawQuantity: parseFloat(quantity) // e.g. 10 bundles
+        });
       }
 
       return Number(purchaseId);

@@ -242,7 +242,8 @@ export async function getTmtInventory(productId: number, shopId: number): Promis
         product: {
           select: {
             weightPerRodKg: true,
-            weightPerBundleKg: true
+            weightPerBundleKg: true,
+            rodsPerBundle: true
           }
         }
       }
@@ -250,14 +251,23 @@ export async function getTmtInventory(productId: number, shopId: number): Promis
 
     if (!inventory) return null;
 
-    const availableQtyKg = Number(inventory.availableQtyKg);
-    const weightPerRodKg = Number(inventory.product.weightPerRodKg);
-    const weightPerBundleKg = Number(inventory.product.weightPerBundleKg);
+    const availableQtyKg     = Number(inventory.availableQtyKg);
+    const weightPerRodKg     = Number(inventory.product.weightPerRodKg);
+    const weightPerBundleKg  = Number(inventory.product.weightPerBundleKg);
+
+    // Prefer DB-stored piece/bundle counts; fall back to derived values for old rows
+    const availablePieces  = (inventory as any).availablePieces != null
+      ? Number((inventory as any).availablePieces)
+      : Math.round((availableQtyKg / weightPerRodKg) * 1000) / 1000;
+
+    const availableBundles = (inventory as any).availableBundles != null
+      ? Number((inventory as any).availableBundles)
+      : Math.round((availableQtyKg / weightPerBundleKg) * 1000) / 1000;
 
     return {
       availableQtyKg,
-      availablePieces: Math.round((availableQtyKg / weightPerRodKg) * 100) / 100,
-      availableBundles: Math.round((availableQtyKg / weightPerBundleKg) * 100) / 100,
+      availablePieces,
+      availableBundles,
       availableTons: Math.round((availableQtyKg / 1000) * 1000) / 1000,
       lastUpdated: inventory.lastUpdated
     };
@@ -268,6 +278,8 @@ export async function getTmtInventory(productId: number, shopId: number): Promis
 }
 
 // Update TMT inventory (add or subtract)
+// Pass unitType + rawQuantity so piece/bundle columns are updated precisely.
+// quantityKg is always required for the KG column (used for KG-only callers as well).
 export async function updateTmtInventory(
   productId: number,
   shopId: number,
@@ -284,25 +296,35 @@ export async function updateTmtInventory(
     totalAmount?: number | null;
     totalAmountFromKg?: number | null;
     totalAmountFromPieces?: number | null;
+    // New: unit-specific quantity for piece/bundle tracking
+    unitType?: string | null;     // 'kg' | 'piece' | 'bundle' | 'ton'
+    rawQuantity?: number | null;  // The original quantity in that unit
   }
 ): Promise<boolean> {
   try {
     const sign = operation === 'add' ? 1 : -1;
-    const changeAmount = quantityKg * sign;
+    const changeKg = quantityKg * sign;
 
-    console.log(`[TMT Inventory] updateTmtInventory called: ProductID=${productId}, ShopID=${shopId}, KG=${quantityKg}, Op=${operation}`);
+    // Determine piece and bundle deltas based on the unit type used in the sale/purchase
+    const unitType    = (additionalData?.unitType || 'kg').toLowerCase();
+    const rawQty      = additionalData?.rawQuantity ?? null;
 
-    // Check if inventory record exists
+    console.log(`[TMT Inventory] updateTmtInventory called: ProductID=${productId}, ShopID=${shopId}, KG=${quantityKg}, Op=${operation}, Unit=${unitType}, RawQty=${rawQty}`);
+
+    // Check if inventory record exists (include product for weight lookups)
     const existingInventory = await prisma.tmtInventory.findUnique({
       where: {
         productId_shopId: {
           productId: BigInt(productId),
           shopId: BigInt(shopId)
         }
+      },
+      include: {
+        product: { select: { weightPerRodKg: true, rodsPerBundle: true, weightPerBundleKg: true } }
       }
     });
 
-    console.log(`[TMT Inventory] Existing record found: ${!!existingInventory} ${existingInventory ? `(Qty: ${existingInventory.availableQtyKg})` : ''}`);
+    console.log(`[TMT Inventory] Existing record found: ${!!existingInventory} ${existingInventory ? `(KG: ${existingInventory.availableQtyKg}, Pieces: ${(existingInventory as any).availablePieces})` : ''}`);
 
     const updateData: any = {
       availableQtyKg: 0,
@@ -311,14 +333,56 @@ export async function updateTmtInventory(
     };
 
     if (existingInventory) {
-      // Update existing inventory
-      const currentQty = Number(existingInventory.availableQtyKg);
-      const newQty = currentQty + changeAmount;
-      console.log(`[TMT Inventory] Updating: ${currentQty} + ${changeAmount} = ${newQty}`);
+      // --- KG column ---
+      const currentKg = Number(existingInventory.availableQtyKg);
+      const newKg     = currentKg + changeKg;
+      console.log(`[TMT Inventory] KG: ${currentKg} + ${changeKg} = ${newKg}`);
+      updateData.availableQtyKg = newKg >= 0 ? newKg : 0;
 
-      updateData.availableQtyKg = newQty >= 0 ? newQty : 0;
+      // --- Piece column ---
+      const weightPerRod  = Number(existingInventory.product?.weightPerRodKg  || 0);
+      const rodsPerBundle = Number(existingInventory.product?.rodsPerBundle    || 0);
+      const weightPerBundle = Number(existingInventory.product?.weightPerBundleKg || 0);
 
-      // Update additional fields if provided (for both add and update operations when adding)
+      const currentPieces  = (existingInventory as any).availablePieces  != null ? Number((existingInventory as any).availablePieces)  : (weightPerRod  > 0 ? currentKg / weightPerRod  : 0);
+      const currentBundles = (existingInventory as any).availableBundles != null ? Number((existingInventory as any).availableBundles) : (weightPerBundle > 0 ? currentKg / weightPerBundle : 0);
+
+      let pieceDelta  = 0;
+      let bundleDelta = 0;
+
+      if (rawQty !== null && weightPerRod > 0) {
+        switch (unitType) {
+          case 'piece':
+            pieceDelta  = rawQty * sign;
+            bundleDelta = rodsPerBundle > 0 ? (rawQty / rodsPerBundle) * sign : 0;
+            break;
+          case 'bundle':
+            bundleDelta = rawQty * sign;
+            pieceDelta  = (rawQty * rodsPerBundle) * sign;
+            break;
+          case 'ton':
+          case 'kg':
+          default:
+            // Derive from KG change
+            pieceDelta  = weightPerRod   > 0 ? changeKg / weightPerRod   : 0;
+            bundleDelta = weightPerBundle > 0 ? changeKg / weightPerBundle : 0;
+            break;
+        }
+      } else {
+        // Fallback: derive from KG
+        pieceDelta  = weightPerRod   > 0 ? changeKg / weightPerRod   : 0;
+        bundleDelta = weightPerBundle > 0 ? changeKg / weightPerBundle : 0;
+      }
+
+      const newPieces  = Math.max(0, currentPieces  + pieceDelta);
+      const newBundles = Math.max(0, currentBundles + bundleDelta);
+      console.log(`[TMT Inventory] Pieces: ${currentPieces} + ${pieceDelta} = ${newPieces}`);
+      console.log(`[TMT Inventory] Bundles: ${currentBundles} + ${bundleDelta} = ${newBundles}`);
+
+      updateData.availablePieces  = Math.round(newPieces  * 1000) / 1000;
+      updateData.availableBundles = Math.round(newBundles * 1000) / 1000;
+
+      // Update additional pricing/config fields if provided
       if (additionalData) {
         if (additionalData.supplierId !== undefined) {
           updateData.supplierId = additionalData.supplierId ? BigInt(additionalData.supplierId) : null;
@@ -362,11 +426,37 @@ export async function updateTmtInventory(
         data: updateData
       });
     } else {
-      // Create new inventory record
+      // Create new inventory record — fetch product weights for piece calculation
+      let initPieces  = 0;
+      let initBundles = 0;
+      try {
+        const prod = await prisma.tmtProduct.findUnique({
+          where: { id: BigInt(productId) },
+          select: { weightPerRodKg: true, rodsPerBundle: true, weightPerBundleKg: true }
+        });
+        if (prod) {
+          const wpr = Number(prod.weightPerRodKg);
+          const wpb = Number(prod.weightPerBundleKg);
+          const rpb = Number(prod.rodsPerBundle);
+          if (rawQty !== null) {
+            switch (unitType) {
+              case 'piece':  initPieces = rawQty; initBundles = rpb > 0 ? rawQty / rpb : 0; break;
+              case 'bundle': initBundles = rawQty; initPieces = rawQty * rpb; break;
+              default:       initPieces = wpr > 0 ? changeKg / wpr : 0; initBundles = wpb > 0 ? changeKg / wpb : 0;
+            }
+          } else {
+            initPieces  = wpr > 0 ? changeKg / wpr : 0;
+            initBundles = wpb > 0 ? changeKg / wpb : 0;
+          }
+        }
+      } catch { /* non-blocking */ }
+
       const createData: any = {
         productId: BigInt(productId),
         shopId: BigInt(shopId),
-        availableQtyKg: changeAmount >= 0 ? changeAmount : 0,
+        availableQtyKg:  changeKg >= 0 ? changeKg : 0,
+        availablePieces:  Math.max(0, Math.round(initPieces  * 1000) / 1000),
+        availableBundles: Math.max(0, Math.round(initBundles * 1000) / 1000),
         reservedQtyKg: 0,
         lastUpdated: new Date(),
         isActive: true
@@ -419,11 +509,15 @@ export async function updateTmtInventory(
 }
 
 // Validate inventory availability
+// unitType: 'kg' | 'piece' | 'bundle' | 'ton' — checks the right stock column
+// requiredQty: amount in the given unit (optional, falls back to KG check)
 export async function validateInventoryAvailability(
   productId: number,
   shopId: number,
-  requiredKg: number
-): Promise<{ available: boolean; availableKg: number }> {
+  requiredKg: number,
+  unitType?: string,
+  requiredQty?: number
+): Promise<{ available: boolean; availableKg: number; availablePieces?: number; availableBundles?: number }> {
   try {
     const inventory = await prisma.tmtInventory.findUnique({
       where: {
@@ -432,17 +526,36 @@ export async function validateInventoryAvailability(
           shopId: BigInt(shopId)
         }
       },
-      select: {
-        availableQtyKg: true
+      include: {
+        product: { select: { weightPerRodKg: true, rodsPerBundle: true, weightPerBundleKg: true } }
       }
-    });
+    }) as any;
 
-    const availableKg = inventory ? Number(inventory.availableQtyKg) : 0;
+    const availableKg     = inventory ? Number(inventory.availableQtyKg) : 0;
+    const weightPerRod    = inventory ? Number(inventory.product?.weightPerRodKg   || 0) : 0;
+    const weightPerBundle = inventory ? Number(inventory.product?.weightPerBundleKg || 0) : 0;
 
-    return {
-      available: availableKg >= requiredKg,
-      availableKg
-    };
+    // Prefer DB-stored counts; fall back to derived values
+    const availablePieces  = inventory?.availablePieces  != null
+      ? Number(inventory.availablePieces)
+      : (weightPerRod   > 0 ? availableKg / weightPerRod   : 0);
+    const availableBundles = inventory?.availableBundles != null
+      ? Number(inventory.availableBundles)
+      : (weightPerBundle > 0 ? availableKg / weightPerBundle : 0);
+
+    const unit = (unitType || 'kg').toLowerCase();
+    let available = false;
+
+    if (unit === 'piece' && requiredQty != null) {
+      available = availablePieces >= requiredQty;
+    } else if (unit === 'bundle' && requiredQty != null) {
+      available = availableBundles >= requiredQty;
+    } else {
+      // kg or ton — compare by KG
+      available = availableKg >= requiredKg;
+    }
+
+    return { available, availableKg, availablePieces, availableBundles };
   } catch (error) {
     console.error('Error validating inventory:', error);
     return { available: false, availableKg: 0 };

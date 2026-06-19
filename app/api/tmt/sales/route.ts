@@ -293,11 +293,13 @@ export async function POST(request: NextRequest) {
       const itemTotal = soldQuantity * pricePerUnit;
       totalAmount += itemTotal;
 
-      // Validate inventory availability
+      // Validate inventory availability (check the right unit column)
       const inventoryCheck = await validateInventoryAvailability(
         productId,
         parseInt(shopId),
-        equivalentKg
+        equivalentKg,
+        normalizedUnitType,
+        soldQuantity
       );
 
       if (!inventoryCheck.available) {
@@ -428,10 +430,19 @@ export async function POST(request: NextRequest) {
       return sale.id;
     });
 
-    // Update inventory for all items
+    // Update inventory for all items — deduct the right unit column
     console.log(`Updating inventory for ${processedItems.length} items`);
     for (const item of processedItems) {
-      await updateTmtInventory(item.productId, parseInt(shopId), item.equivalentKg, 'subtract');
+      await updateTmtInventory(
+        item.productId,
+        parseInt(shopId),
+        item.equivalentKg,
+        'subtract',
+        {
+          unitType:    item.unitType,      // 'piece' | 'bundle' | 'kg' | 'ton'
+          rawQuantity: item.soldQuantity   // exact quantity in that unit
+        }
+      );
     }
 
     return NextResponse.json({
