@@ -189,19 +189,34 @@ export default function CashSale() {
     if (!product) return;
 
     let price = 0;
-    // Determine price based on unit
+    const wpr = Number(product.weightPerRodKg || 0);
+    const rpb = Number(product.rodsPerBundle || 0);
+    const spKg = Number(product.sellingPricePerKg || 0);
+    const spPiece = Number(product.sellingPricePerPiece || 0);
+
+    // Price is always per-unit of the selected unit type:
+    //  piece  → price per piece
+    //  bundle → price per BUNDLE  (= pieces-per-bundle × price-per-piece  OR  bundle-weight × price-per-kg)
+    //  kg     → price per kg
+    //  ton    → price per ton
     if (unit === 'piece') {
-      price = product.sellingPricePerPiece || (product.sellingPricePerKg * product.weightPerRodKg) || 0;
+      price = spPiece || (spKg * wpr) || 0;
     } else if (unit === 'bundle') {
-      price = (product.sellingPricePerPiece * product.rodsPerBundle) || (product.sellingPricePerKg * product.weightPerBundleKg) || 0;
+      // Try piece-based first (most accurate for shops that set a per-piece price)
+      if (spPiece > 0 && rpb > 0) {
+        price = spPiece * rpb;
+      } else if (spKg > 0 && wpr > 0 && rpb > 0) {
+        price = spKg * wpr * rpb; // bundle-weight × price-per-kg
+      }
     } else if (unit === 'kg') {
-      price = product.sellingPricePerKg || 0;
+      price = spKg || 0;
     } else if (unit === 'ton') {
-      price = (product.sellingPricePerKg * 1000) || 0;
+      price = spKg > 0 ? spKg * 1000 : 0;
     }
 
     setCurrentItem(prev => ({ ...prev, unit, price: price > 0 ? price.toFixed(2) : '' }));
   }
+
 
 
   // In the Add Product form logic, auto-set unit for cement
@@ -610,13 +625,18 @@ export default function CashSale() {
                           setCurrentItem({ ...currentItem, productId: pid, name: product?.name || '', unit, price: product?.price || '', conversionCft: '' as any })
                         } else {
                           const product = tmtProducts.find((p: any) => String(p.id) === String(pid));
-                          setCurrentItem({ ...currentItem, productId: pid, name: product?.productName || '', unit: 'bundle', price: '', conversionCft: '' as any })
-                          // Trigger unit change to set default price
-                          // We can't immediately trigger handleTmtUnitChange because state needs time. 
-                          // But we can manually set it here.
                           if (product) {
+                            const spPiece = Number(product.sellingPricePerPiece || 0);
+                            const spKg = Number(product.sellingPricePerKg || 0);
+                            const wpr = Number(product.weightPerRodKg || 0);
+                            const rpb = Number(product.rodsPerBundle || 0);
                             // Default to bundle price
-                            const price = (product.sellingPricePerPiece * product.rodsPerBundle) || (product.sellingPricePerKg * product.weightPerBundleKg) || 0;
+                            let price = 0;
+                            if (spPiece > 0 && rpb > 0) {
+                              price = spPiece * rpb;
+                            } else if (spKg > 0 && wpr > 0 && rpb > 0) {
+                              price = spKg * wpr * rpb;
+                            }
                             setCurrentItem(prev => ({ ...prev, productId: pid, name: product.productName, unit: 'bundle', price: price > 0 ? price.toFixed(2) : '', conversionCft: '' as any }));
                           }
                         }
@@ -840,9 +860,20 @@ export default function CashSale() {
                         </div>
                       </div>
                       <div className="flex justify-between text-sm text-gray-600">
-                        <span>{t("Price", "कीमत")}: ₹{item.price}</span>
-                        <span>{t("Total", "कुल")}: ₹{(item.price * item.quantity).toFixed(2)}</span>
+                        <span>{t('Price', 'कीमत')}: ₹{item.price}/{item.unit}</span>
+                        <span>{t('Total', 'कुल')}: ₹{(item.price * item.quantity).toFixed(2)}</span>
                       </div>
+                      {item.isTmt && item.unit === 'bundle' && item.tmtDetails?.rodsPerBundle && (
+                        <div className="text-xs text-blue-500 mt-1">
+                          {item.quantity} bundle × {item.tmtDetails.rodsPerBundle} rods = {item.quantity * item.tmtDetails.rodsPerBundle} pieces
+                          {item.tmtDetails.weightPerPiece ? ` ≈ ${(item.quantity * item.tmtDetails.rodsPerBundle * item.tmtDetails.weightPerPiece).toFixed(2)} kg` : ''}
+                        </div>
+                      )}
+                      {item.isTmt && item.unit === 'piece' && item.tmtDetails?.weightPerPiece && (
+                        <div className="text-xs text-blue-500 mt-1">
+                          {item.quantity} pieces ≈ {(item.quantity * item.tmtDetails.weightPerPiece).toFixed(2)} kg
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

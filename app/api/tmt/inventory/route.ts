@@ -111,12 +111,15 @@ export async function GET(request: NextRequest) {
       const supplierId = item.supplierId ? Number(item.supplierId) : null;
       const supplierName = supplierId ? supplierMap.get(supplierId.toString()) || null : null;
 
-      // Calculate bundles from weight
-      const availableBundles = weightPerBundleKg > 0 ? Math.floor(availableQtyKg / weightPerBundleKg) : 0;
+      // FIXED: Use stored availableBundles/availablePieces from DB first;
+      // only fall back to KG-based math if the stored value is null (legacy rows).
+      const availableBundles = item.availableBundles != null
+        ? Math.max(0, Math.round(Number(item.availableBundles) * 1000) / 1000)
+        : (weightPerBundleKg > 0 ? Math.floor(availableQtyKg / weightPerBundleKg) : 0);
 
-      // Calculate pieces from weight (more accurate than bundle-based calculation)
-      // This handles cases where weightPerBundleKg ≠ rodsPerBundle × weightPerRodKg
-      const availablePieces = weightPerRodKg > 0 ? Math.floor(availableQtyKg / weightPerRodKg) : 0;
+      const availablePieces = item.availablePieces != null
+        ? Math.max(0, Math.round(Number(item.availablePieces) * 1000) / 1000)
+        : (weightPerRodKg > 0 ? Math.floor(availableQtyKg / weightPerRodKg) : 0);
 
       return {
         id: Number(item.id),
@@ -334,13 +337,16 @@ export async function POST(request: NextRequest) {
     calculatedTotalAmount = calculatedTotalAmountFromPieces || calculatedTotalAmountFromKg;
     console.log(`Final totalAmount: ${calculatedTotalAmount}, fromKg: ${calculatedTotalAmountFromKg}, fromPieces: ${calculatedTotalAmountFromPieces}`);
 
-    // Update inventory with additional data
+    // FIXED: Pass unitType and rawQuantity so availablePieces/availableBundles
+    // are tracked precisely from the actual units added (not derived from KG math).
     const inventoryUpdated = await updateTmtInventory(
       parseInt(productId),
       parseInt(shopId),
       equivalentKg,
       'add',
       {
+        unitType: unitType,             // e.g. 'bundle', 'piece', 'kg', 'ton'
+        rawQuantity: quantityValue,     // exact quantity in that unit
         supplierId: supplierId ? parseInt(supplierId) : null,
         sellingPricePerKg: finalSellingPricePerKg,
         costPricePerKg: finalCostPricePerKg,

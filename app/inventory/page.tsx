@@ -54,6 +54,7 @@ export default function InventoryPage() {
   const [stockEntries, setStockEntries] = useState<any[]>([]);
   const [stockLoading, setStockLoading] = useState(false);
   const [refreshLoading, setRefreshLoading] = useState(false);
+  const [restockLoading, setRestockLoading] = useState(false);
   const [historySearch, setHistorySearch] = useState('');
   const [markingPaid, setMarkingPaid] = useState<string | null>(null);
 
@@ -151,19 +152,44 @@ export default function InventoryPage() {
 
       if (tmtRes.ok) {
         const tmtData = await tmtRes.json();
+
+        // FIXED: Also fetch stored bundle/piece counts from /api/tmt/inventory
+        // which uses DB-stored values (not KG-derived math)
+        let inventoryMap: Record<number, { availableBundles: number; availablePieces: number }> = {};
+        try {
+          const invRes = await fetch(`/api/tmt/inventory?shopId=${currentShopId}`, {
+            headers: { Authorization: `Bearer ${token}`, 'Cache-Control': 'no-cache' },
+            cache: 'no-store'
+          });
+          if (invRes.ok) {
+            const invData = await invRes.json();
+            const invItems: any[] = invData?.data?.inventory || [];
+            for (const inv of invItems) {
+              inventoryMap[Number(inv.productId)] = {
+                availableBundles: Number(inv.availableBundles ?? 0),
+                availablePieces: Number(inv.availablePieces ?? 0)
+              };
+            }
+          }
+        } catch (_) { /* non-blocking: fall back to KG math */ }
+
         tmtProducts = (tmtData.data.products || []).map((tmt: any) => {
-          // Calculate bundles and pieces from available quantity
           const availableQtyKg = tmt.availableQtyKg || 0;
+          const productId = Number(tmt.id);
+
+          // Use stored DB values if available; fall back to KG math for legacy rows
+          const storedInv = inventoryMap[productId];
           const weightPerBundleKg = tmt.weightPerBundleKg || 1;
+          const weightPerRodKg = tmt.weightPerRodKg || 1;
           const rodsPerBundle = tmt.rodsPerBundle || 0;
 
-          // Calculate bundles from weight
-          const availableBundles = weightPerBundleKg > 0 ? Math.floor(availableQtyKg / weightPerBundleKg) : 0;
+          const availableBundles = storedInv
+            ? storedInv.availableBundles
+            : (weightPerBundleKg > 0 ? Math.floor(availableQtyKg / weightPerBundleKg) : 0);
 
-          // Calculate pieces from weight (more accurate than bundle-based calculation)
-          // Use weightPerRodKg directly to handle cases where weightPerBundleKg ≠ rodsPerBundle × weightPerRodKg
-          const weightPerRodKg = tmt.weightPerRodKg || 1;
-          const availablePieces = weightPerRodKg > 0 ? Math.floor(availableQtyKg / weightPerRodKg) : 0;
+          const availablePieces = storedInv
+            ? storedInv.availablePieces
+            : (weightPerRodKg > 0 ? Math.floor(availableQtyKg / weightPerRodKg) : 0);
 
           return {
             id: `tmt-${tmt.id}`,
@@ -211,6 +237,28 @@ export default function InventoryPage() {
       toast.error("Failed to refresh inventory");
     } finally {
       setRefreshLoading(false);
+    }
+  };
+
+  // Recalculate TMT stock from all purchases minus sales
+  const handleRestockTmt = async () => {
+    if (!currentShopId) return;
+    setRestockLoading(true);
+    try {
+      const token = localStorage.getItem('accessToken');
+      const res = await fetch('/api/tmt/inventory/restock', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ shopId: currentShopId.toString() })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Restock failed');
+      toast.success(`✅ TMT stock recalculated for ${data.data?.length || 0} products!`);
+      await loadProducts();
+    } catch (err: any) {
+      toast.error(err.message || 'Recalculate failed');
+    } finally {
+      setRestockLoading(false);
     }
   };
 
@@ -401,6 +449,17 @@ export default function InventoryPage() {
                     Insights
                   </Button>
                   <Button onClick={handleExport} variant="outline" className="border-primary text-primary hover:bg-primary/10">Export CSV</Button>
+                  <Button
+                    onClick={handleRestockTmt}
+                    variant="outline"
+                    className="border-orange-400 text-orange-600 hover:bg-orange-50"
+                    disabled={restockLoading}
+                    title="Recalculate TMT bundle/piece counts from all purchase & sale records"
+                  >
+                    {restockLoading
+                      ? <><Loader2 className="animate-spin h-4 w-4 mr-1" />Recalculating...</>
+                      : <>🔄 Recalculate TMT Stock</>}
+                  </Button>
                   <Button onClick={handleRefresh} variant="outline" className="border-primary text-primary hover:bg-primary/10" disabled={refreshLoading}>
                     {refreshLoading ? <Loader2 className="animate-spin h-4 w-4 mr-2" /> : <RefreshCw className="h-4 w-4 mr-2" />}
                     Refresh

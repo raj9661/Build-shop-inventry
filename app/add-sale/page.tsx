@@ -198,13 +198,18 @@ function AddSalePage() {
         price = product.sellingPricePerKg * product.weightPerRodKg
       }
     } else if (unit === 'bundle') {
-      // Calculate from per piece price
-      const piecesPerBundle = product.rodsPerBundle || 0
-      const pricePerPiece = product.sellingPricePerPiece || 0
+      // Calculate from per piece price (most accurate)
+      const piecesPerBundle = Number(product.rodsPerBundle || 0)
+      const pricePerPiece = Number(product.sellingPricePerPiece || 0)
+      const spKg = Number(product.sellingPricePerKg || 0)
+      const wpr = Number(product.weightPerRodKg || 0)
       if (pricePerPiece > 0 && piecesPerBundle > 0) {
         price = pricePerPiece * piecesPerBundle
+      } else if (spKg > 0 && wpr > 0 && piecesPerBundle > 0) {
+        // Fallback: kg-price × weight-per-rod × rods-per-bundle
+        price = spKg * wpr * piecesPerBundle
       } else if (product.sellingPricePerKg && product.weightPerBundleKg) {
-        // Fallback: calculate from per kg price
+        // Last resort: use stored weightPerBundleKg
         price = product.sellingPricePerKg * product.weightPerBundleKg
       }
     } else if (unit === 'kg') {
