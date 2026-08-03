@@ -16,9 +16,11 @@ export function useShopLimits() {
     loading: true
   })
 
-  const checkLimits = async () => {
+  const checkLimits = async (isBackground = false) => {
     try {
-      setLimits(prev => ({ ...prev, loading: true }))
+      if (!isBackground) {
+        setLimits(prev => ({ ...prev, loading: true }))
+      }
       
       const token = localStorage.getItem('accessToken')
       if (!token) {
@@ -93,11 +95,11 @@ export function useShopLimits() {
   }
 
   useEffect(() => {
-    checkLimits()
+    checkLimits(false)
     
     // Set up automatic refresh every 30 seconds to catch subscription changes
     const interval = setInterval(() => {
-      checkLimits()
+      checkLimits(true)
     }, 30000) // 30 seconds
     
     // Cleanup interval on unmount

@@ -114,11 +114,13 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       
       // Set current shop
       const isDefaultShop = !currentShop || currentShop.id === 0;
-      const currentShopExists = currentShop && !isDefaultShop && fetchedShops.find(shop => shop.id === currentShop.id);
+      const isAllShops = currentShop && currentShop.id === ALL_SHOPS_ID;
+      const currentShopExists = isAllShops || (currentShop && !isDefaultShop && fetchedShops.some(shop => shop.id === currentShop.id));
       console.log(`🏪 [ShopContext] Current shop check:`, { 
         currentShop: currentShop?.id, 
         currentShopName: currentShop?.name,
         isDefaultShop,
+        isAllShops,
         currentShopExists, 
         fetchedShopsCount: fetchedShops.length 
       });
@@ -299,16 +301,25 @@ export function ShopProvider({ children }: { children: ReactNode }) {
       const savedShopId = localStorage.getItem('selectedShopId')
       console.log(`🏪 [ShopContext] Loading from localStorage - savedShopId: ${savedShopId}, userRole: ${userRole}`);
       if (savedShopId && shops.length > 0) {
-        const shop = shops.find(s => s.id === parseInt(savedShopId))
-        if (shop) {
-          console.log(`🏪 [ShopContext] Found saved shop:`, shop);
-          setCurrentShop(shop)
+        if (parseInt(savedShopId) === ALL_SHOPS_ID && userRole === 'SUPER_DUPER_ADMIN') {
+          setCurrentShop({
+            id: ALL_SHOPS_ID,
+            name: "All shops Analytics Dashboard",
+            location: "",
+            createdAt: new Date().toISOString()
+          })
         } else {
-          // If saved shop doesn't exist, select the last shop (most recently created)
-          // This is more likely to have products since it's the newest
-          let preferredShop = shops[shops.length - 1];
-          console.log(`🏪 [ShopContext] Saved shop not found, using preferred shop for ${userRole}:`, preferredShop);
-          setCurrentShop(preferredShop);
+          const shop = shops.find(s => s.id === parseInt(savedShopId))
+          if (shop) {
+            console.log(`🏪 [ShopContext] Found saved shop:`, shop);
+            setCurrentShop(shop)
+          } else {
+            // If saved shop doesn't exist, select the last shop (most recently created)
+            // This is more likely to have products since it's the newest
+            let preferredShop = shops[shops.length - 1];
+            console.log(`🏪 [ShopContext] Saved shop not found, using preferred shop for ${userRole}:`, preferredShop);
+            setCurrentShop(preferredShop);
+          }
         }
       }
     }

@@ -279,7 +279,9 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
   }, [])
 
   const loadData = useCallback(async () => {
-    setLoading(true)
+    if (categories.length === 0 && types.length === 0) {
+      setLoading(true)
+    }
     try {
       console.log('🔄 Loading data for shopId:', validShopId)
       let token = localStorage.getItem('accessToken')
@@ -398,7 +400,9 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
 
   const loadTmtData = useCallback(async () => {
     console.log('🚀 Starting loadTmtData for shopId:', validShopId)
-    setTmtLoading(true)
+    if (tmtCompanies.length === 0 && tmtSizes.length === 0 && tmtProducts.length === 0) {
+      setTmtLoading(true)
+    }
     try {
       const token = localStorage.getItem('accessToken')
       console.log('🔑 Token retrieved:', token ? `${token.substring(0, 20)}...` : 'No token')
@@ -1218,7 +1222,7 @@ export function CategoryManager({ shopId }: CategoryManagerProps) {
     setTmtProductDialogOpen(true)
   }
 
-  if (loading) {
+  if (loading && categories.length === 0 && types.length === 0 && tmtCompanies.length === 0) {
     return (
       <div className="flex items-center justify-center p-8">
         <div className="text-center">
